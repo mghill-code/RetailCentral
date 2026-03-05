@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RetailCentral.Api.Data;
 
@@ -11,9 +12,11 @@ using RetailCentral.Api.Data;
 namespace RetailCentral.Api.Migrations
 {
     [DbContext(typeof(RetailCentralDbContext))]
-    partial class RetailCentralDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260304222837_Day4_CommandAttempts")]
+    partial class Day4_CommandAttempts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -115,9 +118,6 @@ namespace RetailCentral.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("CommandResultId");
-
-                    b.HasIndex("CommandId")
-                        .IsUnique();
 
                     b.ToTable("CommandResults");
                 });

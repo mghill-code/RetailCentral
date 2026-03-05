@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RetailCentral.Api.Data;
 
@@ -11,9 +12,11 @@ using RetailCentral.Api.Data;
 namespace RetailCentral.Api.Migrations
 {
     [DbContext(typeof(RetailCentralDbContext))]
-    partial class RetailCentralDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260303175817_AddCommands")]
+    partial class AddCommands
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -28,9 +31,6 @@ namespace RetailCentral.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("AttemptCount")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -40,20 +40,11 @@ namespace RetailCentral.Api.Migrations
                     b.Property<DateTime?>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("LastAttemptUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LastError")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid?>("LockedByDeviceId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("LockedUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<int>("MaxAttempts")
-                        .HasColumnType("int");
 
                     b.Property<string>("PayloadJson")
                         .HasColumnType("nvarchar(max)");
@@ -116,9 +107,6 @@ namespace RetailCentral.Api.Migrations
 
                     b.HasKey("CommandResultId");
 
-                    b.HasIndex("CommandId")
-                        .IsUnique();
-
                     b.ToTable("CommandResults");
                 });
 
@@ -131,9 +119,6 @@ namespace RetailCentral.Api.Migrations
                     b.Property<string>("AgentVersion")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("DeviceSecret")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("FirstSeenUtc")
                         .HasColumnType("datetime2");
 
@@ -143,9 +128,6 @@ namespace RetailCentral.Api.Migrations
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
-
-                    b.Property<long?>("LastAuthTimestampUnix")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("LastIp")
                         .HasColumnType("nvarchar(max)");

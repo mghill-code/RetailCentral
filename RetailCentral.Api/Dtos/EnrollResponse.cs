@@ -11,5 +11,6 @@ namespace RetailCentral.Api.Dtos
         public int PollSeconds { get; set; } = 30;
 
         public DateTime ServerUtc { get; set; }
+        public string? DeviceSecret { get; set; } // only returned on first enroll (or rotation)
     }
 }

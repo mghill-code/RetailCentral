@@ -10,6 +10,8 @@ namespace RetailCentral.Api.Data
 
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<Heartbeat> Heartbeats => Set<Heartbeat>();
+        public DbSet<Command> Commands => Set<Command>();
+        public DbSet<CommandResult> CommandResults => Set<CommandResult>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -26,6 +28,10 @@ namespace RetailCentral.Api.Data
                 .HasOne(h => h.Device)
                 .WithMany()
                 .HasForeignKey(h => h.DeviceId);
+
+            modelBuilder.Entity<CommandResult>()
+                .HasIndex(r => r.CommandId)
+                .IsUnique();
         }
     }
 }

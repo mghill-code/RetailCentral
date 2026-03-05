@@ -18,5 +18,8 @@ namespace RetailCentral.Api.Models
         public string? LastIp { get; set; }
         public string? AgentVersion { get; set; }
         public string? OsVersion { get; set; }
+        public string? DeviceSecret { get; set; } // base64 secret for HMAC (we’ll harden later)
+
+        public long? LastAuthTimestampUnix { get; set; }
     }
 }
