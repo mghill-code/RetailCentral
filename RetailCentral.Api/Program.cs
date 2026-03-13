@@ -3,13 +3,24 @@ using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
+using Serilog;
 using System.IO;
 using System.Threading.RateLimiting;
 
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.Console()
+    .WriteTo.File("logs/api-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14)
+    .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Host.UseSerilog();
+
+builder.Services.AddControllersWithViews();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -20,7 +31,6 @@ builder.Services.AddDbContext<RetailCentralDbContext>(options =>
 
 builder.Services.AddRateLimiter(options =>
 {
-    // Basic per-device limiter (by X-Device-Id). Falls back to IP if header missing.
     options.AddPolicy("agent", context =>
     {
         var key = context.Request.Headers["X-Device-Id"].FirstOrDefault()
@@ -31,7 +41,7 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: key,
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 60,              // 60 requests
+                PermitLimit = 60,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true
@@ -42,7 +52,6 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddDataProtection()
-    // Dev-friendly: persist keys so secrets survive app restarts
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "dp_keys")));
 
 builder.Services.AddSingleton<DeviceSecretProtection>();
@@ -51,6 +60,9 @@ builder.Services.Configure<CommandTimeoutOptions>(
     builder.Configuration.GetSection("CommandTimeout"));
 
 builder.Services.AddHostedService<CommandTimeoutWorker>();
+builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();
+
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -60,10 +72,24 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseStaticFiles();
+
 app.UseMiddleware<HmacAuthMiddleware>();
 app.UseRateLimiter();
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseAuthorization();
-app.MapControllers().RequireRateLimiting("agent");
+
+app.MapControllers();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Dashboard}/{action=Index}/{id?}");
+
+app.MapHealthChecks("/health");
+
 app.Run();

@@ -1,0 +1,58 @@
+﻿@model List<RetailCentral.Api.ViewModels.GroupSummaryViewModel>
+
+<h2>Groups</h2>
+
+@if (TempData["GroupMessage"] != null)
+{
+    <div class="card">
+        <strong>@TempData["GroupMessage"]</strong>
+    </div>
+}
+
+<div class="card">
+    <h3>Create Group</h3>
+    <form method="post" action="/Dashboard/CreateGroup">
+        @Html.AntiForgeryToken()
+
+        <div>
+            <label><strong>Group Name</strong></label><br />
+            <input type="text" name="groupName" style="width: 300px;" />
+        </div>
+
+        <br />
+
+        <div>
+            <label><strong>Description</strong></label><br />
+            <input type="text" name="description" style="width: 500px;" />
+        </div>
+
+        <br />
+
+        <button type="submit">Create Group</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Existing Groups</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Group Name</th>
+                <th>Description</th>
+                <th>Created</th>
+                <th>Members</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var g in Model)
+            {
+                <tr>
+                    <td><a href="/Dashboard/Group?groupName=@Uri.EscapeDataString(g.GroupName)">@g.GroupName</a></td>
+                    <td>@g.Description</td>
+                    <td>@g.CreatedUtc</td>
+                    <td>@g.MemberCount</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

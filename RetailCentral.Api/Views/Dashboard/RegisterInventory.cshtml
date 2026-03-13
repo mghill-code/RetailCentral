@@ -1,0 +1,427 @@
+﻿@model RetailCentral.Api.ViewModels.RegisterInventoryPageViewModel
+
+@{
+    ViewData["Title"] = "Register Inventory";
+
+    string BuildSortUrl(string column)
+    {
+        var nextDir = (Model.SortBy == column && Model.SortDir == "asc") ? "desc" : "asc";
+
+        var query = new Dictionary<string, string?>()
+        {
+            ["search"] = Model.Search,
+            ["storeFilter"] = Model.StoreFilter,
+            ["stateFilter"] = Model.StateFilter,
+            ["manufacturerFilter"] = Model.ManufacturerFilter,
+            ["modelFilter"] = Model.ModelFilter,
+            ["releaseLevelFilter"] = Model.ReleaseLevelFilter,
+            ["releaseAppliedFilter"] = Model.ReleaseAppliedFilter,
+            ["scannerNameFilter"] = Model.ScannerNameFilter,
+            ["verifoneModelFilter"] = Model.VerifoneModelFilter,
+            ["statusFilter"] = Model.StatusFilter,
+            ["sortBy"] = column,
+            ["sortDir"] = nextDir
+        };
+
+        return "/Dashboard/RegisterInventory?" + string.Join("&",
+            query
+                .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+                .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value!)}"));
+    }
+
+    string BuildExportUrl()
+    {
+        var query = new Dictionary<string, string?>()
+        {
+            ["search"] = Model.Search,
+            ["storeFilter"] = Model.StoreFilter,
+            ["stateFilter"] = Model.StateFilter,
+            ["manufacturerFilter"] = Model.ManufacturerFilter,
+            ["modelFilter"] = Model.ModelFilter,
+            ["releaseLevelFilter"] = Model.ReleaseLevelFilter,
+            ["releaseAppliedFilter"] = Model.ReleaseAppliedFilter,
+            ["scannerNameFilter"] = Model.ScannerNameFilter,
+            ["verifoneModelFilter"] = Model.VerifoneModelFilter,
+            ["statusFilter"] = Model.StatusFilter,
+            ["sortBy"] = Model.SortBy,
+            ["sortDir"] = Model.SortDir
+        };
+
+        return "/Dashboard/RegisterInventoryCsv?" + string.Join("&",
+            query
+                .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+                .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value!)}"));
+    }
+
+    string SortIndicator(string column)
+    {
+        if (!string.Equals(Model.SortBy, column, StringComparison.OrdinalIgnoreCase))
+            return "";
+        return Model.SortDir == "asc" ? " ▲" : " ▼";
+    }
+}
+
+<h2>Register Inventory</h2>
+
+<div class="card">
+    <form method="get" class="inventory-filter-grid" id="inventoryFilterForm">
+        <div>
+            <label>Search</label>
+            <input id="search" type="text" name="search" value="@Model.Search" placeholder="Computer, serial, IP, MAC, model, store..." />
+        </div>
+
+        <div>
+            <label>Store</label>
+            <select id="storeFilter" name="storeFilter">
+                <option value="">-- All --</option>
+                @foreach (var s in Model.AvailableStores)
+                {
+                    <option value="@s" selected="@(Model.StoreFilter == s)">@s</option>
+                }
+            </select>
+        </div>
+
+        <div>
+            <label>State</label>
+            <select id="stateFilter" name="stateFilter">
+                <option value="">-- All --</option>
+                @foreach (var s in Model.AvailableStates)
+                {
+                    <option value="@s" selected="@(Model.StateFilter == s)">@s</option>
+                }
+            </select>
+        </div>
+
+        <div>
+            <label>Manufacturer</label>
+            <input id="manufacturerFilter" type="text" name="manufacturerFilter" value="@Model.ManufacturerFilter" />
+        </div>
+
+        <div>
+            <label>Model</label>
+            <input id="modelFilter" type="text" name="modelFilter" value="@Model.ModelFilter" />
+        </div>
+
+        <div>
+            <label>Release Level</label>
+            <input id="releaseLevelFilter" type="text" name="releaseLevelFilter" value="@Model.ReleaseLevelFilter" />
+        </div>
+
+        <div>
+            <label>Release Applied</label>
+            <input id="releaseAppliedFilter" type="text" name="releaseAppliedFilter" value="@Model.ReleaseAppliedFilter" />
+        </div>
+
+        <div>
+            <label>Scanner Name</label>
+            <input id="scannerNameFilter" type="text" name="scannerNameFilter" value="@Model.ScannerNameFilter" />
+        </div>
+
+        <div>
+            <label>Verifone Model</label>
+            <input id="verifoneModelFilter" type="text" name="verifoneModelFilter" value="@Model.VerifoneModelFilter" />
+        </div>
+
+        <div>
+            <label>Online Status</label>
+            <select id="statusFilter" name="statusFilter">
+                <option value="">-- All --</option>
+                <option value="Online" selected="@(Model.StatusFilter == "Online")">Online</option>
+                <option value="Offline" selected="@(Model.StatusFilter == "Offline")">Offline</option>
+            </select>
+        </div>
+
+        <input type="hidden" name="sortBy" value="@Model.SortBy" />
+        <input type="hidden" name="sortDir" value="@Model.SortDir" />
+
+        <div class="inventory-filter-actions">
+            <button type="submit">Filter</button>
+            <a class="btn btn-secondary" href="/Dashboard/RegisterInventory">Clear</a>
+            <button type="button" class="btn btn-secondary" id="saveFiltersBtn">Save Filters</button>
+            <button type="button" class="btn btn-secondary" id="loadFiltersBtn">Load Saved</button>
+            <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear Saved</button>
+            <a class="btn" href="@BuildExportUrl()">Export CSV</a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="subtle" style="margin-bottom:10px;">
+        Rows: @Model.Rows.Count
+    </div>
+
+    <details class="column-toggle-panel">
+        <summary><strong>Show / Hide Columns</strong></summary>
+        <div class="column-toggle-grid" id="columnToggleGrid">
+            @{
+                var headers = new[]
+                {
+                        "ComputerName","Store","Register Number","IPAddress","MACAddress","Manufacturer","Model","SerialNumber",
+                        "Memory","Hard Drive Size","Hard Drive Free Space","StoreName","StoreAddress","StoreCity","StoreState",
+                        "StoreZipCode","Release Level","Release Applied","Domain","LastReboot","SystemBuildDate","OSVersion",
+                        "CPUArch","VerifoneModel","VerifoneIP","ScannerName","ScannerSerialNumber","Last Heartbeat"
+                        };
+
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    <label class="column-toggle-item">
+                        <input type="checkbox" class="column-toggle-checkbox" data-col-index="@(i + 1)" checked />
+                        <span>@headers[i]</span>
+                    </label>
+                }
+            }
+        </div>
+    </details>
+</div>
+
+<div class="card">
+    <div class="inventory-table-wrap">
+        <table class="inventory-table" id="inventoryTable">
+            <thead>
+                <tr>
+                    <th data-col="1">
+                        <a href="@BuildSortUrl("ComputerName")">ComputerName@(SortIndicator("ComputerName"))</a>
+                    </th>
+                    <th data-col="2">
+                        <a href="@BuildSortUrl("Store")">Store@(SortIndicator("Store"))</a>
+                    </th>
+                    <th data-col="3">
+                        <a href="@BuildSortUrl("RegisterNumber")">Register Number@(SortIndicator("RegisterNumber"))</a>
+                    </th>
+                    <th data-col="4">
+                        <a href="@BuildSortUrl("IPAddress")">IPAddress@(SortIndicator("IPAddress"))</a>
+                    </th>
+                    <th data-col="5">
+                        <a href="@BuildSortUrl("MACAddress")">MACAddress@(SortIndicator("MACAddress"))</a>
+                    </th>
+                    <th data-col="6">
+                        <a href="@BuildSortUrl("Manufacturer")">Manufacturer@(SortIndicator("Manufacturer"))</a>
+                    </th>
+                    <th data-col="7">
+                        <a href="@BuildSortUrl("Model")">Model@(SortIndicator("Model"))</a>
+                    </th>
+                    <th data-col="8">
+                        <a href="@BuildSortUrl("SerialNumber")">SerialNumber@(SortIndicator("SerialNumber"))</a>
+                    </th>
+                    <th data-col="9">
+                        <a href="@BuildSortUrl("Memory")">Memory@(SortIndicator("Memory"))</a>
+                    </th>
+                    <th data-col="10">
+                        <a href="@BuildSortUrl("HardDriveSize")">Hard Drive Size@(SortIndicator("HardDriveSize"))</a>
+                    </th>
+                    <th data-col="11">
+                        <a href="@BuildSortUrl("HardDriveFreeSpace")">Hard Drive Free Space@(SortIndicator("HardDriveFreeSpace"))</a>
+                    </th>
+                    <th data-col="12">
+                        <a href="@BuildSortUrl("StoreName")">StoreName@(SortIndicator("StoreName"))</a>
+                    </th>
+                    <th data-col="13">
+                        <a href="@BuildSortUrl("StoreAddress")">StoreAddress@(SortIndicator("StoreAddress"))</a>
+                    </th>
+                    <th data-col="14">
+                        <a href="@BuildSortUrl("StoreCity")">StoreCity@(SortIndicator("StoreCity"))</a>
+                    </th>
+                    <th data-col="15">
+                        <a href="@BuildSortUrl("StoreState")">StoreState@(SortIndicator("StoreState"))</a>
+                    </th>
+                    <th data-col="16">
+                        <a href="@BuildSortUrl("StoreZipCode")">StoreZipCode@(SortIndicator("StoreZipCode"))</a>
+                    </th>
+                    <th data-col="17">
+                        <a href="@BuildSortUrl("ReleaseLevel")">Release Level@(SortIndicator("ReleaseLevel"))</a>
+                    </th>
+                    <th data-col="18">
+                        <a href="@BuildSortUrl("ReleaseApplied")">Release Applied@(SortIndicator("ReleaseApplied"))</a>
+                    </th>
+                    <th data-col="19">
+                        <a href="@BuildSortUrl("Domain")">Domain@(SortIndicator("Domain"))</a>
+                    </th>
+                    <th data-col="20">
+                        <a href="@BuildSortUrl("LastReboot")">LastReboot@(SortIndicator("LastReboot"))</a>
+                    </th>
+                    <th data-col="21">
+                        <a href="@BuildSortUrl("SystemBuildDate")">SystemBuildDate@(SortIndicator("SystemBuildDate"))</a>
+                    </th>
+                    <th data-col="22">
+                        <a href="@BuildSortUrl("OSVersion")">OSVersion@(SortIndicator("OSVersion"))</a>
+                    </th>
+                    <th data-col="23">
+                        <a href="@BuildSortUrl("CPUArch")">CPUArch@(SortIndicator("CPUArch"))</a>
+                    </th>
+                    <th data-col="24">
+                        <a href="@BuildSortUrl("VerifoneModel")">VerifoneModel@(SortIndicator("VerifoneModel"))</a>
+                    </th>
+                    <th data-col="25">
+                        <a href="@BuildSortUrl("VerifoneIP")">VerifoneIP@(SortIndicator("VerifoneIP"))</a>
+                    </th>
+                    <th data-col="26">
+                        <a href="@BuildSortUrl("ScannerName")">ScannerName@(SortIndicator("ScannerName"))</a>
+                    </th>
+                    <th data-col="27">
+                        <a href="@BuildSortUrl("ScannerSerialNumber")">ScannerSerialNumber@(SortIndicator("ScannerSerialNumber"))</a>
+                    </th>
+                    <th data-col="28">
+                        <a href="@BuildSortUrl("LastHeartbeatUtc")">Last Heartbeat@(SortIndicator("LastHeartbeatUtc"))</a>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    var isOnline = r.LastHeartbeatUtc.HasValue &&
+                    r.LastHeartbeatUtc.Value >= DateTime.UtcNow.AddMinutes(-5);
+
+                    <tr>
+                        <td data-col="1">
+                            <div class="inventory-primary-cell">
+                                <a class="inventory-primary-name" href="/Dashboard/Device/@r.DeviceId">
+                                    @(!string.IsNullOrWhiteSpace(r.ComputerName) ? r.ComputerName : "(unknown)")
+                                </a>
+                                <span class="badge @(isOnline ? "badge-online" : "badge-offline")">
+                                    @(isOnline ? "Online" : "Offline")
+                                </span>
+                            </div>
+                        </td>
+                        <td data-col="2">@(r.Store ?? "")</td>
+                        <td data-col="3">@(r.RegisterNumber ?? "")</td>
+                        <td data-col="4">@(r.IPAddress ?? "")</td>
+                        <td data-col="5">@(r.MACAddress ?? "")</td>
+                        <td data-col="6">@(r.Manufacturer ?? "")</td>
+                        <td data-col="7">@(r.Model ?? "")</td>
+                        <td data-col="8">@(r.SerialNumber ?? "")</td>
+                        <td data-col="9">@(r.Memory ?? "")</td>
+                        <td data-col="10">@(r.HardDriveSize ?? "")</td>
+                        <td data-col="11">@(r.HardDriveFreeSpace ?? "")</td>
+                        <td data-col="12">@(r.StoreName ?? "")</td>
+                        <td data-col="13">@(r.StoreAddress ?? "")</td>
+                        <td data-col="14">@(r.StoreCity ?? "")</td>
+                        <td data-col="15">@(r.StoreState ?? "")</td>
+                        <td data-col="16">@(r.StoreZipCode ?? "")</td>
+                        <td data-col="17">@(r.ReleaseLevel ?? "")</td>
+                        <td data-col="18">@(r.ReleaseApplied ?? "")</td>
+                        <td data-col="19">@(r.Domain ?? "")</td>
+                        <td data-col="20">@(r.LastReboot?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
+                        <td data-col="21">@(r.SystemBuildDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
+                        <td data-col="22">@(r.OSVersion ?? "")</td>
+                        <td data-col="23">@(r.CPUArch ?? "")</td>
+                        <td data-col="24">@(r.VerifoneModel ?? "")</td>
+                        <td data-col="25">@(r.VerifoneIP ?? "")</td>
+                        <td data-col="26">@(r.ScannerName ?? "")</td>
+                        <td data-col="27">@(r.ScannerSerialNumber ?? "")</td>
+                        <td data-col="28">@(r.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const filterStorageKey = "registerInventory.savedFilters";
+        const columnStorageKey = "registerInventory.visibleColumns";
+
+        const form = document.getElementById("inventoryFilterForm");
+        const saveFiltersBtn = document.getElementById("saveFiltersBtn");
+        const loadFiltersBtn = document.getElementById("loadFiltersBtn");
+        const clearFiltersBtn = document.getElementById("clearFiltersBtn");
+        const checkboxes = document.querySelectorAll(".column-toggle-checkbox");
+
+        function getFilterState() {
+            return {
+                search: document.getElementById("search")?.value ?? "",
+                storeFilter: document.getElementById("storeFilter")?.value ?? "",
+                stateFilter: document.getElementById("stateFilter")?.value ?? "",
+                manufacturerFilter: document.getElementById("manufacturerFilter")?.value ?? "",
+                modelFilter: document.getElementById("modelFilter")?.value ?? "",
+                releaseLevelFilter: document.getElementById("releaseLevelFilter")?.value ?? "",
+                releaseAppliedFilter: document.getElementById("releaseAppliedFilter")?.value ?? "",
+                scannerNameFilter: document.getElementById("scannerNameFilter")?.value ?? "",
+                verifoneModelFilter: document.getElementById("verifoneModelFilter")?.value ?? "",
+                statusFilter: document.getElementById("statusFilter")?.value ?? ""
+            };
+        }
+
+        function setFilterState(state) {
+            for (const [key, value] of Object.entries(state)) {
+                const el = document.getElementById(key);
+                if (el) {
+                    el.value = value ?? "";
+                }
+            }
+        }
+
+        saveFiltersBtn?.addEventListener("click", function () {
+            localStorage.setItem(filterStorageKey, JSON.stringify(getFilterState()));
+            alert("Filters saved.");
+        });
+
+        loadFiltersBtn?.addEventListener("click", function () {
+            const raw = localStorage.getItem(filterStorageKey);
+            if (!raw) {
+                alert("No saved filters found.");
+                return;
+            }
+
+            try {
+                const state = JSON.parse(raw);
+                setFilterState(state);
+                form.submit();
+            } catch {
+                alert("Saved filters could not be loaded.");
+            }
+        });
+
+        clearFiltersBtn?.addEventListener("click", function () {
+            localStorage.removeItem(filterStorageKey);
+            alert("Saved filters cleared.");
+        });
+
+        function applyColumnVisibility() {
+            const raw = localStorage.getItem(columnStorageKey);
+            let visibleColumns = null;
+
+            if (raw) {
+                try {
+                    visibleColumns = JSON.parse(raw);
+                } catch {
+                    visibleColumns = null;
+                }
+            }
+
+            checkboxes.forEach(cb => {
+                const idx = cb.getAttribute("data-col-index");
+                const isVisible = !visibleColumns || visibleColumns[idx] !== false;
+                cb.checked = isVisible;
+
+                document.querySelectorAll(`[data-col="${idx}"]`).forEach(el => {
+                    el.style.display = isVisible ? "" : "none";
+                });
+            });
+        }
+
+        function persistColumnVisibility() {
+            const state = {};
+            checkboxes.forEach(cb => {
+                const idx = cb.getAttribute("data-col-index");
+                state[idx] = cb.checked;
+            });
+            localStorage.setItem(columnStorageKey, JSON.stringify(state));
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener("change", function () {
+                const idx = cb.getAttribute("data-col-index");
+                const visible = cb.checked;
+
+                document.querySelectorAll(`[data-col="${idx}"]`).forEach(el => {
+                    el.style.display = visible ? "" : "none";
+                });
+
+                persistColumnVisibility();
+            });
+        });
+
+        applyColumnVisibility();
+    })();
+</script>

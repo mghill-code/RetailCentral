@@ -1,0 +1,99 @@
+﻿@model RetailCentral.Api.ViewModels.GroupDetailViewModel
+
+<h2>Group Detail</h2>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="card">
+        <strong>@Model.Message</strong>
+    </div>
+}
+
+<div class="grid-2">
+    <div class="card">
+        <h3>@Model.GroupName</h3>
+        <div><strong>Description:</strong> @Model.Description</div>
+        <div><strong>Created:</strong> @Model.CreatedUtc</div>
+        <div><strong>Members:</strong> @Model.Members.Count</div>
+    </div>
+
+    <div class="card">
+        <h3>Actions</h3>
+        <div class="action-row">
+            <a class="btn" href="/Dashboard/IssueCommand?groupName=@Uri.EscapeDataString(Model.GroupName)">🚀 Issue Command to Group</a>
+        </div>
+        <hr />
+        <form method="post" action="/Dashboard/DeleteGroup" onsubmit="return confirm('Delete group @Model.GroupName? The group must be empty first.');">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="groupName" value="@Model.GroupName" />
+            <button type="submit" class="btn-danger">🗑 Delete Group</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Add Device to Group</h3>
+    @if (Model.AvailableDevices.Count == 0)
+    {
+        <div class="subtle">All devices are already in this group.</div>
+    }
+    else
+    {
+        <form method="post" action="/Dashboard/AddDeviceToGroup" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="groupName" value="@Model.GroupName" />
+            <div>
+                <label>Device</label>
+                <select name="deviceId">
+                    @foreach (var d in Model.AvailableDevices)
+                    {
+                        <option value="@d.DeviceId">@d.StoreNumber - @d.Hostname (@(d.IsOnline ? "Online" : "Offline"))</option>
+                    }
+                </select>
+            </div>
+            <div class="action-row" style="align-items:end;">
+                <button type="submit">➕ Add Device</button>
+            </div>
+        </form>
+    }
+</div>
+
+<div class="card">
+    <h3>Members</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:14%;">Store</th>
+                    <th style="width:30%;">Hostname</th>
+                    <th style="width:16%;">Status</th>
+                    <th style="width:18%;">Version</th>
+                    <th style="width:22%;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in Model.Members)
+                {
+                    <tr>
+                        <td>@d.StoreNumber</td>
+                        <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
+                        <td>
+                            <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
+                                @(d.IsOnline ? "Online" : "Offline")
+                            </span>
+                        </td>
+                        <td>@d.AgentVersion</td>
+                        <td>
+                            <form method="post" action="/Dashboard/RemoveDeviceFromGroup" onsubmit="return confirm('Remove @d.Hostname from @Model.GroupName?');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="groupName" value="@Model.GroupName" />
+                                <input type="hidden" name="deviceId" value="@d.DeviceId" />
+                                <button type="submit" class="btn-danger">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

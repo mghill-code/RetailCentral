@@ -1,0 +1,40 @@
+﻿@model IEnumerable<RetailCentral.Api.ViewModels.CommandSummaryViewModel>
+
+<h2>Failures</h2>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th style="width:28%;">Command</th>
+                <th style="width:18%;">Type</th>
+                <th style="width:16%;">Status</th>
+                <th style="width:14%;">Scope</th>
+                <th style="width:12%;">Store</th>
+                <th style="width:12%;">Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Model)
+            {
+                var typeCss = c.Type?.ToLower() switch
+                {
+                    "echo" => "badge-echo",
+                    "collectsysteminfo" => "badge-collectsysteminfo",
+                    "runprocess" => "badge-runprocess",
+                    "downloadfile" => "badge-downloadfile",
+                    _ => "badge-echo"
+                };
+
+                <tr>
+                    <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
+                    <td><span class="badge @typeCss">@c.Type</span></td>
+                    <td><span class="badge badge-failed">@c.Status</span></td>
+                    <td>@c.Scope</td>
+                    <td>@c.StoreNumber</td>
+                    <td>@c.CreatedUtc</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

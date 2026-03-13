@@ -1,0 +1,77 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>RetailCentral Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">
+                <img src="/images/logo.png" class="logo" onerror="this.style.display='none'" />
+                <h1>RetailCentral</h1>
+            </div>
+
+            <div class="nav">
+                <a href="/">🏠 Dashboard</a>
+                <a href="/Dashboard/RegisterInventory">🧾 Register Inventory</a>
+                <a href="/Dashboard/Devices">💻 Devices</a>
+                <a href="/Dashboard/Groups">📦 Groups</a>
+                <a href="/Dashboard/Commands">📜 Commands</a>
+                <a href="/Dashboard/Failures">⚠ Failures</a>
+                <a href="/Dashboard/IssueCommand">🚀 Issue Command</a>
+                <a href="/Dashboard/Versions">📊 Versions</a>
+                <button id="darkToggle" type="button">🌙</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="page-shell">
+        <div class="action-row" style="justify-content:space-between; margin-bottom:14px;">
+            <div class="auto-refresh">Auto-refresh every 10 seconds</div>
+            <div class="auto-refresh" id="refreshStamp"></div>
+        </div>
+
+        @RenderBody()
+    </main>
+
+    <script>
+        const toggle = document.getElementById("darkToggle");
+
+        function applyTheme(theme) {
+            document.documentElement.setAttribute("data-theme", theme);
+            localStorage.setItem("dashboard-theme", theme);
+            toggle.textContent = theme === "dark" ? "☀️" : "🌙";
+        }
+
+        toggle.onclick = function () {
+            const current = localStorage.getItem("dashboard-theme");
+            applyTheme(current === "dark" ? "light" : "dark");
+        };
+
+        const saved = localStorage.getItem("dashboard-theme") || "light";
+        applyTheme(saved);
+
+        function updateRefreshStamp() {
+            const el = document.getElementById("refreshStamp");
+            if (el) {
+                el.textContent = "Last refreshed: " + new Date().toLocaleTimeString();
+            }
+        }
+        updateRefreshStamp();
+
+        setInterval(() => {
+            updateRefreshStamp();
+            const skipAuto = document.body.getAttribute("data-no-autorefresh");
+            if (skipAuto !== "true") {
+                window.location.reload();
+            }
+        }, 10000);
+    </script>
+
+</body>
+</html>

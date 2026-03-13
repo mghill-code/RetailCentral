@@ -7,6 +7,7 @@
         // Targeting
         public Guid? DeviceId { get; set; }          // null => store-wide
         public string? StoreNumber { get; set; }     // required for store-wide
+        public string? GroupName { get; set; }      // Creating group names for deploying commands to multiple devices at a time
 
         // Scope: Device | StoreAllDevices | StoreOnce
         public string Scope { get; set; } = "Device";
@@ -28,5 +29,7 @@
         public int MaxAttempts { get; set; } = 3;
         public DateTime? LastAttemptUtc { get; set; }
         public string? LastError { get; set; }
+        public string? IssuedBy { get; set; }
+        public DateTime? IssuedUtc { get; set; }
     }
 }

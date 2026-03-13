@@ -2,7 +2,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text;
-
+using System.Runtime.Versioning;
 
 public sealed class AgentApiClient
 {
@@ -33,7 +33,11 @@ public sealed class AgentApiClient
             storeNumber = _cfg.StoreNumber,
             hostname = _cfg.Hostname,
             agentVersion = _cfg.AgentVersion,
-            osVersion = Environment.OSVersion.VersionString
+            osVersion = Environment.OSVersion.VersionString,
+
+            bootstrapKey = _cfg.BootstrapKey,
+            machineName = Environment.MachineName,
+            machineGuid = GetMachineGuid()
         };
 
         var resp = await client.PostAsJsonAsync("/api/agent/v1/enroll", body, ct);
@@ -126,5 +130,18 @@ public sealed class AgentApiClient
 
         if (!resp.IsSuccessStatusCode)
             throw new Exception($"PostResult failed: {(int)resp.StatusCode} {txt}");
+    }
+    [SupportedOSPlatform("windows")]
+    private static string? GetMachineGuid()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Cryptography");
+            return key?.GetValue("MachineGuid")?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

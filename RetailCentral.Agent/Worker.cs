@@ -1,10 +1,15 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 public sealed class Worker : BackgroundService
 {
     private readonly AgentConfig _cfg;
     private readonly AgentApiClient _api;
     private readonly CommandExecutor _exec;
+    private readonly ILogger<Worker> _logger;
 
     private DateTime _nextHeartbeatUtc = DateTime.MinValue;
 
@@ -13,21 +18,20 @@ public sealed class Worker : BackgroundService
         PropertyNameCaseInsensitive = true
     };
 
-    public Worker(AgentConfig cfg, AgentApiClient api, CommandExecutor exec)
+    public Worker(AgentConfig cfg, AgentApiClient api, CommandExecutor exec, ILogger<Worker> logger)
     {
         _cfg = cfg;
         _api = api;
         _exec = exec;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // If DeviceId/Secret missing, enroll (new hostname recommended)
         if (string.IsNullOrWhiteSpace(_cfg.DeviceId) || string.IsNullOrWhiteSpace(_cfg.DeviceSecret))
         {
-            Console.WriteLine("DeviceId/DeviceSecret missing. Enrolling...");
+            _logger.LogInformation("DeviceId/DeviceSecret missing. Enrolling...");
 
-            // Retry enroll instead of crashing/exiting if server is temporarily down
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
@@ -35,22 +39,30 @@ public sealed class Worker : BackgroundService
                     var enroll = await _api.EnrollAsync(stoppingToken);
                     if (enroll == null)
                     {
-                        Console.WriteLine("Enroll returned no secret. This usually means device already exists. Use a NEW hostname or rotate secret.");
+                        _logger.LogWarning("Enroll returned no secret. This usually means device already exists. Use a NEW hostname or rotate secret.");
                         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
                         return;
                     }
 
                     _cfg.DeviceId = enroll.Value.DeviceId.ToString();
-                    _cfg.DeviceSecret = enroll.Value.DeviceSecret;
 
-                    Console.WriteLine($"ENROLLED DeviceId={_cfg.DeviceId}");
-                    Console.WriteLine($"DeviceSecret={_cfg.DeviceSecret}");
-                    Console.WriteLine("Copy these into appsettings.json and restart the agent.");
+                    var protectedSecret = DeviceSecretStore.Protect(enroll.Value.DeviceSecret);
+
+                    _cfg.DeviceSecret = enroll.Value.DeviceSecret;
+                    _cfg.DeviceSecretProtected = protectedSecret;
+
+                    var appsettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+                    AgentConfigWriter.SaveProtectedSecret(appsettingsPath, _cfg.DeviceId, protectedSecret);
+
+                    _logger.LogInformation("ENROLLED DeviceId={DeviceId}", _cfg.DeviceId);
+                    _logger.LogInformation("Device secret was received, protected, and written to appsettings.json.");
+                    _logger.LogInformation("Restart the agent/service so it continues using protected credentials.");
+
                     return;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Enroll failed: {ex.Message}");
+                    _logger.LogError(ex, "Enroll failed");
                     await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 }
             }
@@ -58,7 +70,7 @@ public sealed class Worker : BackgroundService
             return;
         }
 
-        Console.WriteLine($"Agent started. DeviceId={_cfg.DeviceId}");
+        _logger.LogInformation("Agent started. DeviceId={DeviceId}", _cfg.DeviceId);
 
         _nextHeartbeatUtc = DateTime.UtcNow;
 
@@ -66,7 +78,6 @@ public sealed class Worker : BackgroundService
         {
             try
             {
-                // Heartbeat
                 if (DateTime.UtcNow >= _nextHeartbeatUtc)
                 {
                     var hb = new
@@ -76,31 +87,36 @@ public sealed class Worker : BackgroundService
                         hostname = _cfg.Hostname,
                         agentVersion = _cfg.AgentVersion,
                         osVersion = Environment.OSVersion.VersionString,
-                        metrics = new { cpu = Environment.ProcessorCount },
-                        extra = new { note = "Day5 agent heartbeat" }
+                        metrics = new
+                        {
+                            processorCount = Environment.ProcessorCount,
+                            workingSetMb = Math.Round(Environment.WorkingSet / 1024d / 1024d, 2),
+                            machineName = Environment.MachineName,
+                            is64Bit = Environment.Is64BitOperatingSystem
+                        },
+                        inventory = BuildHeartbeatInventory(),
+                        extra = new { note = "Agent heartbeat" }
                     };
 
                     await _api.HeartbeatAsync(hb, stoppingToken);
                     _nextHeartbeatUtc = DateTime.UtcNow.AddSeconds(_cfg.HeartbeatSeconds);
 
-                    Console.WriteLine($"Heartbeat OK @ {DateTime.UtcNow:o}");
+                    _logger.LogInformation("Heartbeat OK at {UtcNow}", DateTime.UtcNow);
                 }
 
-                // Poll pending
                 var json = await _api.GetPendingAsync(_cfg.MaxPendingFetch, stoppingToken);
 
                 var commands = JsonSerializer.Deserialize<List<PendingCommand>>(json, JsonOpts) ?? new();
 
                 foreach (var cmd in commands)
                 {
-                    // Guard against bad JSON mapping or unexpected payloads
                     if (cmd.CommandId == Guid.Empty || string.IsNullOrWhiteSpace(cmd.Type))
                     {
-                        Console.WriteLine($"WARNING: Skipping invalid command payload: {JsonSerializer.Serialize(cmd)}");
+                        _logger.LogWarning("Skipping invalid command payload: {Payload}", JsonSerializer.Serialize(cmd));
                         continue;
                     }
 
-                    Console.WriteLine($"Executing CommandId={cmd.CommandId} Type={cmd.Type}");
+                    _logger.LogInformation("Executing CommandId={CommandId} Type={Type}", cmd.CommandId, cmd.Type);
 
                     var (status, exit, stdout, stderr, started, finished) =
                         await _exec.ExecuteAsync(cmd.Type, cmd.PayloadJson, stoppingToken);
@@ -117,17 +133,64 @@ public sealed class Worker : BackgroundService
 
                     await _api.PostResultAsync(cmd.CommandId, resultBody, stoppingToken);
 
-                    Console.WriteLine($"Posted result CommandId={cmd.CommandId} Status={status} ExitCode={exit}");
+                    _logger.LogInformation(
+                        "Posted result CommandId={CommandId} Status={Status} ExitCode={ExitCode}",
+                        cmd.CommandId,
+                        status,
+                        exit);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Agent loop error: {ex.Message}");
+                _logger.LogError(ex, "Agent loop error");
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
 
             await Task.Delay(TimeSpan.FromSeconds(_cfg.PollSeconds), stoppingToken);
         }
+    }
+
+    private static object BuildHeartbeatInventory()
+    {
+        var store = Environment.GetEnvironmentVariable("Store") ?? "";
+        var regNum = Environment.GetEnvironmentVariable("REG_NUM") ?? "";
+
+        var primaryNic = NetworkInterface
+            .GetAllNetworkInterfaces()
+            .Where(n =>
+                n.OperationalStatus == OperationalStatus.Up &&
+                n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .Select(n => new
+            {
+                Nic = n,
+                Props = n.GetIPProperties()
+            })
+            .FirstOrDefault(x => x.Props.UnicastAddresses.Any(a =>
+                a.Address.AddressFamily == AddressFamily.InterNetwork));
+
+        string? ip = primaryNic?.Props.UnicastAddresses
+            .FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+            ?.Address.ToString();
+
+        string? mac = null;
+        if (primaryNic != null)
+        {
+            var bytes = primaryNic.Nic.GetPhysicalAddress().GetAddressBytes();
+            if (bytes.Length > 0)
+                mac = string.Join("-", bytes.Select(b => b.ToString("X2")));
+        }
+
+        return new
+        {
+            computerName = Environment.MachineName,
+            store = store,
+            registerNumber = regNum,
+            ipAddress = ip,
+            macAddress = mac,
+            domain = Environment.UserDomainName,
+            osVersion = Environment.OSVersion.ToString(),
+            cpuArch = RuntimeInformation.OSArchitecture.ToString()
+        };
     }
 
     private sealed class PendingCommand

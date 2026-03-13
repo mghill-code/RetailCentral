@@ -1,0 +1,214 @@
+﻿@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
+
+@{
+    var recentFailed = Model.RecentCommands.Where(c => c.Status == "Failed").Take(5).ToList();
+}
+
+@if (TempData["DeviceMessage"] != null)
+{
+    <div class="card">
+        <strong>@TempData["DeviceMessage"]</strong>
+    </div>
+}
+
+<h2>Device Detail</h2>
+@if (Model.Health != null)
+{
+    var h = Model.Health;
+
+    var statusCss = h.Status switch
+    {
+        "Healthy" => "badge-online",
+        "Warning" => "badge-pending",
+        _ => "badge-offline"
+    };
+
+    <div class="card">
+        <h3>Device Health Score</h3>
+
+        <div class="health-legend">
+            <div class="legend-section">
+                <strong>Score Calculation</strong>
+                <ul>
+                    <li><b>Heartbeat healthy</b> (last 5 minutes) = +40</li>
+                    <li><b>Disk space OK</b> (>= 15% free) = +25</li>
+                    <li><b>Memory OK</b> (>= 4GB) = +15</li>
+                    <li><b>No command failures in last 24h</b> = +10</li>
+                    <li><b>Inventory refreshed in last 24h</b> = +10</li>
+                </ul>
+            </div>
+
+            <div class="legend-section">
+                <strong>Status Levels</strong>
+                <ul>
+                    <li><span class="badge badge-online">Healthy</span> 90–100</li>
+                    <li><span class="badge badge-pending">Warning</span> 70–89</li>
+                    <li><span class="badge badge-offline">Critical</span> 0–69</li>
+                </ul>
+            </div>
+
+            <div class="legend-section">
+                <strong>Column Meanings</strong>
+                <ul>
+                    <li><span class="health-ok">OK</span> = Passing check</li>
+                    <li><span class="health-issue">Issue</span> = Problem detected</li>
+                    <li><span class="health-stale">Stale</span> = Inventory older than 24h</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="device-health-summary">
+            <div class="device-health-score-block">
+                <div class="progress">
+                    <div class="progress-bar @(h.Status == "Healthy" ? "success" : h.Status == "Warning" ? "pending" : "failed")"
+                         style="width:@h.Score%;"></div>
+                </div>
+                <div class="device-health-score-text">@h.Score%</div>
+                <div style="margin-top:8px;">
+                    <span class="badge @statusCss">@h.Status</span>
+                </div>
+            </div>
+
+            <div class="device-health-checks">
+                <div><strong>Heartbeat:</strong> <span class="@(h.HeartbeatHealthy ? "health-ok" : "health-issue")">@(h.HeartbeatHealthy ? "OK" : "Issue")</span></div>
+                <div><strong>Disk:</strong> <span class="@(h.DiskHealthy ? "health-ok" : "health-issue")">@(h.DiskHealthy ? "OK" : "Issue")</span></div>
+                <div><strong>Memory:</strong> <span class="@(h.MemoryHealthy ? "health-ok" : "health-issue")">@(h.MemoryHealthy ? "OK" : "Issue")</span></div>
+                <div><strong>Recent Failures:</strong> <span class="@(h.FailuresHealthy ? "health-ok" : "health-issue")">@(h.FailuresHealthy ? "OK" : "Issue")</span></div>
+                <div><strong>Inventory:</strong> <span class="@(h.InventoryFresh ? "health-ok" : "health-stale")">@(h.InventoryFresh ? "Fresh" : "Stale")</span></div>
+                <div><strong>Last Heartbeat:</strong> @(h.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</div>
+                <div><strong>Inventory Updated:</strong> @(h.InventoryUpdatedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</div>
+                <div><strong>Disk Free:</strong> @(h.HardDriveFreeSpace ?? "")</div>
+                <div><strong>Disk Size:</strong> @(h.HardDriveSize ?? "")</div>
+                <div><strong>Memory:</strong> @(h.Memory ?? "")</div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="grid-2">
+    <div class="card">
+        <h3>@Model.Hostname</h3>
+        <div><strong>Store:</strong> @Model.StoreNumber</div>
+        <div>
+            <strong>Status:</strong>
+            <span class="badge @(Model.IsOnline ? "badge-online" : "badge-offline")">
+                @(Model.IsOnline ? "Online" : "Offline")
+            </span>
+        </div>
+        <div><strong>Version:</strong> @Model.AgentVersion</div>
+        <div><strong>Last Seen:</strong> @Model.LastSeenUtc</div>
+        <div><strong>Last IP:</strong> @Model.LastIp</div>
+    </div>
+
+    <div class="card">
+        <h3>Quick Actions</h3>
+
+        <div class="action-row">
+            <a class="btn" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">⚡ Custom Command</a>
+            <a class="btn btn-secondary" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">✏️ Open Prefilled Form</a>
+        </div>
+
+        <hr />
+
+        <form method="post" action="/Dashboard/IssueCommand" class="inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+            <input type="hidden" name="Type" value="Echo" />
+            <input type="hidden" name="UseCustomJson" value="true" />
+            <input type="hidden" name="PayloadJson" value='{"message":"Hello from device quick action"}' />
+            <button type="submit">⚡ Echo</button>
+        </form>
+
+        <form method="post" action="/Dashboard/IssueCommand" class="inline" style="margin-top:10px;">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+            <input type="hidden" name="Type" value="CollectSystemInfo" />
+            <input type="hidden" name="UseCustomJson" value="true" />
+            <input type="hidden" name="PayloadJson" value='{}' />
+            <button type="submit">📊 Collect System Info</button>
+        </form>
+
+        <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline" style="margin-top:10px;">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="deviceId" value="@Model.DeviceId" />
+            <button type="submit" class="btn-danger">🔁 Requeue Failed Commands</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Recent Commands</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:28%;">Command</th>
+                    <th style="width:18%;">Type</th>
+                    <th style="width:16%;">Status</th>
+                    <th style="width:18%;">Scope</th>
+                    <th style="width:20%;">Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model.RecentCommands)
+                {
+                    var statusCss = c.Status?.ToLower() switch
+                    {
+                        "succeeded" => "badge-succeeded",
+                        "failed" => "badge-failed",
+                        "pending" => "badge-pending",
+                        "inprogress" => "badge-inprogress",
+                        _ => "badge-pending"
+                    };
+
+                    var typeCss = c.Type?.ToLower() switch
+                    {
+                        "echo" => "badge-echo",
+                        "collectsysteminfo" => "badge-collectsysteminfo",
+                        "runprocess" => "badge-runprocess",
+                        "downloadfile" => "badge-downloadfile",
+                        _ => "badge-echo"
+                    };
+
+                    <tr>
+                        <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
+                        <td><span class="badge @typeCss">@c.Type</span></td>
+                        <td><span class="badge @statusCss">@c.Status</span></td>
+                        <td>@c.Scope</td>
+                        <td>@c.CreatedUtc</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (recentFailed.Count > 0)
+{
+    <div class="card">
+        <h3>Recent Failed Commands</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30%;">Command</th>
+                        <th style="width:20%;">Type</th>
+                        <th style="width:20%;">Status</th>
+                        <th style="width:30%;">Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in recentFailed)
+                    {
+                        <tr>
+                            <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
+                            <td>@c.Type</td>
+                            <td><span class="badge badge-failed">@c.Status</span></td>
+                            <td>@c.CreatedUtc</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

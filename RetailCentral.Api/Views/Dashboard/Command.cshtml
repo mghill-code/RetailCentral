@@ -1,0 +1,53 @@
+﻿@model RetailCentral.Api.ViewModels.CommandDetailViewModel
+
+<h2>Command Detail</h2>
+
+<div class="card">
+    <p><strong>CommandId:</strong> @Model.CommandId</p>
+    <p><strong>Type:</strong> @Model.Type</p>
+    <p><strong>Scope:</strong> @Model.Scope</p>
+    <p><strong>StoreNumber:</strong> @Model.StoreNumber</p>
+    <p><strong>GroupName:</strong> @Model.GroupName</p>
+    <p><strong>DeviceId:</strong> @Model.DeviceId</p>
+    <p><strong>Status:</strong> @Model.Status</p>
+    <p><strong>Priority:</strong> @Model.Priority</p>
+    <p><strong>AttemptCount:</strong> @Model.AttemptCount</p>
+    <p><strong>MaxAttempts:</strong> @Model.MaxAttempts</p>
+    <p><strong>CreatedUtc:</strong> @Model.CreatedUtc</p>
+    <p><strong>LockedUtc:</strong> @Model.LockedUtc</p>
+    <p><strong>LockedByDeviceId:</strong> @Model.LockedByDeviceId</p>
+    <p><strong>IssuedBy:</strong> @Model.IssuedBy</p>
+    <p><strong>IssuedUtc:</strong> @Model.IssuedUtc</p>
+    <p><strong>LastError:</strong> @Model.LastError</p>
+</div>
+
+<div class="card">
+    <h3>PayloadJson</h3>
+    <pre>@Model.PayloadJson</pre>
+</div>
+
+@if (Model.Result != null)
+{
+    <div class="card">
+        <h3>Result</h3>
+        <p><strong>CommandResultId:</strong> @Model.Result.CommandResultId</p>
+        <p><strong>DeviceId:</strong> @Model.Result.DeviceId</p>
+        <p><strong>Status:</strong> @Model.Result.Status</p>
+        <p><strong>ExitCode:</strong> @Model.Result.ExitCode</p>
+        <p><strong>StartedUtc:</strong> @Model.Result.StartedUtc</p>
+        <p><strong>FinishedUtc:</strong> @Model.Result.FinishedUtc</p>
+
+        <h4>StdOut</h4>
+        <pre>@Model.Result.StdOut</pre>
+
+        <h4>StdErr</h4>
+        <pre>@Model.Result.StdErr</pre>
+    </div>
+}
+else
+{
+    <div class="card">
+        <h3>Result</h3>
+        <p>No result has been recorded yet.</p>
+    </div>
+}

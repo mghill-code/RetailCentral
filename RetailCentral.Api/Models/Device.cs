@@ -21,5 +21,7 @@ namespace RetailCentral.Api.Models
         public string? DeviceSecret { get; set; } // base64 secret for HMAC (we’ll harden later)
 
         public long? LastAuthTimestampUnix { get; set; }
+        public string? MachineName { get; set; }
+        public string? MachineGuid { get; set; }
     }
 }

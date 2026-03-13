@@ -40,6 +40,15 @@ namespace RetailCentral.Api.Migrations
                     b.Property<DateTime?>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("GroupName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IssuedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("IssuedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("LastAttemptUtc")
                         .HasColumnType("datetime2");
 
@@ -153,6 +162,12 @@ namespace RetailCentral.Api.Migrations
                     b.Property<DateTime>("LastSeenUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("MachineGuid")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MachineName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("OsVersion")
                         .HasColumnType("nvarchar(max)");
 
@@ -165,6 +180,59 @@ namespace RetailCentral.Api.Migrations
                     b.HasIndex("StoreNumber", "Hostname");
 
                     b.ToTable("Devices");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Models.DeviceGroup", b =>
+                {
+                    b.Property<int>("DeviceGroupId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DeviceGroupId"));
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("GroupName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("DeviceGroupId");
+
+                    b.HasIndex("GroupName")
+                        .IsUnique();
+
+                    b.ToTable("DeviceGroups");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Models.DeviceGroupMember", b =>
+                {
+                    b.Property<int>("DeviceGroupMemberId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DeviceGroupMemberId"));
+
+                    b.Property<DateTime>("AddedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("DeviceGroupMemberId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("DeviceGroupId", "DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("DeviceGroupMembers");
                 });
 
             modelBuilder.Entity("RetailCentral.Api.Models.Heartbeat", b =>
@@ -192,6 +260,156 @@ namespace RetailCentral.Api.Migrations
                     b.ToTable("Heartbeats");
                 });
 
+            modelBuilder.Entity("RetailCentral.Api.Models.RegisterInventory", b =>
+                {
+                    b.Property<long>("RegisterInventoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RegisterInventoryId"));
+
+                    b.Property<string>("CPUArch")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ComputerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Domain")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("HardDriveFreeSpace")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("HardDriveSize")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("LastHeartbeatUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastReboot")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("MACAddress")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Manufacturer")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Memory")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OSVersion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("RegisterNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ReleaseApplied")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReleaseLevel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ScannerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ScannerSerialNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SerialNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Store")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("StoreAddress")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("StoreCity")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("StoreName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("StoreState")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("StoreZipCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("SystemBuildDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VerifoneIP")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("VerifoneModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("RegisterInventoryId");
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("RegisterInventories");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Models.DeviceGroupMember", b =>
+                {
+                    b.HasOne("RetailCentral.Api.Models.DeviceGroup", "DeviceGroup")
+                        .WithMany()
+                        .HasForeignKey("DeviceGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RetailCentral.Api.Models.Device", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Device");
+
+                    b.Navigation("DeviceGroup");
+                });
+
             modelBuilder.Entity("RetailCentral.Api.Models.Heartbeat", b =>
                 {
                     b.HasOne("RetailCentral.Api.Models.Device", "Device")
@@ -201,6 +419,15 @@ namespace RetailCentral.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Device");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Models.RegisterInventory", b =>
+                {
+                    b.HasOne("RetailCentral.Api.Models.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
