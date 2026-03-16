@@ -1,58 +1,137 @@
 ﻿@model List<RetailCentral.Api.ViewModels.GroupSummaryViewModel>
 
+@{
+    ViewData["Title"] = "Groups";
+}
+
 <h2>Groups</h2>
 
 @if (TempData["GroupMessage"] != null)
 {
-    <div class="card">
-        <strong>@TempData["GroupMessage"]</strong>
+    <div class="card" style="margin-bottom:16px;">
+        <div>@TempData["GroupMessage"]</div>
     </div>
 }
 
-<div class="card">
-    <h3>Create Group</h3>
-    <form method="post" action="/Dashboard/CreateGroup">
-        @Html.AntiForgeryToken()
+<div class="grid-2">
+    <div class="card">
+        <h3>Create Group</h3>
 
-        <div>
-            <label><strong>Group Name</strong></label><br />
-            <input type="text" name="groupName" style="width: 300px;" />
+        <form method="post" action="/Dashboard/CreateGroup">
+            @Html.AntiForgeryToken()
+
+            <div class="form-grid">
+                <div>
+                    <label>Group Name</label>
+                    <input type="text" name="groupName" placeholder="Example: Store 100 Registers" />
+                </div>
+
+                <div>
+                    <label>Description</label>
+                    <input type="text" name="description" placeholder="Optional description" />
+                </div>
+            </div>
+
+            <div class="action-row" style="margin-top:12px;">
+                <button type="submit">Create Group</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Import Group from CSV</h3>
+
+        <form method="post" action="/Dashboard/ImportGroupCsv" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+
+            <div class="form-grid">
+                <div>
+                    <label>Group Name</label>
+                    <input type="text" name="groupName" placeholder="New or existing group name" />
+                </div>
+
+                <div>
+                    <label>CSV File</label>
+                    <input type="file" name="csvFile" accept=".csv" />
+                </div>
+            </div>
+
+            <div class="action-row" style="margin-top:12px;">
+                <button type="submit">Import CSV</button>
+            </div>
+        </form>
+
+        <div class="group-import-help">
+            <h4>CSV Instructions</h4>
+            <p class="subtle">
+                Upload a CSV with a header row. The importer supports any one of the layouts below.
+            </p>
+
+            <div class="group-import-format-grid">
+                <div class="group-import-format">
+                    <strong>Recommended</strong>
+<pre>StoreNumber,Hostname
+84420,BNC84420-001
+84420,BNC84420-002
+84420,BNC84420-003</pre>
+                </div>
+
+                <div class="group-import-format">
+                    <strong>Hostname only</strong>
+<pre>Hostname
+BNC84420-001
+BNC84420-002
+BNC84420-003</pre>
+                </div>
+
+                <div class="group-import-format">
+                    <strong>DeviceId only</strong>
+<pre>DeviceId
+11111111-1111-1111-1111-111111111111
+22222222-2222-2222-2222-222222222222</pre>
+                </div>
+            </div>
+
+            <ul class="subtle" style="margin-top:12px;">
+                <li>The first row must be the header row.</li>
+                <li>Blank rows are skipped.</li>
+                <li>Retired devices are not imported.</li>
+                <li>If the group does not exist, it will be created automatically.</li>
+                <li>Duplicate rows in the same file are skipped.</li>
+                <li>Devices already in the group are counted but not added again.</li>
+            </ul>
         </div>
-
-        <br />
-
-        <div>
-            <label><strong>Description</strong></label><br />
-            <input type="text" name="description" style="width: 500px;" />
-        </div>
-
-        <br />
-
-        <button type="submit">Create Group</button>
-    </form>
+    </div>
 </div>
 
 <div class="card">
     <h3>Existing Groups</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Group Name</th>
-                <th>Description</th>
-                <th>Created</th>
-                <th>Members</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var g in Model)
-            {
+
+    <div class="table-wrap">
+        <table>
+            <thead>
                 <tr>
-                    <td><a href="/Dashboard/Group?groupName=@Uri.EscapeDataString(g.GroupName)">@g.GroupName</a></td>
-                    <td>@g.Description</td>
-                    <td>@g.CreatedUtc</td>
-                    <td>@g.MemberCount</td>
+                    <th style="width:30%;">Group Name</th>
+                    <th style="width:30%;">Description</th>
+                    <th style="width:15%;">Members</th>
+                    <th style="width:25%;">Created</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var g in Model)
+                {
+                    <tr>
+                        <td>
+                            <a href="/Dashboard/Group?groupName=@Uri.EscapeDataString(g.GroupName)">
+                                @g.GroupName
+                            </a>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(g.Description) ? "-" : g.Description)</td>
+                        <td>@g.MemberCount</td>
+                        <td>@g.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 </div>

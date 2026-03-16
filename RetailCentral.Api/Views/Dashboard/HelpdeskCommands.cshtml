@@ -1,0 +1,149 @@
+﻿@model RetailCentral.Api.ViewModels.HelpdeskCommandsViewModel
+
+@{
+    ViewData["Title"] = "Helpdesk Commands";
+    var groupedCommands = Model.AvailableCommands
+        .GroupBy(x => x.Category)
+        .OrderBy(g => g.Key)
+        .ToList();
+}
+
+<h2>Helpdesk Commands</h2>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="card" style="margin-bottom:16px;">
+        <strong>@Model.Message</strong>
+    </div>
+}
+
+<div class="card">
+    <h3>How this page works</h3>
+    <div class="subtle">
+        Use this page for common support actions without editing JSON. These commands use server-side presets.
+        The restart commands currently use placeholder scripts:
+        <code>POSRestart.cmd</code>,
+        <code>RetailShellRestart.cmd</code>,
+        and <code>AgentRestart.cmd</code>.
+    </div>
+</div>
+
+<form method="post" action="/Dashboard/RunHelpdeskCommand">
+    @Html.AntiForgeryToken()
+
+    <div class="card">
+        <h3>Target</h3>
+
+        <div class="form-grid">
+            <div>
+                <label>Target Type</label>
+                <select name="TargetType" id="helpdeskTargetType">
+                    <option value="Device" selected="@(Model.TargetType == "Device")">Device</option>
+                    <option value="Store" selected="@(Model.TargetType == "Store")">Store</option>
+                    <option value="Group" selected="@(Model.TargetType == "Group")">Group</option>
+                </select>
+            </div>
+
+            <div id="targetDeviceWrap">
+                <label>Device</label>
+                <select name="DeviceId">
+                    <option value="">-- Select Device --</option>
+                    @foreach (var d in Model.AvailableDevices)
+                    {
+                        <option value="@d.DeviceId" selected="@(Model.DeviceId == d.DeviceId)">
+                            @d.StoreNumber - @d.Hostname @(d.IsOnline ? "(Online)" : "(Offline)")
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div id="targetStoreWrap">
+                <label>Store</label>
+                <select name="StoreNumber">
+                    <option value="">-- Select Store --</option>
+                    @foreach (var s in Model.AvailableStores)
+                    {
+                        <option value="@s" selected="@(Model.StoreNumber == s)">@s</option>
+                    }
+                </select>
+            </div>
+
+            <div id="targetGroupWrap">
+                <label>Group</label>
+                <select name="GroupName">
+                    <option value="">-- Select Group --</option>
+                    @foreach (var g in Model.AvailableGroups)
+                    {
+                        <option value="@g" selected="@(Model.GroupName == g)">@g</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    @foreach (var category in groupedCommands)
+    {
+        <div class="card">
+            <h3>@category.Key</h3>
+
+            <div class="helpdesk-command-grid">
+                @foreach (var cmd in category.OrderBy(x => x.Name))
+                {
+                    var isSelected = Model.CommandKey == cmd.Key;
+
+                    <label class="helpdesk-command-card @(isSelected ? "selected" : "")">
+                        <input type="radio"
+                               name="CommandKey"
+                               value="@cmd.Key"
+                               checked="@(isSelected)" />
+
+                        <div class="helpdesk-command-title-row">
+                            <strong>@cmd.Name</strong>
+                            @if (cmd.Destructive)
+                            {
+                                <span class="badge badge-failed">Impact</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-succeeded">Safe</span>
+                            }
+                        </div>
+
+                        <div class="subtle" style="margin-top:8px;">
+                            @cmd.Description
+                        </div>
+
+                        <div class="helpdesk-command-targets subtle" style="margin-top:10px;">
+                            Targets:
+                            @(cmd.DeviceSupported ? "Device " : "")
+                            @(cmd.StoreSupported ? "Store " : "")
+                            @(cmd.GroupSupported ? "Group" : "")
+                        </div>
+                    </label>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="action-row" style="margin-top:16px;">
+        <button type="submit">Run Helpdesk Command</button>
+        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands">Reset</a>
+    </div>
+</form>
+
+<script>
+    function updateHelpdeskTargetVisibility() {
+        const targetType = document.getElementById("helpdeskTargetType")?.value || "Device";
+
+        const deviceWrap = document.getElementById("targetDeviceWrap");
+        const storeWrap = document.getElementById("targetStoreWrap");
+        const groupWrap = document.getElementById("targetGroupWrap");
+
+        if (deviceWrap) deviceWrap.style.display = targetType === "Device" ? "block" : "none";
+        if (storeWrap) storeWrap.style.display = targetType === "Store" ? "block" : "none";
+        if (groupWrap) groupWrap.style.display = targetType === "Group" ? "block" : "none";
+    }
+
+    document.getElementById("helpdeskTargetType")?.addEventListener("change", updateHelpdeskTargetVisibility);
+    updateHelpdeskTargetVisibility();
+</script>

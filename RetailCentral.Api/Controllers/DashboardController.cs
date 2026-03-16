@@ -77,6 +77,89 @@ namespace RetailCentral.Api.Controllers
                 }
             };
         }
+        private static List<HelpdeskCommandOptionViewModel> GetHelpdeskCommands()
+        {
+            return new List<HelpdeskCommandOptionViewModel>
+    {
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "CollectSystemInfo",
+            Name = "Collect System Info",
+            Description = "Collect the latest hardware, OS, memory, disk, network, and inventory details.",
+            Category = "Diagnostics",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = false
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "NetworkInfo",
+            Name = "Network Info",
+            Description = "Runs ipconfig /all and returns detailed network information.",
+            Category = "Diagnostics",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = false
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartPOS",
+            Name = "Restart POS",
+            Description = "Placeholder command that calls POSRestart.cmd on the device.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartRetailShell",
+            Name = "Restart RetailShell",
+            Description = "Placeholder command that calls RetailShellRestart.cmd on the device.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartAgent",
+            Name = "Restart Agent",
+            Description = "Placeholder command that calls AgentRestart.cmd on the device.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RebootDevice",
+            Name = "Reboot Device",
+            Description = "Performs a forced reboot after a short delay.",
+            Category = "Device Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RequeueFailed",
+            Name = "Requeue Failed Commands",
+            Description = "Requeues recent failed commands for a single device only.",
+            Category = "Recovery",
+            DeviceSupported = true,
+            StoreSupported = false,
+            GroupSupported = false,
+            Destructive = false
+        }
+    };
+        }
 
         public async Task<IActionResult> Index()
         {
@@ -85,6 +168,7 @@ namespace RetailCentral.Api.Controllers
             var since24 = now.AddHours(-24);
 
             var devices = await _db.Devices
+                .Where(d => d.IsEnabled)
                 .OrderByDescending(d => d.LastSeenUtc)
                 .Take(10)
                 .Select(d => new DeviceSummaryViewModel
@@ -114,7 +198,10 @@ namespace RetailCentral.Api.Controllers
                 })
                 .ToListAsync();
 
-            var allDevices = await _db.Devices.ToListAsync();
+            var allDevices = await _db.Devices
+                .Where(d => d.IsEnabled)
+                .ToListAsync();
+
             var inventoryRows = await _db.RegisterInventories.ToListAsync();
 
             var failedCommandDeviceIds = await _db.CommandResults
@@ -132,7 +219,6 @@ namespace RetailCentral.Api.Controllers
             var deviceHealth = allDevices
                 .OrderBy(d => d.StoreNumber)
                 .ThenBy(d => d.Hostname)
-                .Take(25)
                 .Select(d =>
                 {
                     inventoryByDevice.TryGetValue(d.DeviceId, out var inv);
@@ -142,6 +228,10 @@ namespace RetailCentral.Api.Controllers
                 .ThenBy(x => x.StoreNumber)
                 .ThenBy(x => x.Hostname)
                 .ToList();
+
+            var healthyDevices = deviceHealth.Count(x => x.Status == "Healthy");
+            var warningDevices = deviceHealth.Count(x => x.Status == "Warning");
+            var criticalDevices = deviceHealth.Count(x => x.Status == "Critical");
 
             var totalDevices = allDevices.Count;
             var onlineDevices = allDevices.Count(d => d.LastSeenUtc >= cutoff);
@@ -260,7 +350,10 @@ namespace RetailCentral.Api.Controllers
                 StoreOutages = storeOutages,
                 DeviceHeatmap = heatmap,
                 CommandProgress = commandProgress,
-                DeviceHealth = deviceHealth
+                DeviceHealth = deviceHealth,
+                HealthyDevices = healthyDevices,
+                WarningDevices = warningDevices,
+                CriticalDevices = criticalDevices
             };
 
             return View(model);
@@ -377,7 +470,9 @@ namespace RetailCentral.Api.Controllers
         {
             var cutoff = OnlineCutoffUtc;
 
-            var baseQuery = _db.Devices.AsQueryable();
+            var baseQuery = _db.Devices
+                .Where(d => d.IsEnabled)
+                .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -426,6 +521,7 @@ namespace RetailCentral.Api.Controllers
                 .ToListAsync();
 
             var stores = await _db.Devices
+                .Where(d => d.IsEnabled)
                 .Select(d => d.StoreNumber)
                 .Distinct()
                 .OrderBy(s => s)
@@ -634,7 +730,9 @@ namespace RetailCentral.Api.Controllers
         {
             var cutoff = OnlineCutoffUtc;
 
-            var devices = await _db.Devices.ToListAsync();
+            var devices = await _db.Devices
+                .Where(d => d.IsEnabled)
+                .ToListAsync();
 
             var model = devices
                 .GroupBy(d => d.AgentVersion)
@@ -667,6 +765,187 @@ namespace RetailCentral.Api.Controllers
                 .ToListAsync();
 
             return View(groups);
+        }
+        [HttpGet]
+        public async Task<IActionResult> HelpdeskCommands(Guid? deviceId, string? storeNumber, string? groupName)
+        {
+            var model = new HelpdeskCommandsViewModel
+            {
+                DeviceId = deviceId,
+                StoreNumber = storeNumber,
+                GroupName = groupName,
+                TargetType = deviceId != null ? "Device"
+                    : !string.IsNullOrWhiteSpace(storeNumber) ? "Store"
+                    : !string.IsNullOrWhiteSpace(groupName) ? "Group"
+                    : "Device",
+                CommandKey = "CollectSystemInfo",
+                Message = TempData["HelpdeskMessage"]?.ToString()
+            };
+
+            await PopulateHelpdeskCommandLists(model, OnlineCutoffUtc);
+            return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RunHelpdeskCommand(HelpdeskCommandsViewModel model)
+        {
+            var cutoff = OnlineCutoffUtc;
+            var availableCommands = GetHelpdeskCommands();
+            var selectedCommand = availableCommands.FirstOrDefault(c => c.Key == model.CommandKey);
+            var normalizedTargetType = string.IsNullOrWhiteSpace(model.TargetType) ? "Device" : model.TargetType.Trim();
+
+            if (selectedCommand == null)
+            {
+                ModelState.AddModelError(nameof(model.CommandKey), "Unsupported helpdesk command.");
+            }
+
+            if (normalizedTargetType.Equals("Device", StringComparison.OrdinalIgnoreCase) && model.DeviceId == null)
+                ModelState.AddModelError("", "Select a device.");
+            else if (normalizedTargetType.Equals("Store", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(model.StoreNumber))
+                ModelState.AddModelError("", "Select a store.");
+            else if (normalizedTargetType.Equals("Group", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(model.GroupName))
+                ModelState.AddModelError("", "Select a group.");
+
+            if (selectedCommand != null)
+            {
+                var allowed = normalizedTargetType switch
+                {
+                    "Device" => selectedCommand.DeviceSupported,
+                    "Store" => selectedCommand.StoreSupported,
+                    "Group" => selectedCommand.GroupSupported,
+                    _ => false
+                };
+
+                if (!allowed)
+                    ModelState.AddModelError("", $"{selectedCommand.Name} is not supported for the selected target type.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateHelpdeskCommandLists(model, cutoff);
+                return View("HelpdeskCommands", model);
+            }
+
+            if (string.Equals(model.CommandKey, "RequeueFailed", StringComparison.OrdinalIgnoreCase))
+            {
+                if (model.DeviceId == null)
+                {
+                    ModelState.AddModelError("", "Requeue Failed Commands requires a device target.");
+                    await PopulateHelpdeskCommandLists(model, cutoff);
+                    return View("HelpdeskCommands", model);
+                }
+
+                return await RequeueRecentFailedCommands(model.DeviceId.Value);
+            }
+
+            var now = DateTime.UtcNow;
+            var createdCommands = new List<Command>();
+
+            if (normalizedTargetType.Equals("Device", StringComparison.OrdinalIgnoreCase) && model.DeviceId != null)
+            {
+                var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value && d.IsEnabled);
+                if (device == null)
+                {
+                    ModelState.AddModelError("", "Selected device was not found.");
+                }
+                else
+                {
+                    createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now));
+                }
+            }
+            else if (normalizedTargetType.Equals("Store", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(model.StoreNumber))
+            {
+                var normalizedStore = model.StoreNumber.Trim();
+
+                var storeDevices = await _db.Devices
+                    .Where(d => d.IsEnabled && d.StoreNumber == normalizedStore)
+                    .OrderBy(d => d.Hostname)
+                    .ToListAsync();
+
+                if (storeDevices.Count == 0)
+                {
+                    ModelState.AddModelError("", "No devices were found for the selected store.");
+                }
+                else
+                {
+                    foreach (var device in storeDevices)
+                        createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now));
+                }
+            }
+            else if (normalizedTargetType.Equals("Group", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(model.GroupName))
+            {
+                var normalizedGroup = model.GroupName.Trim();
+
+                var groupDevices = await _db.DeviceGroupMembers
+                    .Where(m => _db.DeviceGroups.Any(g => g.DeviceGroupId == m.DeviceGroupId && g.GroupName == normalizedGroup))
+                    .Join(_db.Devices.Where(d => d.IsEnabled), m => m.DeviceId, d => d.DeviceId, (m, d) => d)
+                    .OrderBy(d => d.StoreNumber)
+                    .ThenBy(d => d.Hostname)
+                    .ToListAsync();
+
+                if (groupDevices.Count == 0)
+                {
+                    ModelState.AddModelError("", "No devices were found for the selected group.");
+                }
+                else
+                {
+                    foreach (var device in groupDevices)
+                        createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now, normalizedGroup));
+                }
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateHelpdeskCommandLists(model, cutoff);
+                return View("HelpdeskCommands", model);
+            }
+
+            _db.Commands.AddRange(createdCommands);
+            await _db.SaveChangesAsync();
+
+            var commandName = selectedCommand?.Name ?? model.CommandKey;
+            TempData["HelpdeskMessage"] = createdCommands.Count == 1
+                ? $"{commandName} command created successfully."
+                : $"{commandName} created for {createdCommands.Count} device(s).";
+
+            if (createdCommands.Count == 1)
+                return RedirectToAction(nameof(Command), new { id = createdCommands[0].CommandId });
+
+            return RedirectToAction(nameof(Commands));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RetireDevice(Guid deviceId)
+        {
+            var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
+            if (device == null)
+                return NotFound();
+
+            var cutoff = DateTime.UtcNow.AddMinutes(-5);
+
+            if (device.LastSeenUtc >= cutoff)
+            {
+                TempData["DeviceMessage"] = "Device cannot be retired because it is currently online.";
+                return RedirectToAction(nameof(Device), new { id = deviceId });
+            }
+
+            device.IsEnabled = false;
+
+            var memberships = await _db.DeviceGroupMembers
+                .Where(m => m.DeviceId == deviceId)
+                .ToListAsync();
+
+            if (memberships.Count > 0)
+            {
+                _db.DeviceGroupMembers.RemoveRange(memberships);
+            }
+
+            await _db.SaveChangesAsync();
+
+            TempData["DeviceMessage"] = $"Device {device.Hostname} retired.";
+            return RedirectToAction(nameof(Devices));
         }
 
         [HttpPost]
@@ -702,6 +981,184 @@ namespace RetailCentral.Api.Controllers
             return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
         }
 
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ImportGroupCsv(string groupName, IFormFile? csvFile)
+        {
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                TempData["GroupMessage"] = "Group name is required for CSV import.";
+                return RedirectToAction(nameof(Groups));
+            }
+
+            if (csvFile == null || csvFile.Length == 0)
+            {
+                TempData["GroupMessage"] = "Please choose a CSV file to upload.";
+                return RedirectToAction(nameof(Groups));
+            }
+
+            if (!Path.GetExtension(csvFile.FileName).Equals(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["GroupMessage"] = "Only .csv files are supported.";
+                return RedirectToAction(nameof(Groups));
+            }
+
+            var normalizedGroupName = groupName.Trim();
+
+            var group = await _db.DeviceGroups
+                .FirstOrDefaultAsync(g => g.GroupName == normalizedGroupName);
+
+            if (group == null)
+            {
+                group = new DeviceGroup
+                {
+                    GroupName = normalizedGroupName,
+                    CreatedUtc = DateTime.UtcNow
+                };
+
+                _db.DeviceGroups.Add(group);
+                await _db.SaveChangesAsync();
+            }
+
+            using var stream = csvFile.OpenReadStream();
+            using var reader = new StreamReader(stream);
+
+            var allText = await reader.ReadToEndAsync();
+
+            if (string.IsNullOrWhiteSpace(allText))
+            {
+                TempData["GroupMessage"] = "CSV file was empty.";
+                return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
+            }
+
+            var lines = allText
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+
+            if (lines.Count < 2)
+            {
+                TempData["GroupMessage"] = "CSV must include a header row and at least one data row.";
+                return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
+            }
+
+            var headers = SplitCsvLine(lines[0])
+                .Select(h => h.Trim())
+                .ToList();
+
+            var storeIdx = headers.FindIndex(h => h.Equals("StoreNumber", StringComparison.OrdinalIgnoreCase));
+            var hostIdx = headers.FindIndex(h => h.Equals("Hostname", StringComparison.OrdinalIgnoreCase));
+            var deviceIdIdx = headers.FindIndex(h => h.Equals("DeviceId", StringComparison.OrdinalIgnoreCase));
+
+            if (deviceIdIdx < 0 && hostIdx < 0)
+            {
+                TempData["GroupMessage"] = "CSV must contain either DeviceId, Hostname, or StoreNumber + Hostname columns.";
+                return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
+            }
+
+            var processed = 0;
+            var added = 0;
+            var alreadyMembers = 0;
+            var notFound = 0;
+            var skipped = 0;
+
+            var existingMembers = (await _db.DeviceGroupMembers
+            .Where(m => m.DeviceGroupId == group.DeviceGroupId)
+            .Select(m => m.DeviceId)
+            .ToListAsync())
+            .ToHashSet();
+
+            var seenDeviceIdsThisImport = new HashSet<Guid>();
+
+            for (int i = 1; i < lines.Count; i++)
+            {
+                var rawLine = lines[i];
+                if (string.IsNullOrWhiteSpace(rawLine))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var cols = SplitCsvLine(rawLine);
+
+                string? storeNumber = storeIdx >= 0 && storeIdx < cols.Count ? cols[storeIdx]?.Trim() : null;
+                string? hostname = hostIdx >= 0 && hostIdx < cols.Count ? cols[hostIdx]?.Trim() : null;
+                string? deviceIdText = deviceIdIdx >= 0 && deviceIdIdx < cols.Count ? cols[deviceIdIdx]?.Trim() : null;
+
+                if (string.IsNullOrWhiteSpace(storeNumber) &&
+                    string.IsNullOrWhiteSpace(hostname) &&
+                    string.IsNullOrWhiteSpace(deviceIdText))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                processed++;
+
+                Device? device = null;
+
+                if (!string.IsNullOrWhiteSpace(deviceIdText) && Guid.TryParse(deviceIdText, out var parsedDeviceId))
+                {
+                    device = await _db.Devices
+                        .FirstOrDefaultAsync(d => d.DeviceId == parsedDeviceId && d.IsEnabled);
+                }
+                else if (!string.IsNullOrWhiteSpace(storeNumber) && !string.IsNullOrWhiteSpace(hostname))
+                {
+                    device = await _db.Devices
+                        .FirstOrDefaultAsync(d =>
+                            d.IsEnabled &&
+                            d.StoreNumber == storeNumber &&
+                            d.Hostname == hostname);
+                }
+                else if (!string.IsNullOrWhiteSpace(hostname))
+                {
+                    device = await _db.Devices
+                        .FirstOrDefaultAsync(d =>
+                            d.IsEnabled &&
+                            d.Hostname == hostname);
+                }
+
+                if (device == null)
+                {
+                    notFound++;
+                    continue;
+                }
+
+                if (seenDeviceIdsThisImport.Contains(device.DeviceId))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                seenDeviceIdsThisImport.Add(device.DeviceId);
+
+                if (existingMembers.Contains(device.DeviceId))
+                {
+                    alreadyMembers++;
+                    continue;
+                }
+
+                _db.DeviceGroupMembers.Add(new DeviceGroupMember
+                {
+                    DeviceGroupId = group.DeviceGroupId,
+                    DeviceId = device.DeviceId,
+                    AddedUtc = DateTime.UtcNow
+                });
+
+                existingMembers.Add(device.DeviceId);
+                added++;
+            }
+
+            await _db.SaveChangesAsync();
+
+            TempData["GroupMessage"] =
+                $"CSV import complete for group '{group.GroupName}'. " +
+                $"Processed: {processed}. Added: {added}. Already members: {alreadyMembers}. " +
+                $"Not found: {notFound}. Skipped: {skipped}.";
+
+            return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
+        }
+
         [HttpGet]
         public async Task<IActionResult> Group(string groupName)
         {
@@ -732,6 +1189,7 @@ namespace RetailCentral.Api.Controllers
             var memberIds = members.Select(m => m.DeviceId).ToHashSet();
 
             var availableDevices = await _db.Devices
+                .Where(d => d.IsEnabled)
                 .OrderBy(d => d.StoreNumber)
                 .ThenBy(d => d.Hostname)
                 .Select(d => new DeviceSummaryViewModel
@@ -891,6 +1349,7 @@ namespace RetailCentral.Api.Controllers
                 StoreNumber = storeNumber,
 
                 AvailableDevices = await _db.Devices
+                    .Where(d => d.IsEnabled)
                     .OrderBy(d => d.StoreNumber)
                     .ThenBy(d => d.Hostname)
                     .Select(d => new DeviceSummaryViewModel
@@ -905,6 +1364,7 @@ namespace RetailCentral.Api.Controllers
                     .ToListAsync(),
 
                 AvailableStores = await _db.Devices
+                    .Where(d => d.IsEnabled)
                     .Select(d => d.StoreNumber)
                     .Distinct()
                     .OrderBy(s => s)
@@ -928,6 +1388,7 @@ namespace RetailCentral.Api.Controllers
 
             return View(model);
         }
+
 
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -978,7 +1439,9 @@ namespace RetailCentral.Api.Controllers
 
             if (model.DeviceId != null)
             {
-                var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value);
+                var device = await _db.Devices
+                    .FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value && d.IsEnabled);
+
                 if (device == null)
                 {
                     ModelState.AddModelError("", "Selected device was not found.");
@@ -1002,7 +1465,7 @@ namespace RetailCentral.Api.Controllers
                 var normalizedStore = model.StoreNumber.Trim();
 
                 var storeDevices = await _db.Devices
-                    .Where(d => d.StoreNumber == normalizedStore)
+                    .Where(d => d.IsEnabled && d.StoreNumber == normalizedStore)
                     .OrderBy(d => d.Hostname)
                     .ToListAsync();
 
@@ -1036,7 +1499,7 @@ namespace RetailCentral.Api.Controllers
                         g.DeviceGroupId == m.DeviceGroupId &&
                         g.GroupName == normalizedGroup))
                     .Join(
-                        _db.Devices,
+                        _db.Devices.Where(d => d.IsEnabled),
                         m => m.DeviceId,
                         d => d.DeviceId,
                         (m, d) => d)
@@ -1121,6 +1584,54 @@ namespace RetailCentral.Api.Controllers
                     sortDir)
                 .ToListAsync();
 
+            var now = DateTime.UtcNow;
+            var cutoff = now.AddMinutes(-5);
+            var since24 = now.AddHours(-24);
+
+            var devices = await _db.Devices.ToDictionaryAsync(d => d.DeviceId);
+
+            var failedDeviceIds = await _db.CommandResults
+                .Where(r => r.Status == "Failed" && r.FinishedUtc >= since24)
+                .Select(r => r.DeviceId)
+                .Distinct()
+                .ToListAsync();
+
+            var failedSet = failedDeviceIds.ToHashSet();
+
+            foreach (var row in rows)
+            {
+                if (!devices.TryGetValue(row.DeviceId, out var device))
+                    continue;
+
+                var score = 0;
+
+                var heartbeatHealthy = device.LastSeenUtc >= cutoff;
+                if (heartbeatHealthy) score += 40;
+
+                var diskHealthy = IsDiskHealthy(row.HardDriveFreeSpace, row.HardDriveSize);
+                if (diskHealthy) score += 25;
+
+                var memoryHealthy = IsMemoryHealthy(row.Memory);
+                if (memoryHealthy) score += 15;
+
+                var failuresHealthy = !failedSet.Contains(device.DeviceId);
+                if (failuresHealthy) score += 10;
+
+                var inventoryFresh = row.LastHeartbeatUtc != null && row.LastHeartbeatUtc >= now.AddDays(-1);
+                if (inventoryFresh) score += 10;
+
+                row.HealthScore = score;
+                row.HealthStatus = score >= 90 ? "Healthy"
+                                 : score >= 70 ? "Warning"
+                                 : "Critical";
+
+                row.HeartbeatHealthy = heartbeatHealthy;
+                row.DiskHealthy = diskHealthy;
+                row.MemoryHealthy = memoryHealthy;
+                row.FailuresHealthy = failuresHealthy;
+                row.InventoryFresh = inventoryFresh;
+            }
+
             var model = new RegisterInventoryPageViewModel
             {
                 Search = search,
@@ -1185,6 +1696,54 @@ namespace RetailCentral.Api.Controllers
                     sortBy,
                     sortDir)
                 .ToListAsync();
+
+            var now = DateTime.UtcNow;
+            var cutoff = now.AddMinutes(-5);
+            var since24 = now.AddHours(-24);
+
+            var devices = await _db.Devices.ToDictionaryAsync(d => d.DeviceId);
+
+            var failedDeviceIds = await _db.CommandResults
+                .Where(r => r.Status == "Failed" && r.FinishedUtc >= since24)
+                .Select(r => r.DeviceId)
+                .Distinct()
+                .ToListAsync();
+
+            var failedSet = failedDeviceIds.ToHashSet();
+
+            foreach (var row in rows)
+            {
+                if (!devices.TryGetValue(row.DeviceId, out var device))
+                    continue;
+
+                var score = 0;
+
+                var heartbeatHealthy = device.LastSeenUtc >= cutoff;
+                if (heartbeatHealthy) score += 40;
+
+                var diskHealthy = IsDiskHealthy(row.HardDriveFreeSpace, row.HardDriveSize);
+                if (diskHealthy) score += 25;
+
+                var memoryHealthy = IsMemoryHealthy(row.Memory);
+                if (memoryHealthy) score += 15;
+
+                var failuresHealthy = !failedSet.Contains(device.DeviceId);
+                if (failuresHealthy) score += 10;
+
+                var inventoryFresh = row.LastHeartbeatUtc != null && row.LastHeartbeatUtc >= now.AddDays(-1);
+                if (inventoryFresh) score += 10;
+
+                row.HealthScore = score;
+                row.HealthStatus = score >= 90 ? "Healthy"
+                                   : score >= 70 ? "Warning"
+                                   : "Critical";
+
+                row.HeartbeatHealthy = heartbeatHealthy;
+                row.DiskHealthy = diskHealthy;
+                row.MemoryHealthy = memoryHealthy;
+                row.FailuresHealthy = failuresHealthy;
+                row.InventoryFresh = inventoryFresh;
+            }
 
             var sb = new StringBuilder();
 
@@ -1411,13 +1970,10 @@ namespace RetailCentral.Api.Controllers
             return "\"" + value.Replace("\"", "\"\"") + "\"";
         }
 
-        private async Task PopulateIssueCommandLists(
-            IssueCommandViewModel model,
-            DateTime cutoff,
-            List<string> commandTypes,
-            List<CommandTemplateOptionViewModel> templates)
+        private async Task PopulateHelpdeskCommandLists(HelpdeskCommandsViewModel model, DateTime cutoff)
         {
             model.AvailableDevices = await _db.Devices
+                .Where(d => d.IsEnabled)
                 .OrderBy(d => d.StoreNumber)
                 .ThenBy(d => d.Hostname)
                 .Select(d => new DeviceSummaryViewModel
@@ -1432,6 +1988,86 @@ namespace RetailCentral.Api.Controllers
                 .ToListAsync();
 
             model.AvailableStores = await _db.Devices
+                .Where(d => d.IsEnabled)
+                .Select(d => d.StoreNumber)
+                .Distinct()
+                .OrderBy(s => s)
+                .ToListAsync();
+
+            model.AvailableGroups = await _db.DeviceGroups
+                .Select(g => g.GroupName)
+                .OrderBy(g => g)
+                .ToListAsync();
+
+            model.AvailableCommands = GetHelpdeskCommands();
+        }
+
+        private static Command BuildHelpdeskCommandForDevice(Device device, string commandKey, DateTime issuedUtc, string? groupName = null)
+        {
+            var mapped = MapHelpdeskCommand(commandKey);
+
+            return new Command
+            {
+                CommandId = Guid.NewGuid(),
+                Type = mapped.Type,
+                Scope = "Device",
+                PayloadJson = mapped.PayloadJson,
+                Status = "Pending",
+                Priority = 100,
+                CreatedUtc = issuedUtc,
+                ExpiresUtc = null,
+                DeviceId = device.DeviceId,
+                StoreNumber = device.StoreNumber,
+                GroupName = groupName,
+                AttemptCount = 0,
+                MaxAttempts = 3,
+                IssuedBy = "Helpdesk",
+                IssuedUtc = issuedUtc
+            };
+        }
+
+        private static (string Type, string? PayloadJson) MapHelpdeskCommand(string commandKey)
+        {
+            return commandKey switch
+            {
+                "CollectSystemInfo" => ("CollectSystemInfo", "{}"),
+                "NetworkInfo" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c ipconfig /all", 20)),
+                "RestartPOS" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c POSRestart.cmd", 60)),
+                "RestartRetailShell" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c RetailShellRestart.cmd", 60)),
+                "RestartAgent" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c AgentRestart.cmd", 60)),
+                "RebootDevice" => ("RunProcess", BuildRunProcessPayload("shutdown.exe", "/r /t 5 /f", 15)),
+                _ => throw new InvalidOperationException($"Unknown helpdesk command key '{commandKey}'.")
+            };
+        }
+
+        private static string BuildRunProcessPayload(string fileName, string arguments, int timeoutSeconds)
+        {
+            var safeArguments = arguments.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return $"{{\n  \"fileName\": \"{fileName}\",\n  \"arguments\": \"{safeArguments}\",\n  \"timeoutSeconds\": {timeoutSeconds}\n}}";
+        }
+        private async Task PopulateIssueCommandLists(
+            IssueCommandViewModel model,
+            DateTime cutoff,
+            List<string> commandTypes,
+            List<CommandTemplateOptionViewModel> templates)
+        {
+            model.AvailableDevices = await _db.Devices
+                .Where(d => d.IsEnabled)
+                .OrderBy(d => d.StoreNumber)
+                .ThenBy(d => d.Hostname)
+                .Select(d => new DeviceSummaryViewModel
+                {
+                    DeviceId = d.DeviceId,
+                    StoreNumber = d.StoreNumber,
+                    Hostname = d.Hostname,
+                    AgentVersion = d.AgentVersion,
+                    LastSeenUtc = d.LastSeenUtc,
+                    IsOnline = d.LastSeenUtc >= cutoff
+                })
+                .ToListAsync();
+
+            model.AvailableStores = await _db.Devices
+                .Where(d => d.IsEnabled)
                 .Select(d => d.StoreNumber)
                 .Distinct()
                 .OrderBy(s => s)
@@ -1475,6 +2111,46 @@ namespace RetailCentral.Api.Controllers
                 IssuedBy = issuedBy,
                 IssuedUtc = issuedUtc
             };
+        }
+
+        private static List<string> SplitCsvLine(string line)
+        {
+            var result = new List<string>();
+            if (line == null)
+                return result;
+
+            var current = new StringBuilder();
+            var inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                var c = line[i];
+
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+
+            result.Add(current.ToString());
+            return result;
         }
     }
 }

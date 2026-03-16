@@ -23,6 +23,7 @@
                 <a href="/Dashboard/Groups">📦 Groups</a>
                 <a href="/Dashboard/Commands">📜 Commands</a>
                 <a href="/Dashboard/Failures">⚠ Failures</a>
+                <a href="/Dashboard/HelpdeskCommands">🛠 Helpdesk Commands</a>
                 <a href="/Dashboard/IssueCommand">🚀 Issue Command</a>
                 <a href="/Dashboard/Versions">📊 Versions</a>
                 <button id="darkToggle" type="button">🌙</button>
@@ -32,7 +33,15 @@
 
     <main class="page-shell">
         <div class="action-row" style="justify-content:space-between; margin-bottom:14px;">
-            <div class="auto-refresh">Auto-refresh every 10 seconds</div>
+            <div class="auto-refresh">
+                <label for="autoRefreshSelect" style="margin-right:8px;">Auto Refresh</label>
+                <select id="autoRefreshSelect" style="width:auto; min-width:110px;">
+                    <option value="0">Off</option>
+                    <option value="30">30 sec</option>
+                    <option value="60">60 sec</option>
+                </select>
+                <button type="button" class="btn btn-secondary" id="refreshNowBtn">Refresh Now</button>
+            </div>
             <div class="auto-refresh" id="refreshStamp"></div>
         </div>
 
@@ -41,6 +50,10 @@
 
     <script>
         const toggle = document.getElementById("darkToggle");
+        const autoRefreshSelect = document.getElementById("autoRefreshSelect");
+        const refreshNowBtn = document.getElementById("refreshNowBtn");
+
+        let refreshIntervalHandle = null;
 
         function applyTheme(theme) {
             document.documentElement.setAttribute("data-theme", theme);
@@ -48,29 +61,62 @@
             toggle.textContent = theme === "dark" ? "☀️" : "🌙";
         }
 
-        toggle.onclick = function () {
-            const current = localStorage.getItem("dashboard-theme");
-            applyTheme(current === "dark" ? "light" : "dark");
-        };
-
-        const saved = localStorage.getItem("dashboard-theme") || "light";
-        applyTheme(saved);
-
         function updateRefreshStamp() {
             const el = document.getElementById("refreshStamp");
             if (el) {
                 el.textContent = "Last refreshed: " + new Date().toLocaleTimeString();
             }
         }
-        updateRefreshStamp();
 
-        setInterval(() => {
-            updateRefreshStamp();
-            const skipAuto = document.body.getAttribute("data-no-autorefresh");
-            if (skipAuto !== "true") {
-                window.location.reload();
+        function clearAutoRefresh() {
+            if (refreshIntervalHandle) {
+                clearInterval(refreshIntervalHandle);
+                refreshIntervalHandle = null;
             }
-        }, 10000);
+        }
+
+        function setAutoRefresh(seconds) {
+            clearAutoRefresh();
+
+            const parsed = parseInt(seconds, 10) || 0;
+            localStorage.setItem("dashboard-auto-refresh-seconds", parsed.toString());
+
+            if (autoRefreshSelect) {
+                autoRefreshSelect.value = parsed.toString();
+            }
+
+            if (parsed > 0) {
+                refreshIntervalHandle = setInterval(() => {
+                    updateRefreshStamp();
+
+                    const skipAuto = document.body.getAttribute("data-no-autorefresh");
+                    if (skipAuto !== "true") {
+                        window.location.reload();
+                    }
+                }, parsed * 1000);
+            }
+        }
+
+        toggle.onclick = function () {
+            const current = localStorage.getItem("dashboard-theme");
+            applyTheme(current === "dark" ? "light" : "dark");
+        };
+
+        autoRefreshSelect?.addEventListener("change", function () {
+            setAutoRefresh(this.value);
+        });
+
+        refreshNowBtn?.addEventListener("click", function () {
+            window.location.reload();
+        });
+
+        const savedTheme = localStorage.getItem("dashboard-theme") || "light";
+        applyTheme(savedTheme);
+
+        const savedRefresh = localStorage.getItem("dashboard-auto-refresh-seconds") || "30";
+        setAutoRefresh(savedRefresh);
+
+        updateRefreshStamp();
     </script>
 
 </body>

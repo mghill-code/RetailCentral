@@ -9,7 +9,9 @@
 
     @foreach (var g in Model.AvailableGroups.Take(8))
     {
-        <a class="chip" href="/Dashboard/Devices?groupName=@Uri.EscapeDataString(g)">@g</a>
+        <a class="chip" href="/Dashboard/Devices?groupName=@Uri.EscapeDataString(g)">
+            @g
+        </a>
     }
 </div>
 
@@ -17,11 +19,12 @@
     <table>
         <thead>
             <tr>
-                <th style="width:14%;">Store</th>
-                <th style="width:34%;">Hostname</th>
-                <th style="width:14%;">Status</th>
+                <th style="width:10%;">Store</th>
+                <th style="width:30%;">Hostname</th>
+                <th style="width:12%;">Status</th>
                 <th style="width:18%;">Version</th>
                 <th style="width:20%;">Last Seen</th>
+                <th style="width:10%;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -29,14 +32,50 @@
             {
                 <tr>
                     <td>@d.StoreNumber</td>
-                    <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
+
+                    <td>
+                        <a href="/Dashboard/Device/@d.DeviceId">
+                            @d.Hostname
+                        </a>
+                    </td>
+
                     <td>
                         <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
                             @(d.IsOnline ? "Online" : "Offline")
                         </span>
                     </td>
-                    <td>@d.AgentVersion</td>
-                    <td>@d.LastSeenUtc</td>
+
+                    <td>
+                        @(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)
+                    </td>
+
+                    <td>
+                        @if (d.LastSeenUtc != null)
+                        {
+                            @d.LastSeenUtc.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                        }
+                        else
+                        {
+                            <span class="subtle">Never</span>
+                        }
+                    </td>
+
+                    <td>
+                        <form method="post"
+                              action="/Dashboard/RetireDevice"
+                              onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
+
+                            @Html.AntiForgeryToken()
+
+                            <input type="hidden" name="deviceId" value="@d.DeviceId" />
+
+                            <button class="btn btn-danger"
+                                    style="padding:4px 8px;font-size:12px;"
+                                    @(d.IsOnline ? "disabled" : "")>
+                                Retire
+                            </button>
+                        </form>
+                    </td>
                 </tr>
             }
         </tbody>

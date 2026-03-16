@@ -12,6 +12,7 @@
 }
 
 <h2>Device Detail</h2>
+
 @if (Model.Health != null)
 {
     var h = Model.Health;
@@ -98,42 +99,72 @@
         <div><strong>Version:</strong> @Model.AgentVersion</div>
         <div><strong>Last Seen:</strong> @Model.LastSeenUtc</div>
         <div><strong>Last IP:</strong> @Model.LastIp</div>
+        <div><strong>Enabled:</strong> @(Model.IsEnabled ? "Yes" : "No (Retired)")</div>
     </div>
 
     <div class="card">
         <h3>Quick Actions</h3>
 
         <div class="action-row">
-            <a class="btn" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">⚡ Custom Command</a>
-            <a class="btn btn-secondary" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">✏️ Open Prefilled Form</a>
+            <a class="btn" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">🛠 Helpdesk Commands</a>
+            <a class="btn btn-secondary" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">🚀 Advanced Command</a>
         </div>
 
         <hr />
 
-        <form method="post" action="/Dashboard/IssueCommand" class="inline">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
-            <input type="hidden" name="Type" value="Echo" />
-            <input type="hidden" name="UseCustomJson" value="true" />
-            <input type="hidden" name="PayloadJson" value='{"message":"Hello from device quick action"}' />
-            <button type="submit">⚡ Echo</button>
-        </form>
+        <div class="helpdesk-quick-actions">
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="TargetType" value="Device" />
+                <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+                <input type="hidden" name="CommandKey" value="CollectSystemInfo" />
+                <button type="submit">📊 Collect System Info</button>
+            </form>
 
-        <form method="post" action="/Dashboard/IssueCommand" class="inline" style="margin-top:10px;">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
-            <input type="hidden" name="Type" value="CollectSystemInfo" />
-            <input type="hidden" name="UseCustomJson" value="true" />
-            <input type="hidden" name="PayloadJson" value='{}' />
-            <button type="submit">📊 Collect System Info</button>
-        </form>
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="TargetType" value="Device" />
+                <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+                <input type="hidden" name="CommandKey" value="NetworkInfo" />
+                <button type="submit">🌐 Network Info</button>
+            </form>
 
-        <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline" style="margin-top:10px;">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-            <button type="submit" class="btn-danger">🔁 Requeue Failed Commands</button>
-        </form>
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline"
+                  onsubmit="return confirm('Restart POS on @Model.Hostname?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="TargetType" value="Device" />
+                <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+                <input type="hidden" name="CommandKey" value="RestartPOS" />
+                <button type="submit" class="btn-secondary">🧾 Restart POS</button>
+            </form>
+
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline"
+                  onsubmit="return confirm('Reboot @Model.Hostname?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="TargetType" value="Device" />
+                <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
+                <input type="hidden" name="CommandKey" value="RebootDevice" />
+                <button type="submit" class="btn-danger">🔄 Reboot Device</button>
+            </form>
+
+            <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="deviceId" value="@Model.DeviceId" />
+                <button type="submit">🔁 Requeue Failed Commands</button>
+            </form>
+        </div>
     </div>
+</div>
+
+<hr />
+
+<div class="action-row">
+    <form method="post" action="/Dashboard/RetireDevice"
+          onsubmit="return confirm('Retire this device? It will be removed from normal active views but history will be kept.');">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="deviceId" value="@Model.DeviceId" />
+        <button class="btn btn-danger" @(Model.IsOnline ? "disabled" : "")>Retire Device</button>
+    </form>
 </div>
 
 <div class="card">

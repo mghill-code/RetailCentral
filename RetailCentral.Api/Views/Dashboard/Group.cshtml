@@ -1,74 +1,89 @@
 ﻿@model RetailCentral.Api.ViewModels.GroupDetailViewModel
 
-<h2>Group Detail</h2>
+@{
+    ViewData["Title"] = "Group Detail";
+}
+
+<h2>Group: @Model.GroupName</h2>
 
 @if (!string.IsNullOrWhiteSpace(Model.Message))
 {
-    <div class="card">
-        <strong>@Model.Message</strong>
+    <div class="card" style="margin-bottom:16px;">
+        <div>@Model.Message</div>
     </div>
 }
 
 <div class="grid-2">
     <div class="card">
-        <h3>@Model.GroupName</h3>
-        <div><strong>Description:</strong> @Model.Description</div>
-        <div><strong>Created:</strong> @Model.CreatedUtc</div>
+        <h3>Group Details</h3>
+
+        <div><strong>Name:</strong> @Model.GroupName</div>
+        <div><strong>Description:</strong> @(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</div>
+        <div><strong>Created:</strong> @Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
         <div><strong>Members:</strong> @Model.Members.Count</div>
+
+        <div class="action-row" style="margin-top:16px;">
+            <form method="post" action="/Dashboard/DeleteGroup"
+                  onsubmit="return confirm('Delete group @Model.GroupName? Group must be empty first.');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="groupName" value="@Model.GroupName" />
+                <button type="submit" class="btn btn-danger">Delete Group</button>
+            </form>
+        </div>
     </div>
 
     <div class="card">
-        <h3>Actions</h3>
-        <div class="action-row">
-            <a class="btn" href="/Dashboard/IssueCommand?groupName=@Uri.EscapeDataString(Model.GroupName)">🚀 Issue Command to Group</a>
-        </div>
-        <hr />
-        <form method="post" action="/Dashboard/DeleteGroup" onsubmit="return confirm('Delete group @Model.GroupName? The group must be empty first.');">
+        <h3>Add Device to Group</h3>
+
+        <form method="post" action="/Dashboard/AddDeviceToGroup">
             @Html.AntiForgeryToken()
             <input type="hidden" name="groupName" value="@Model.GroupName" />
-            <button type="submit" class="btn-danger">🗑 Delete Group</button>
+
+            <div>
+                <label>Available Devices</label>
+                <select name="deviceId">
+                    @foreach (var d in Model.AvailableDevices)
+                    {
+                        <option value="@d.DeviceId">
+                            @d.StoreNumber - @d.Hostname @(d.IsOnline ? "(Online)" : "(Offline)")
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="action-row" style="margin-top:12px;">
+                <button type="submit">Add Device</button>
+            </div>
         </form>
     </div>
 </div>
 
 <div class="card">
-    <h3>Add Device to Group</h3>
-    @if (Model.AvailableDevices.Count == 0)
-    {
-        <div class="subtle">All devices are already in this group.</div>
-    }
-    else
-    {
-        <form method="post" action="/Dashboard/AddDeviceToGroup" class="form-grid">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="groupName" value="@Model.GroupName" />
-            <div>
-                <label>Device</label>
-                <select name="deviceId">
-                    @foreach (var d in Model.AvailableDevices)
-                    {
-                        <option value="@d.DeviceId">@d.StoreNumber - @d.Hostname (@(d.IsOnline ? "Online" : "Offline"))</option>
-                    }
-                </select>
-            </div>
-            <div class="action-row" style="align-items:end;">
-                <button type="submit">➕ Add Device</button>
-            </div>
-        </form>
-    }
+    <h3>CSV Import Help</h3>
+    <p class="subtle">
+        To bulk add members, go back to the Groups page and use the CSV import section.
+    </p>
+    <p class="subtle">
+        Recommended format:
+    </p>
+<pre>StoreNumber,Hostname
+1001,POS01
+1001,POS02
+1002,POS03</pre>
 </div>
 
 <div class="card">
-    <h3>Members</h3>
+    <h3>Group Members</h3>
+
     <div class="table-wrap">
         <table>
             <thead>
                 <tr>
-                    <th style="width:14%;">Store</th>
-                    <th style="width:30%;">Hostname</th>
-                    <th style="width:16%;">Status</th>
-                    <th style="width:18%;">Version</th>
-                    <th style="width:22%;">Action</th>
+                    <th style="width:15%;">Store</th>
+                    <th style="width:35%;">Hostname</th>
+                    <th style="width:15%;">Status</th>
+                    <th style="width:20%;">Version</th>
+                    <th style="width:15%;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -76,19 +91,22 @@
                 {
                     <tr>
                         <td>@d.StoreNumber</td>
-                        <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
+                        <td>
+                            <a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a>
+                        </td>
                         <td>
                             <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
                                 @(d.IsOnline ? "Online" : "Offline")
                             </span>
                         </td>
-                        <td>@d.AgentVersion</td>
+                        <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
                         <td>
-                            <form method="post" action="/Dashboard/RemoveDeviceFromGroup" onsubmit="return confirm('Remove @d.Hostname from @Model.GroupName?');">
+                            <form method="post" action="/Dashboard/RemoveDeviceFromGroup"
+                                  onsubmit="return confirm('Remove @d.Hostname from @Model.GroupName?');">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="groupName" value="@Model.GroupName" />
                                 <input type="hidden" name="deviceId" value="@d.DeviceId" />
-                                <button type="submit" class="btn-danger">Remove</button>
+                                <button type="submit" class="btn btn-danger">Remove</button>
                             </form>
                         </td>
                     </tr>

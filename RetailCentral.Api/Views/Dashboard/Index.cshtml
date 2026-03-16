@@ -178,7 +178,25 @@
         }
     </div>
 </div>
+    <div class="card">
+        <h3>Fleet Health</h3>
+        <div class="grid">
+            <div class="card metric-card success-card">
+                <h3>Healthy Devices</h3>
+                <div class="metric-value">@Model.HealthyDevices</div>
+            </div>
 
+            <div class="card metric-card pending-card">
+                <h3>Warning Devices</h3>
+                <div class="metric-value">@Model.WarningDevices</div>
+            </div>
+
+            <div class="card metric-card failed-card">
+                <h3>Critical Devices</h3>
+                <div class="metric-value">@Model.CriticalDevices</div>
+            </div>
+        </div>
+    </div>
 <div class="card">
     <h3>Store Outage Detection</h3>
     @if (Model.StoreOutages.Count == 0)

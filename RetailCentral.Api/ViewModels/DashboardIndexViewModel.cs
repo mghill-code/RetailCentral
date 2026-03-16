@@ -24,6 +24,9 @@ namespace RetailCentral.Api.ViewModels
         public List<CommandProgressViewModel> CommandProgress { get; set; } = new();
 
         public List<DeviceHealthViewModel> DeviceHealth { get; set; } = new();
+        public int HealthyDevices { get; set; }
+        public int WarningDevices { get; set; }
+        public int CriticalDevices { get; set; }
     }
 
     public class StoreSummaryTileViewModel
@@ -80,5 +83,6 @@ namespace RetailCentral.Api.ViewModels
         public string? Memory { get; set; }
         public DateTime? LastHeartbeatUtc { get; set; }
         public DateTime? InventoryUpdatedUtc { get; set; }
+
     }
 }

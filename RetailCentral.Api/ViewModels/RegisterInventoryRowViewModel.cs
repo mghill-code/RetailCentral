@@ -42,5 +42,13 @@
         public string? ScannerSerialNumber { get; set; }
 
         public DateTime? LastHeartbeatUtc { get; set; }
+        public int HealthScore { get; set; }
+        public string HealthStatus { get; set; } = "Unknown";
+
+        public bool HeartbeatHealthy { get; set; }
+        public bool DiskHealthy { get; set; }
+        public bool MemoryHealthy { get; set; }
+        public bool FailuresHealthy { get; set; }
+        public bool InventoryFresh { get; set; }
     }
 }
