@@ -1,0 +1,184 @@
+@model RetailCentral.Api.ViewModels.Deployments.CreatePackageViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] as string ?? "Create Package";
+    var formAction = ViewData["FormAction"]?.ToString() ?? "CreatePackage";
+    var submitText = ViewData["SubmitText"]?.ToString() ?? "Create Package";
+    var packageId = ViewData["PackageId"]?.ToString();
+    var isEdit = string.Equals(ViewData["FormMode"]?.ToString(), "Edit", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="page-header">
+    <div>
+        <h1>@(ViewData["Title"] ?? "Create Package")</h1>
+        <p>Define a package once, then reuse it across devices, groups, stores, and fleet-wide deployments.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="/Dashboard/Packages">Back to Packages</a>
+    </div>
+</div>
+
+<form asp-action="@formAction" asp-route-id="@packageId" method="post" class="card shadow-sm border-0">
+    @Html.AntiForgeryToken()
+
+    <div class="card-body section-stack">
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger"></div>
+        }
+
+        @if (ViewData["DebugErrors"] is string debugErrors && !string.IsNullOrWhiteSpace(debugErrors))
+        {
+            <div class="alert alert-danger">
+                <strong>Debug:</strong> @debugErrors
+            </div>
+        }
+
+        <div>
+            <h3>Basic Information</h3>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label asp-for="Name" class="form-label fw-semibold">Package Name</label>
+                    <input asp-for="Name" class="form-control" placeholder="Example: POS 3.4.2 Pilot Build" />
+                    <span asp-validation-for="Name" class="text-danger"></span>
+                    <div class="form-text">Friendly name shown in package and deployment views.</div>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Version" class="form-label fw-semibold">Version</label>
+                    <input asp-for="Version" class="form-control" placeholder="Example: 3.4.2" />
+                    <span asp-validation-for="Version" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="PackageType" class="form-label fw-semibold">Package Type</label>
+                    <select asp-for="PackageType" class="form-select dashboard-select">
+                        <option value="">-- Select Package Type --</option>
+                        @foreach (var item in Model.PackageTypes)
+                        {
+                            if (Model.PackageType.ToString() == item.Value)
+                            {
+                                <option value="@item.Value" selected>@item.Text</option>
+                            }
+                            else
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="PackageType" class="text-danger"></span>
+                </div>
+                <div class="col-12">
+                    <label asp-for="Description" class="form-label fw-semibold">Description</label>
+                    <textarea asp-for="Description" class="form-control" rows="3" placeholder="What does this package deploy? Which environment or store set is it intended for?"></textarea>
+                    <span asp-validation-for="Description" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>Package Source</h3>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="FileName" class="form-label fw-semibold">File Name</label>
+                    <input asp-for="FileName" class="form-control" placeholder="Example: POS_3_4_2.msi" />
+                    <span asp-validation-for="FileName" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="StoragePath" class="form-label fw-semibold">Storage Path / Download URL</label>
+                    <input asp-for="StoragePath" class="form-control" placeholder="Example: https://cdn.company.com/pos/POS_3_4_2.msi" />
+                    <span asp-validation-for="StoragePath" class="text-danger"></span>
+                    <div class="form-text">Must be reachable from the target register or store network path used by the agent.</div>
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="Sha256" class="form-label fw-semibold">SHA256 Hash</label>
+                    <input asp-for="Sha256" class="form-control" placeholder="Paste full SHA256 hash" />
+                    <span asp-validation-for="Sha256" class="text-danger"></span>
+                    <div class="form-text">Required so the agent can verify integrity before install or execution.</div>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="FileSizeBytes" class="form-label fw-semibold">File Size (Bytes)</label>
+                    <input asp-for="FileSizeBytes" class="form-control" placeholder="Optional" />
+                    <span asp-validation-for="FileSizeBytes" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>Execution Settings</h3>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="ExecutionCommand" class="form-label fw-semibold">Execution Command</label>
+                    <input asp-for="ExecutionCommand" class="form-control" placeholder="Example: msiexec.exe" />
+                    <span asp-validation-for="ExecutionCommand" class="text-danger"></span>
+                    <div class="form-text">Leave blank to allow server-side defaults based on package type.</div>
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="ExecutionArguments" class="form-label fw-semibold">Execution Arguments</label>
+                    <input asp-for="ExecutionArguments" class="form-control" placeholder='Example: /i {file} /qb /norestart' />
+                    <span asp-validation-for="ExecutionArguments" class="text-danger"></span>
+                    <div class="form-text">Use <code>{file}</code> to insert the downloaded file path.</div>
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="WorkingDirectory" class="form-label fw-semibold">Working Directory</label>
+                    <input asp-for="WorkingDirectory" class="form-control" placeholder='Example: C:\RetailCentral\Agent\staging\6' />
+                    <span asp-validation-for="WorkingDirectory" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label asp-for="TimeoutSeconds" class="form-label fw-semibold">Timeout (Seconds)</label>
+                    <input asp-for="TimeoutSeconds" class="form-control" placeholder="1800" value="@(Model.TimeoutSeconds <= 0 ? 1800 : Model.TimeoutSeconds)" />
+                    <span asp-validation-for="TimeoutSeconds" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label asp-for="RebootBehavior" class="form-label fw-semibold">Reboot Behavior</label>
+                    <select asp-for="RebootBehavior" class="form-select dashboard-select">
+                        <option value="">-- Select Reboot Behavior --</option>
+                        @foreach (var item in Model.RebootBehaviors)
+                        {
+                            if (Model.RebootBehavior.ToString() == item.Value)
+                            {
+                                <option value="@item.Value" selected>@item.Text</option>
+                            }
+                            else
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="RebootBehavior" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="alert alert-info" style="margin-bottom:0;">
+                <strong>Recommended script package</strong><br />
+                Package Type = <code>CMD</code><br />
+                Execution Command = <code>cmd.exe</code><br />
+                Execution Arguments = <code>/c {file}</code><br />
+                Timeout = <code>1800</code>
+            </div>
+            <div class="alert alert-secondary" style="margin-bottom:0;">
+                <strong>Recommended MSI package</strong><br />
+                Package Type = <code>MSI</code><br />
+                Execution Command = <code>msiexec.exe</code><br />
+                Execution Arguments = <code>/i {file} /qb /norestart</code><br />
+                Reboot Behavior = <code>None</code> or <code>Allow</code>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-footer bg-white d-flex gap-2">
+        <button type="submit" class="btn btn-primary">@submitText</button>
+        <a href="/Dashboard/Packages" class="btn btn-secondary">Cancel</a>
+        @if (isEdit && !string.IsNullOrWhiteSpace(packageId))
+        {
+            <form method="post" action="/Dashboard/DeletePackage/@packageId" class="inline" onsubmit="return confirm('Hard delete this package?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-danger">Delete Package</button>
+            </form>
+        }
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

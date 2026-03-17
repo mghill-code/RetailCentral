@@ -1,64 +1,124 @@
-﻿<!DOCTYPE html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>RetailCentral Dashboard</title>
+    <title>@(ViewData["Title"] as string ?? "RetailCentral Dashboard")</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    @{
+        var currentPath = Context?.Request?.Path.Value ?? string.Empty;
 
-    <header class="topbar">
-        <div class="topbar-inner">
-            <div class="brand">
-                <img src="/images/logo.png" class="logo" onerror="this.style.display='none'" />
-                <h1>RetailCentral</h1>
+        string NavClass(string pathPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(currentPath))
+                return string.Empty;
+
+            return currentPath.StartsWith(pathPrefix, StringComparison.OrdinalIgnoreCase)
+            ? "nav-active"
+            : string.Empty;
+        }
+    }
+
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <img src="/images/logo.png" class="sidebar-logo" alt="BNED RetailCentral" />
+                <div class="sidebar-brand-copy">
+                    <div class="sidebar-kicker">Operations Console</div>
+                    <div class="sidebar-title">RetailCentral</div>
+                </div>
             </div>
 
-            <div class="nav">
-                <a href="/">🏠 Dashboard</a>
-                <a href="/Dashboard/RegisterInventory">🧾 Register Inventory</a>
-                <a href="/Dashboard/Devices">💻 Devices</a>
-                <a href="/Dashboard/Groups">📦 Groups</a>
-                <a href="/Dashboard/Commands">📜 Commands</a>
-                <a href="/Dashboard/Failures">⚠ Failures</a>
-                <a href="/Dashboard/HelpdeskCommands">🛠 Helpdesk Commands</a>
-                <a href="/Dashboard/IssueCommand">🚀 Issue Command</a>
-                <a href="/Dashboard/Versions">📊 Versions</a>
-                <button id="darkToggle" type="button">🌙</button>
-            </div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-label">Fleet Overview</div>
+                <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-emoji">🏠</span><span>Dashboard</span></a>
+                <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")"><span class="nav-emoji">🧾</span><span>Register Inventory</span></a>
+                <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-emoji">💻</span><span>Devices</span></a>
+                <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")"><span class="nav-emoji">👥</span><span>Groups</span></a>
+                <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")"><span class="nav-emoji">📊</span><span>Versions</span></a>
+
+                <div class="sidebar-section-label">Commands &amp; Support</div>
+                <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-emoji">📜</span><span>Commands</span></a>
+                <a href="/Dashboard/Failures" class="@NavClass("/Dashboard/Failures")"><span class="nav-emoji">⚠️</span><span>Failures</span></a>
+                <a href="/Dashboard/HelpdeskCommands" class="@NavClass("/Dashboard/HelpdeskCommands")"><span class="nav-emoji">🛠</span><span>Helpdesk Commands</span></a>
+                <a href="/Dashboard/IssueCommand" class="@NavClass("/Dashboard/IssueCommand")"><span class="nav-emoji">🚀</span><span>Issue Command</span></a>
+
+                <div class="sidebar-section-label">Deployments</div>
+                <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")"><span class="nav-emoji">🗂</span><span>Packages</span></a>
+                <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-emoji">🧪</span><span>Create Deployment</span></a>
+                <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-emoji">📦</span><span>Deployments</span></a>
+            </nav>
+        </aside>
+
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+        <div class="content-shell" id="contentShell">
+            <header class="utility-topbar">
+                <div class="utility-topbar-inner">
+                    <div class="utility-left">
+                        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle navigation" title="Toggle navigation">
+                            <svg viewBox="0 0 24 24" class="sidebar-toggle-icon" aria-hidden="true">
+                                <rect x="3" y="4" width="18" height="16" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+                                <line x1="9" y1="4" x2="9" y2="20" stroke="currentColor" stroke-width="1.8"></line>
+                            </svg>
+                        </button>
+
+                        <div class="utility-title-block">
+                            <div class="page-kicker">Retail Device Operations</div>
+                            <div class="page-title-inline">@(ViewData["Title"] as string ?? "RetailCentral Dashboard")</div>
+                        </div>
+                    </div>
+
+                    <div class="utility-right">
+                        <div class="auto-refresh toolbar-group utility-refresh-group">
+                            <label for="autoRefreshSelect">Auto Refresh</label>
+                            <select id="autoRefreshSelect" class="compact-select">
+                                <option value="0">Off</option>
+                                <option value="30">30 sec</option>
+                                <option value="60">60 sec</option>
+                                <option value="120">2 min</option>
+                                <option value="300">5 min</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary" id="refreshNowBtn">Refresh Now</button>
+                        </div>
+
+                        <div class="toolbar-group toolbar-meta" id="refreshStamp"></div>
+                        <button id="darkToggle" type="button" class="sidebar-icon" title="Toggle dark mode">🌙</button>
+                    </div>
+                </div>
+            </header>
+
+            <main class="page-shell">
+                @RenderBody()
+            </main>
         </div>
-    </header>
-
-    <main class="page-shell">
-        <div class="action-row" style="justify-content:space-between; margin-bottom:14px;">
-            <div class="auto-refresh">
-                <label for="autoRefreshSelect" style="margin-right:8px;">Auto Refresh</label>
-                <select id="autoRefreshSelect" style="width:auto; min-width:110px;">
-                    <option value="0">Off</option>
-                    <option value="30">30 sec</option>
-                    <option value="60">60 sec</option>
-                </select>
-                <button type="button" class="btn btn-secondary" id="refreshNowBtn">Refresh Now</button>
-            </div>
-            <div class="auto-refresh" id="refreshStamp"></div>
-        </div>
-
-        @RenderBody()
-    </main>
+    </div>
 
     <script>
         const toggle = document.getElementById("darkToggle");
         const autoRefreshSelect = document.getElementById("autoRefreshSelect");
         const refreshNowBtn = document.getElementById("refreshNowBtn");
+        const sidebarToggle = document.getElementById("sidebarToggle");
+        const sidebarBackdrop = document.getElementById("sidebarBackdrop");
 
         let refreshIntervalHandle = null;
+        let formDirty = false;
+
+        function isMobileLayout() {
+            return window.matchMedia("(max-width: 840px)").matches;
+        }
 
         function applyTheme(theme) {
             document.documentElement.setAttribute("data-theme", theme);
             localStorage.setItem("dashboard-theme", theme);
-            toggle.textContent = theme === "dark" ? "☀️" : "🌙";
+
+            if (toggle) {
+                toggle.textContent = theme === "dark" ? "☀️" : "🌙";
+                toggle.setAttribute("title", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+            }
         }
 
         function updateRefreshStamp() {
@@ -75,9 +135,20 @@
             }
         }
 
+        function pageHasForm() {
+            return document.querySelector("form") !== null;
+        }
+
+        function shouldSkipAutoRefresh() {
+            const skipAuto = document.body.getAttribute("data-no-autorefresh");
+            if (skipAuto === "true") return true;
+            if (pageHasForm()) return true;
+            if (formDirty) return true;
+            return false;
+        }
+
         function setAutoRefresh(seconds) {
             clearAutoRefresh();
-
             const parsed = parseInt(seconds, 10) || 0;
             localStorage.setItem("dashboard-auto-refresh-seconds", parsed.toString());
 
@@ -88,27 +159,96 @@
             if (parsed > 0) {
                 refreshIntervalHandle = setInterval(() => {
                     updateRefreshStamp();
-
-                    const skipAuto = document.body.getAttribute("data-no-autorefresh");
-                    if (skipAuto !== "true") {
+                    if (!shouldSkipAutoRefresh()) {
                         window.location.reload();
                     }
                 }, parsed * 1000);
             }
         }
 
-        toggle.onclick = function () {
-            const current = localStorage.getItem("dashboard-theme");
-            applyTheme(current === "dark" ? "light" : "dark");
-        };
+        function wireFormTracking() {
+            const forms = document.querySelectorAll("form");
+            if (!forms.length) return;
+
+            const fields = document.querySelectorAll("form input, form textarea, form select");
+            fields.forEach(field => {
+                field.addEventListener("input", () => formDirty = true);
+                field.addEventListener("change", () => formDirty = true);
+            });
+
+            forms.forEach(form => {
+                form.addEventListener("submit", () => formDirty = false);
+            });
+
+            window.addEventListener("beforeunload", function (e) {
+                if (!formDirty) return;
+                e.preventDefault();
+                e.returnValue = "";
+            });
+        }
+
+        function openMobileSidebar() {
+            document.body.classList.add("sidebar-open");
+        }
+
+        function closeMobileSidebar() {
+            document.body.classList.remove("sidebar-open");
+        }
+
+        function applyDesktopSidebarState() {
+            if (isMobileLayout()) {
+                document.body.classList.remove("sidebar-collapsed");
+                return;
+            }
+
+            const collapsed = localStorage.getItem("dashboard-sidebar-collapsed") === "true";
+            document.body.classList.toggle("sidebar-collapsed", collapsed);
+        }
+
+        function toggleSidebar() {
+            if (isMobileLayout()) {
+                document.body.classList.contains("sidebar-open") ? closeMobileSidebar() : openMobileSidebar();
+                return;
+            }
+
+            const collapsed = !document.body.classList.contains("sidebar-collapsed");
+            document.body.classList.toggle("sidebar-collapsed", collapsed);
+            localStorage.setItem("dashboard-sidebar-collapsed", collapsed ? "true" : "false");
+        }
+
+        sidebarToggle?.addEventListener("click", toggleSidebar);
+        sidebarBackdrop?.addEventListener("click", closeMobileSidebar);
+
+        window.addEventListener("resize", function () {
+            if (!isMobileLayout()) {
+                closeMobileSidebar();
+            }
+            applyDesktopSidebarState();
+        });
+
+        if (toggle) {
+            toggle.addEventListener("click", function () {
+                const current = localStorage.getItem("dashboard-theme") || "light";
+                applyTheme(current === "dark" ? "light" : "dark");
+            });
+        }
 
         autoRefreshSelect?.addEventListener("change", function () {
             setAutoRefresh(this.value);
         });
 
         refreshNowBtn?.addEventListener("click", function () {
+            if (pageHasForm() || formDirty) {
+                const ok = confirm("You have unsaved form data on this page. Refresh anyway?");
+                if (!ok) return;
+            }
+
+            formDirty = false;
             window.location.reload();
         });
+
+        wireFormTracking();
+        applyDesktopSidebarState();
 
         const savedTheme = localStorage.getItem("dashboard-theme") || "light";
         applyTheme(savedTheme);
@@ -119,5 +259,6 @@
         updateRefreshStamp();
     </script>
 
+    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

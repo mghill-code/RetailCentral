@@ -1,83 +1,76 @@
-﻿@model RetailCentral.Api.ViewModels.DevicesFilterViewModel
+@model RetailCentral.Api.ViewModels.DevicesFilterViewModel
 
-<h2>Devices</h2>
+@{
+    ViewData["Title"] = "Devices";
+}
 
-<div class="chips">
-    <a class="chip" href="/Dashboard/Devices">All</a>
-    <a class="chip" href="/Dashboard/Devices?status=Online">Online</a>
-    <a class="chip" href="/Dashboard/Devices?status=Offline">Offline</a>
-
-    @foreach (var g in Model.AvailableGroups.Take(8))
-    {
-        <a class="chip" href="/Dashboard/Devices?groupName=@Uri.EscapeDataString(g)">
-            @g
-        </a>
-    }
+<div class="page-header">
+    <div>
+        <h1>Devices</h1>
+        <p>Browse active devices, inspect health, and take recovery actions.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/HelpdeskCommands">🛠 Helpdesk Commands</a>
+        <a class="btn btn-secondary" href="/Dashboard/IssueCommand">🚀 Issue Command</a>
+    </div>
 </div>
 
-<div class="table-wrap">
-    <table>
-        <thead>
-            <tr>
-                <th style="width:10%;">Store</th>
-                <th style="width:30%;">Hostname</th>
-                <th style="width:12%;">Status</th>
-                <th style="width:18%;">Version</th>
-                <th style="width:20%;">Last Seen</th>
-                <th style="width:10%;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var d in Model.Devices)
-            {
+<div class="card toolbar-card">
+    <div class="chips">
+        <a class="chip" href="/Dashboard/Devices">All Devices</a>
+        <a class="chip" href="/Dashboard/Devices?status=Online">Online</a>
+        <a class="chip" href="/Dashboard/Devices?status=Offline">Offline</a>
+        @foreach (var g in Model.AvailableGroups.Take(8))
+        {
+            <a class="chip" href="/Dashboard/Devices?groupName=@Uri.EscapeDataString(g)">@g</a>
+        }
+    </div>
+    <div class="subtle">Showing @Model.Devices.Count active devices</div>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
                 <tr>
-                    <td>@d.StoreNumber</td>
-
-                    <td>
-                        <a href="/Dashboard/Device/@d.DeviceId">
-                            @d.Hostname
-                        </a>
-                    </td>
-
-                    <td>
-                        <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
-                            @(d.IsOnline ? "Online" : "Offline")
-                        </span>
-                    </td>
-
-                    <td>
-                        @(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)
-                    </td>
-
-                    <td>
-                        @if (d.LastSeenUtc != null)
-                        {
-                            @d.LastSeenUtc.Value.ToString("yyyy-MM-dd HH:mm:ss")
-                        }
-                        else
-                        {
-                            <span class="subtle">Never</span>
-                        }
-                    </td>
-
-                    <td>
-                        <form method="post"
-                              action="/Dashboard/RetireDevice"
-                              onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
-
-                            @Html.AntiForgeryToken()
-
-                            <input type="hidden" name="deviceId" value="@d.DeviceId" />
-
-                            <button class="btn btn-danger"
-                                    style="padding:4px 8px;font-size:12px;"
-                                    @(d.IsOnline ? "disabled" : "")>
-                                Retire
-                            </button>
-                        </form>
-                    </td>
+                    <th style="width:10%;">Store</th>
+                    <th style="width:26%;">Hostname</th>
+                    <th style="width:12%;">Status</th>
+                    <th style="width:18%;">Version</th>
+                    <th style="width:22%;">Last Seen</th>
+                    <th style="width:12%;">Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var d in Model.Devices)
+                {
+                    <tr>
+                        <td>@d.StoreNumber</td>
+                        <td>
+                            <div><a href="/Dashboard/Device/@d.DeviceId"><strong>@d.Hostname</strong></a></div>
+                            <div class="subtle">DeviceId: @d.DeviceId</div>
+                        </td>
+                        <td>
+                            <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
+                                @(d.IsOnline ? "Online" : "Offline")
+                            </span>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
+                        <td>@(d.LastSeenUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</td>
+                        <td>
+                            <div class="action-row">
+                                <a class="btn btn-outline" href="/Dashboard/Device/@d.DeviceId">Open</a>
+                                <form method="post" action="/Dashboard/RetireDevice" class="inline"
+                                      onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="deviceId" value="@d.DeviceId" />
+                                    <button class="btn btn-danger" @(d.IsOnline ? "disabled" : "")>Retire</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 </div>

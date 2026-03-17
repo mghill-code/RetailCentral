@@ -1,21 +1,32 @@
 ﻿using System.Diagnostics;
-using System.Text;
-using System.Text.Json;
 using System.Management;
-using System.IO;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text;
+using System.IO;
+
+
+
 
 public sealed class CommandExecutor
 {
     private readonly AgentConfig _cfg;
     private readonly FileDownloadService _downloader;
+    private readonly DeploymentWindowService _windowService;
+    private readonly PackageExecutionService _packageExecution;
 
-    public CommandExecutor(AgentConfig cfg, FileDownloadService downloader)
+    public CommandExecutor(
+        AgentConfig cfg,
+        FileDownloadService downloader,
+        DeploymentWindowService windowService,
+        PackageExecutionService packageExecution)
     {
         _cfg = cfg;
         _downloader = downloader;
+        _windowService = windowService;
+        _packageExecution = packageExecution;
     }
 
     public async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> ExecuteAsync(
@@ -283,6 +294,129 @@ public sealed class CommandExecutor
                             exit,
                             $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}\n{stdout}",
                             stderr,
+                            started,
+                            finishedExec
+                        );
+                    }
+
+                case "InstallPackage":
+                    {
+                        var payload = JsonSerializer.Deserialize<PackageDeploymentCommand>(
+                            payloadJson ?? "{}",
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                            ?? throw new Exception("Invalid InstallPackage payload.");
+
+                        if (string.IsNullOrWhiteSpace(payload.DownloadUrl))
+                            throw new Exception("downloadUrl required");
+
+                        if (string.IsNullOrWhiteSpace(payload.FileName))
+                            throw new Exception("fileName required");
+
+                        if (string.IsNullOrWhiteSpace(payload.InstallCommand))
+                            throw new Exception("installCommand required");
+
+                        var stagingFolder = Path.Combine(_cfg.StagingRootFolder, payload.PackageId.ToString());
+                        Directory.CreateDirectory(stagingFolder);
+
+                        var downloadedPath = await _downloader.DownloadAsync(
+                            payload.DownloadUrl,
+                            stagingFolder,
+                            payload.FileName,
+                            ct);
+
+                        var actualSha256 = FileDownloadService.ComputeSha256Hex(downloadedPath);
+
+                        if (!string.IsNullOrWhiteSpace(payload.Sha256) &&
+                            !string.Equals(payload.Sha256.Trim(), actualSha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var finishedHashFail = DateTime.UtcNow;
+                            return
+                            (
+                                "Failed",
+                                902,
+                                "",
+                                $"SHA256 mismatch. Expected={payload.Sha256}, Actual={actualSha256}",
+                                started,
+                                finishedHashFail
+                            );
+                        }
+
+                        if (string.Equals(payload.ExecuteMode, "StagedOnly", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var finishedStaged = DateTime.UtcNow;
+                            return
+                            (
+                                "Succeeded",
+                                0,
+                                $"Staged file: {downloadedPath}\nSHA256: {actualSha256}",
+                                "",
+                                started,
+                                finishedStaged
+                            );
+                        }
+
+                        if (string.Equals(payload.ExecuteMode, "Windowed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!TimeSpan.TryParse(payload.WindowStartLocal, out var startWindow))
+                                throw new Exception("windowStartLocal required for Windowed mode");
+
+                            if (!TimeSpan.TryParse(payload.WindowEndLocal, out var endWindow))
+                                throw new Exception("windowEndLocal required for Windowed mode");
+
+                            var nowLocal = DateTime.Now.TimeOfDay;
+
+                            if (!_windowService.IsInWindow(nowLocal, startWindow, endWindow))
+                            {
+                                var finishedWaiting = DateTime.UtcNow;
+                                return
+                                (
+                                    "Deferred",
+                                    903,
+                                    $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}",
+                                    $"Outside install window {payload.WindowStartLocal} - {payload.WindowEndLocal}",
+                                    started,
+                                    finishedWaiting
+                                );
+                            }
+                        }
+
+                        var workingDirectory = string.IsNullOrWhiteSpace(payload.WorkingDirectory)
+                            ? Path.GetDirectoryName(downloadedPath)
+                            : payload.WorkingDirectory;
+
+                        var installArguments = (payload.InstallArguments ?? "")
+                            .Replace("{file}", $"\"{downloadedPath}\"");
+
+                        var execResult = await _packageExecution.ExecuteAsync(
+                            payload.InstallCommand,
+                            installArguments,
+                            workingDirectory,
+                            payload.TimeoutSeconds,
+                            _cfg.MaxStdoutChars,
+                            _cfg.MaxStderrChars,
+                            ct);
+
+                        var finishedExec = DateTime.UtcNow;
+
+                        if (execResult.TimedOut)
+                        {
+                            return
+                            (
+                                "Failed",
+                                124,
+                                $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}",
+                                execResult.StdErr,
+                                started,
+                                finishedExec
+                            );
+                        }
+
+                        return
+                        (
+                            execResult.ExitCode == 0 ? "Succeeded" : "Failed",
+                            execResult.ExitCode ?? 1,
+                            $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}\n{execResult.StdOut}",
+                            execResult.StdErr,
                             started,
                             finishedExec
                         );

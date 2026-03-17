@@ -1,0 +1,150 @@
+@model RetailCentral.Api.ViewModels.Deployments.CreateDeploymentViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] as string ?? "Create Deployment";
+    var formAction = ViewData["FormAction"]?.ToString() ?? "CreateDeployment";
+    var submitText = ViewData["SubmitText"]?.ToString() ?? "Create Deployment";
+    var deploymentId = ViewData["DeploymentId"]?.ToString();
+    var isEdit = string.Equals(ViewData["FormMode"]?.ToString(), "Edit", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="page-header">
+    <div>
+        <h1>@(ViewData["Title"] ?? "Create Deployment")</h1>
+        <p>Create or update a deployment for a package and target a single device, store, group, or the full fleet.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="/Dashboard/Deployments">Back to Deployments</a>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<form asp-action="@formAction" asp-route-id="@deploymentId" method="post" class="card shadow-sm border-0">
+    @Html.AntiForgeryToken()
+
+    <div class="card-body section-stack">
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger"></div>
+        }
+
+        <div>
+            <h3>Package Selection</h3>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label asp-for="PackageId" class="form-label fw-semibold">Package</label>
+                    <select asp-for="PackageId" asp-items="Model.Packages" class="form-select"></select>
+                    <span asp-validation-for="PackageId" class="text-danger"></span>
+                    <div class="form-text">Choose the package to deploy to the selected target.</div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>Targeting</h3>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="TargetType" class="form-label fw-semibold">Target Type</label>
+                    <select asp-for="TargetType" asp-items="Model.TargetTypes" class="form-select"></select>
+                    <span asp-validation-for="TargetType" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="TargetValue" class="form-label fw-semibold">Target Value</label>
+                    <input asp-for="TargetValue" class="form-control" placeholder="DeviceId GUID, StoreNumber, GroupName, or FLEET" />
+                    <span asp-validation-for="TargetValue" class="text-danger"></span>
+                    <div class="form-text">
+                        Device = DeviceId GUID • Store = StoreNumber • Group = exact GroupName • Fleet = a placeholder like <code>FLEET</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>Execution Mode</h3>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="ExecuteMode" class="form-label fw-semibold">Execute Mode</label>
+                    <select asp-for="ExecuteMode" asp-items="Model.ExecuteModes" class="form-select"></select>
+                    <span asp-validation-for="ExecuteMode" class="text-danger"></span>
+                    <div class="form-text">Immediate = install now • Windowed = only during maintenance • Staged Only = download only.</div>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="WindowStartLocal" class="form-label fw-semibold">Window Start (Local Time)</label>
+                    <input asp-for="WindowStartLocal" class="form-control" placeholder="01:00:00" />
+                    <span asp-validation-for="WindowStartLocal" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="WindowEndLocal" class="form-label fw-semibold">Window End (Local Time)</label>
+                    <input asp-for="WindowEndLocal" class="form-control" placeholder="04:00:00" />
+                    <span asp-validation-for="WindowEndLocal" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check mt-2">
+                        <input asp-for="UseStoreLocalTime" class="form-check-input" />
+                        <label asp-for="UseStoreLocalTime" class="form-check-label fw-semibold">Use Store Local Time</label>
+                    </div>
+                    <div class="form-text">Recommended when stores span multiple time zones.</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check mt-2">
+                        <input asp-for="AllowOutsideWindow" class="form-check-input" />
+                        <label asp-for="AllowOutsideWindow" class="form-check-label fw-semibold">Allow Outside Window</label>
+                    </div>
+                    <div class="form-text">Normally leave off for controlled overnight change windows.</div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3>Deployment Options</h3>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label asp-for="RetryCount" class="form-label fw-semibold">Retry Count</label>
+                    <input asp-for="RetryCount" class="form-control" />
+                    <span asp-validation-for="RetryCount" class="text-danger"></span>
+                </div>
+                <div class="col-md-9">
+                    <label asp-for="Notes" class="form-label fw-semibold">Notes</label>
+                    <textarea asp-for="Notes" class="form-control" rows="3" placeholder="Optional operator notes, rollout scope, or change ticket reference"></textarea>
+                    <span asp-validation-for="Notes" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="alert alert-info" style="margin-bottom:0;">
+                <strong>Example immediate device deployment</strong><br />
+                Target Type = <code>Device</code><br />
+                Target Value = the device's <code>DeviceId</code><br />
+                Execute Mode = <code>Immediate</code>
+            </div>
+            <div class="alert alert-secondary" style="margin-bottom:0;">
+                <strong>Example windowed store deployment</strong><br />
+                Target Type = <code>Store</code><br />
+                Target Value = <code>02350</code><br />
+                Execute Mode = <code>Windowed</code><br />
+                Window = <code>01:00:00</code> to <code>04:00:00</code>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-footer bg-white d-flex gap-2">
+        <button type="submit" class="btn btn-primary">@submitText</button>
+        <a href="/Dashboard/Deployments" class="btn btn-secondary">Cancel</a>
+        @if (isEdit && !string.IsNullOrWhiteSpace(deploymentId))
+        {
+            <form method="post" action="/Dashboard/DeleteDeployment/@deploymentId" class="inline" onsubmit="return confirm('Hard delete this deployment?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-danger">Delete Deployment</button>
+            </form>
+        }
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

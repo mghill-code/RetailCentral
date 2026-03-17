@@ -1,0 +1,140 @@
+@model RetailCentral.Api.Models.Deployments.DeploymentDetailResponse
+
+@{
+    ViewData["Title"] = "Deployment Detail";
+
+    int total = Model.Devices.Count;
+    int completed = Model.Devices.Count(d => d.Status == 7);
+    int failed = Model.Devices.Count(d => d.Status == 8 || d.Status == 9 || d.Status == 10 || d.Status == 11);
+    int waiting = Model.Devices.Count(d => d.Status == 1 || d.Status == 2 || d.Status == 3 || d.Status == 4 || d.Status == 5 || d.Status == 6);
+
+    string DeviceStatusLabel(int status) => status switch
+    {
+        1 => "Queued",
+        2 => "Assigned",
+        3 => "Downloading",
+        4 => "Downloaded",
+        5 => "Waiting Window",
+        6 => "Executing",
+        7 => "Completed",
+        8 => "Failed Download",
+        9 => "Failed Hash",
+        10 => "Failed Execution",
+        11 => "Timed Out",
+        12 => "Cancelled",
+        _ => $"Status {status}"
+    };
+
+    string DeviceStatusBadge(int status) => status switch
+    {
+        7 => "badge-succeeded",
+        8 or 9 or 10 or 11 or 12 => "badge-failed",
+        5 => "badge-window",
+        3 or 4 or 6 => "badge-inprogress",
+        1 or 2 => "badge-pending",
+        _ => "badge-muted"
+    };
+
+    string DeploymentStatusLabel(int status) => status switch
+    {
+        1 => "Draft",
+        2 => "Queued",
+        3 => "Active",
+        4 => "Completed",
+        5 => "Partial Failure",
+        6 => "Cancelled",
+        _ => $"Status {status}"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1>Deployment #@Model.DeploymentId</h1>
+        <p>Package rollout detail, per-device execution results, and recovery actions.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="/Dashboard/EditDeployment/@Model.DeploymentId">Edit Deployment</a>
+        <form method="post" action="/Dashboard/RetryFailedDeploymentDevices/@Model.DeploymentId" class="inline">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn">Retry Failed</button>
+        </form>
+        <form method="post" action="/Dashboard/CancelDeployment/@Model.DeploymentId" class="inline" onsubmit="return confirm('Cancel deployment #@Model.DeploymentId?');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-warning">Cancel</button>
+        </form>
+        <form method="post" action="/Dashboard/DeleteDeployment/@Model.DeploymentId" class="inline" onsubmit="return confirm('Hard delete deployment #@Model.DeploymentId?');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+
+@if (TempData["DeploymentMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["DeploymentMessage"]</div>
+}
+
+<div class="grid">
+    <div class="card metric-card progress-card"><div class="metric-label">Total Devices</div><div class="metric-value">@total</div></div>
+    <div class="card metric-card success-card"><div class="metric-label">Completed</div><div class="metric-value online">@completed</div></div>
+    <div class="card metric-card failed-card"><div class="metric-label">Failed</div><div class="metric-value offline">@failed</div></div>
+    <div class="card metric-card pending-card"><div class="metric-label">Waiting / Active</div><div class="metric-value pending">@waiting</div></div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h3>Deployment Summary</h3>
+        <div class="kv-grid">
+            <div class="kv-item"><span class="kv-label">Package</span><span class="kv-value">@Model.PackageName</span></div>
+            <div class="kv-item"><span class="kv-label">Package Version</span><span class="kv-value">@(Model.PackageVersion ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Target</span><span class="kv-value">@Model.TargetValue</span></div>
+            <div class="kv-item"><span class="kv-label">Mode</span><span class="kv-value">@Model.ExecuteMode</span></div>
+            <div class="kv-item"><span class="kv-label">Status</span><span class="kv-value"><span class="badge @(Model.Status == 4 ? "badge-succeeded" : Model.Status == 5 ? "badge-warning" : Model.Status == 6 ? "badge-danger" : Model.Status == 3 ? "badge-inprogress" : "badge-pending")">@DeploymentStatusLabel(Model.Status)</span></span></div>
+            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Window Start</span><span class="kv-value">@(Model.WindowStartLocal?.ToString() ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Window End</span><span class="kv-value">@(Model.WindowEndLocal?.ToString() ?? "-")</span></div>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Operator Notes</h3>
+        <div class="empty-state">Use the action buttons above to retry failed devices, edit deployment settings, or cancel/delete this rollout.</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Target Devices</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:10%;">Store</th>
+                    <th style="width:16%;">Hostname</th>
+                    <th style="width:16%;">DeviceId</th>
+                    <th style="width:12%;">Status</th>
+                    <th style="width:10%;">Download</th>
+                    <th style="width:10%;">Execute</th>
+                    <th style="width:8%;">Exit Code</th>
+                    <th style="width:18%;">Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in Model.Devices)
+                {
+                    <tr>
+                        <td>@d.StoreNumber</td>
+                        <td>
+                            <div><a href="/Dashboard/Device/@d.DeviceId"><strong>@d.Hostname</strong></a></div>
+                            <div class="subtle">Heartbeat: @(d.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
+                        </td>
+                        <td><span class="subtle">@d.DeviceId</span></td>
+                        <td><span class="badge @DeviceStatusBadge(d.Status)">@DeviceStatusLabel(d.Status)</span></td>
+                        <td>@d.DownloadStatus</td>
+                        <td>@d.ExecuteStatus</td>
+                        <td>@(d.ExitCode?.ToString() ?? "-")</td>
+                        <td>@(string.IsNullOrWhiteSpace(d.ResultMessage) ? "-" : d.ResultMessage)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

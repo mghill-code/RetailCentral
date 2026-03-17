@@ -3,9 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
+using RetailCentral.Api.Services.Deployments;
 using Serilog;
 using System.IO;
 using System.Threading.RateLimiting;
+
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -18,9 +20,8 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog();
-
+builder.Services.AddScoped<IDeploymentService, DeploymentService>();
 builder.Services.AddControllersWithViews();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

@@ -1,22 +1,30 @@
-﻿@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
+@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
 
 @{
+    ViewData["Title"] = "Device Detail";
     var recentFailed = Model.RecentCommands.Where(c => c.Status == "Failed").Take(5).ToList();
 }
 
 @if (TempData["DeviceMessage"] != null)
 {
-    <div class="card">
-        <strong>@TempData["DeviceMessage"]</strong>
-    </div>
+    <div class="alert alert-success">@TempData["DeviceMessage"]</div>
 }
 
-<h2>Device Detail</h2>
+<div class="page-header">
+    <div>
+        <h1>@Model.Hostname</h1>
+        <p>Device detail, health posture, quick actions, and recent command activity.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/CreateDeployment?targetType=1&targetValue=@Model.DeviceId">🚀 Deploy to Device</a>
+        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">🛠 Helpdesk</a>
+        <a class="btn btn-outline" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">Advanced Command</a>
+    </div>
+</div>
 
 @if (Model.Health != null)
 {
     var h = Model.Health;
-
     var statusCss = h.Status switch
     {
         "Healthy" => "badge-online",
@@ -25,20 +33,18 @@
     };
 
     <div class="card">
-        <h3>Device Health Score</h3>
-
+        <h3>Health Score</h3>
         <div class="health-legend">
             <div class="legend-section">
                 <strong>Score Calculation</strong>
                 <ul>
-                    <li><b>Heartbeat healthy</b> (last 5 minutes) = +40</li>
-                    <li><b>Disk space OK</b> (>= 15% free) = +25</li>
-                    <li><b>Memory OK</b> (>= 4GB) = +15</li>
-                    <li><b>No command failures in last 24h</b> = +10</li>
-                    <li><b>Inventory refreshed in last 24h</b> = +10</li>
+                    <li>@Model.HealthLegendHeartbeat</li>
+                    <li>@Model.HealthLegendDisk</li>
+                    <li>@Model.HealthLegendMemory</li>
+                    <li>@Model.HealthLegendFailures</li>
+                    <li>@Model.HealthLegendInventory</li>
                 </ul>
             </div>
-
             <div class="legend-section">
                 <strong>Status Levels</strong>
                 <ul>
@@ -47,40 +53,33 @@
                     <li><span class="badge badge-offline">Critical</span> 0–69</li>
                 </ul>
             </div>
-
             <div class="legend-section">
                 <strong>Column Meanings</strong>
                 <ul>
-                    <li><span class="health-ok">OK</span> = Passing check</li>
-                    <li><span class="health-issue">Issue</span> = Problem detected</li>
-                    <li><span class="health-stale">Stale</span> = Inventory older than 24h</li>
+                    <li><span class="health-ok">OK</span> = passing check</li>
+                    <li><span class="health-issue">Issue</span> = problem detected</li>
+                    <li><span class="health-stale">Stale</span> = inventory older than 24h</li>
                 </ul>
             </div>
         </div>
 
         <div class="device-health-summary">
             <div class="device-health-score-block">
-                <div class="progress">
-                    <div class="progress-bar @(h.Status == "Healthy" ? "success" : h.Status == "Warning" ? "pending" : "failed")"
-                         style="width:@h.Score%;"></div>
-                </div>
+                <div class="progress"><div class="progress-bar @(h.Status == "Healthy" ? "success" : h.Status == "Warning" ? "pending" : "failed")" style="width:@h.Score%;"></div></div>
                 <div class="device-health-score-text">@h.Score%</div>
-                <div style="margin-top:8px;">
-                    <span class="badge @statusCss">@h.Status</span>
-                </div>
+                <div style="margin-top:8px;"><span class="badge @statusCss">@h.Status</span></div>
             </div>
-
             <div class="device-health-checks">
                 <div><strong>Heartbeat:</strong> <span class="@(h.HeartbeatHealthy ? "health-ok" : "health-issue")">@(h.HeartbeatHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Disk:</strong> <span class="@(h.DiskHealthy ? "health-ok" : "health-issue")">@(h.DiskHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Memory:</strong> <span class="@(h.MemoryHealthy ? "health-ok" : "health-issue")">@(h.MemoryHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Recent Failures:</strong> <span class="@(h.FailuresHealthy ? "health-ok" : "health-issue")">@(h.FailuresHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Inventory:</strong> <span class="@(h.InventoryFresh ? "health-ok" : "health-stale")">@(h.InventoryFresh ? "Fresh" : "Stale")</span></div>
-                <div><strong>Last Heartbeat:</strong> @(h.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</div>
-                <div><strong>Inventory Updated:</strong> @(h.InventoryUpdatedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</div>
-                <div><strong>Disk Free:</strong> @(h.HardDriveFreeSpace ?? "")</div>
-                <div><strong>Disk Size:</strong> @(h.HardDriveSize ?? "")</div>
-                <div><strong>Memory:</strong> @(h.Memory ?? "")</div>
+                <div><strong>Last Heartbeat:</strong> @(h.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
+                <div><strong>Inventory Updated:</strong> @(h.InventoryUpdatedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
+                <div><strong>Disk Free:</strong> @(h.HardDriveFreeSpace ?? "-")</div>
+                <div><strong>Disk Size:</strong> @(h.HardDriveSize ?? "-")</div>
+                <div><strong>Memory:</strong> @(h.Memory ?? "-")</div>
             </div>
         </div>
     </div>
@@ -88,30 +87,35 @@
 
 <div class="grid-2">
     <div class="card">
-        <h3>@Model.Hostname</h3>
-        <div><strong>Store:</strong> @Model.StoreNumber</div>
-        <div>
-            <strong>Status:</strong>
-            <span class="badge @(Model.IsOnline ? "badge-online" : "badge-offline")">
-                @(Model.IsOnline ? "Online" : "Offline")
-            </span>
+        <h3>Device Summary</h3>
+        <div class="kv-grid">
+            <div class="kv-item"><span class="kv-label">Store</span><span class="kv-value">@Model.StoreNumber</span></div>
+            <div class="kv-item"><span class="kv-label">Status</span><span class="kv-value"><span class="badge @(Model.IsOnline ? "badge-online" : "badge-offline")">@(Model.IsOnline ? "Online" : "Offline")</span></span></div>
+            <div class="kv-item"><span class="kv-label">Agent Version</span><span class="kv-value">@(Model.AgentVersion ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">OS Version</span><span class="kv-value">@(Model.OsVersion ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Machine Name</span><span class="kv-value">@(Model.MachineName ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Machine Guid</span><span class="kv-value">@(Model.MachineGuid ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Last Seen</span><span class="kv-value">@Model.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Last IP</span><span class="kv-value">@(Model.LastIp ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">First Seen</span><span class="kv-value">@Model.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Enabled</span><span class="kv-value">@(Model.IsEnabled ? "Yes" : "Retired")</span></div>
         </div>
-        <div><strong>Version:</strong> @Model.AgentVersion</div>
-        <div><strong>Last Seen:</strong> @Model.LastSeenUtc</div>
-        <div><strong>Last IP:</strong> @Model.LastIp</div>
-        <div><strong>Enabled:</strong> @(Model.IsEnabled ? "Yes" : "No (Retired)")</div>
+        @if (Model.Groups.Count > 0)
+        {
+            <div style="margin-top:14px;">
+                <span class="kv-label">Group Membership</span>
+                <div class="chips">
+                    @foreach (var g in Model.Groups)
+                    {
+                        <a class="chip" href="/Dashboard/Group?groupName=@Uri.EscapeDataString(g)">@g</a>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
     <div class="card">
         <h3>Quick Actions</h3>
-
-        <div class="action-row">
-            <a class="btn" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">🛠 Helpdesk Commands</a>
-            <a class="btn btn-secondary" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">🚀 Advanced Command</a>
-        </div>
-
-        <hr />
-
         <div class="helpdesk-quick-actions">
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
                 @Html.AntiForgeryToken()
@@ -120,7 +124,6 @@
                 <input type="hidden" name="CommandKey" value="CollectSystemInfo" />
                 <button type="submit">📊 Collect System Info</button>
             </form>
-
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
@@ -128,43 +131,32 @@
                 <input type="hidden" name="CommandKey" value="NetworkInfo" />
                 <button type="submit">🌐 Network Info</button>
             </form>
-
-            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline"
-                  onsubmit="return confirm('Restart POS on @Model.Hostname?');">
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Restart POS on @Model.Hostname?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RestartPOS" />
-                <button type="submit" class="btn-secondary">🧾 Restart POS</button>
+                <button type="submit" class="btn btn-secondary">🧾 Restart POS</button>
             </form>
-
-            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline"
-                  onsubmit="return confirm('Reboot @Model.Hostname?');">
+            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Reboot @Model.Hostname?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RebootDevice" />
-                <button type="submit" class="btn-danger">🔄 Reboot Device</button>
+                <button type="submit" class="btn btn-danger">🔄 Reboot Device</button>
             </form>
-
             <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deviceId" value="@Model.DeviceId" />
                 <button type="submit">🔁 Requeue Failed Commands</button>
             </form>
+            <form method="post" action="/Dashboard/RetireDevice" class="inline" onsubmit="return confirm('Retire this device?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="deviceId" value="@Model.DeviceId" />
+                <button class="btn btn-danger" @(Model.IsOnline ? "disabled" : "")>Retire Device</button>
+            </form>
         </div>
     </div>
-</div>
-
-<hr />
-
-<div class="action-row">
-    <form method="post" action="/Dashboard/RetireDevice"
-          onsubmit="return confirm('Retire this device? It will be removed from normal active views but history will be kept.');">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-        <button class="btn btn-danger" @(Model.IsOnline ? "disabled" : "")>Retire Device</button>
-    </form>
 </div>
 
 <div class="card">
@@ -173,11 +165,11 @@
         <table>
             <thead>
                 <tr>
-                    <th style="width:28%;">Command</th>
-                    <th style="width:18%;">Type</th>
-                    <th style="width:16%;">Status</th>
-                    <th style="width:18%;">Scope</th>
-                    <th style="width:20%;">Created</th>
+                    <th>Command</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Scope</th>
+                    <th>Created</th>
                 </tr>
             </thead>
             <tbody>
@@ -189,24 +181,14 @@
                         "failed" => "badge-failed",
                         "pending" => "badge-pending",
                         "inprogress" => "badge-inprogress",
-                        _ => "badge-pending"
+                        _ => "badge-muted"
                     };
-
-                    var typeCss = c.Type?.ToLower() switch
-                    {
-                        "echo" => "badge-echo",
-                        "collectsysteminfo" => "badge-collectsysteminfo",
-                        "runprocess" => "badge-runprocess",
-                        "downloadfile" => "badge-downloadfile",
-                        _ => "badge-echo"
-                    };
-
                     <tr>
                         <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
-                        <td><span class="badge @typeCss">@c.Type</span></td>
+                        <td>@c.Type</td>
                         <td><span class="badge @statusCss">@c.Status</span></td>
                         <td>@c.Scope</td>
-                        <td>@c.CreatedUtc</td>
+                        <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
                     </tr>
                 }
             </tbody>
@@ -222,10 +204,10 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="width:30%;">Command</th>
-                        <th style="width:20%;">Type</th>
-                        <th style="width:20%;">Status</th>
-                        <th style="width:30%;">Created</th>
+                        <th>Command</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Created</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -235,7 +217,7 @@
                             <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
                             <td>@c.Type</td>
                             <td><span class="badge badge-failed">@c.Status</span></td>
-                            <td>@c.CreatedUtc</td>
+                            <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
                         </tr>
                     }
                 </tbody>

@@ -26,6 +26,23 @@ public sealed class FileDownloadService
 
         return destinationPath;
     }
+    public async Task<string> DownloadAsync(string url, string destinationFolder, string destinationFileName, CancellationToken ct)
+    {
+        var client = _httpClientFactory.CreateClient();
+
+        Directory.CreateDirectory(destinationFolder);
+
+        var destinationPath = Path.Combine(destinationFolder, destinationFileName);
+
+        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        await using var source = await response.Content.ReadAsStreamAsync(ct);
+        await using var target = File.Create(destinationPath);
+        await source.CopyToAsync(target, ct);
+
+        return destinationPath;
+    }
 
     public static string ComputeSha256Hex(string filePath)
     {

@@ -22,6 +22,218 @@ namespace RetailCentral.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.Deployment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowOutsideWindow")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ExecuteMode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetValue")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("UseStoreLocalTime")
+                        .HasColumnType("bit");
+
+                    b.Property<TimeSpan?>("WindowEndLocal")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan?>("WindowStartLocal")
+                        .HasColumnType("time");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Deployments", (string)null);
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.DeploymentDevice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeploymentId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DownloadCompletedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DownloadStartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DownloadStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ExecuteCompletedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExecuteStartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ExecuteStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ExitCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FilePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Hostname")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("LastHeartbeatUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResultMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoreNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeploymentId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("DeploymentDevices", (string)null);
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.Package", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ExecutionArguments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ExecutionCommand")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("PackageType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RebootBehavior")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Version")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("WorkingDirectory")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Packages", (string)null);
+                });
+
             modelBuilder.Entity("RetailCentral.Api.Models.Command", b =>
                 {
                     b.Property<Guid>("CommandId")
@@ -391,6 +603,28 @@ namespace RetailCentral.Api.Migrations
                     b.ToTable("RegisterInventories");
                 });
 
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.Deployment", b =>
+                {
+                    b.HasOne("RetailCentral.Api.Data.Entities.Package", "Package")
+                        .WithMany("Deployments")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Package");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.DeploymentDevice", b =>
+                {
+                    b.HasOne("RetailCentral.Api.Data.Entities.Deployment", "Deployment")
+                        .WithMany("DeploymentDevices")
+                        .HasForeignKey("DeploymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Deployment");
+                });
+
             modelBuilder.Entity("RetailCentral.Api.Models.DeviceGroupMember", b =>
                 {
                     b.HasOne("RetailCentral.Api.Models.DeviceGroup", "DeviceGroup")
@@ -428,6 +662,16 @@ namespace RetailCentral.Api.Migrations
                         .HasForeignKey("DeviceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.Deployment", b =>
+                {
+                    b.Navigation("DeploymentDevices");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Data.Entities.Package", b =>
+                {
+                    b.Navigation("Deployments");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,0 +1,82 @@
+@model RetailCentral.Api.ViewModels.Deployments.PackageListViewModel
+
+@{
+    ViewData["Title"] = "Packages";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Packages</h1>
+        <p>Manage deployable artifacts, execution defaults, and package lifecycle state.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/CreatePackage">➕ Create Package</a>
+        <a class="btn btn-secondary" href="/Dashboard/CreateDeployment">🚀 New Deployment</a>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+<div class="card toolbar-card">
+    <div class="subtle">Packages available: @Model.Packages.Count</div>
+    <div class="chips">
+        <span class="chip">Enabled: @Model.Packages.Count(x => x.IsEnabled)</span>
+        <span class="chip">Disabled: @Model.Packages.Count(x => !x.IsEnabled)</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:6%;">Id</th>
+                    <th style="width:16%;">Name</th>
+                    <th style="width:8%;">Version</th>
+                    <th style="width:12%;">Type</th>
+                    <th style="width:12%;">File</th>
+                    <th style="width:20%;">Storage Path</th>
+                    <th style="width:8%;">Timeout</th>
+                    <th style="width:8%;">State</th>
+                    <th style="width:10%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pkg in Model.Packages)
+                {
+                    <tr>
+                        <td>@pkg.Id</td>
+                        <td>
+                            <div><strong>@pkg.Name</strong></div>
+                            <div class="subtle">Created @pkg.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</div>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(pkg.Version) ? "-" : pkg.Version)</td>
+                        <td>@pkg.PackageType</td>
+                        <td>@pkg.FileName</td>
+                        <td><span class="subtle">@pkg.StoragePath</span></td>
+                        <td>@pkg.TimeoutSeconds s</td>
+                        <td>
+                            <span class="badge @(pkg.IsEnabled ? "badge-succeeded" : "badge-muted")">@(pkg.IsEnabled ? "Enabled" : "Disabled")</span>
+                        </td>
+                        <td>
+                            <div class="action-row">
+                                <a class="btn btn-outline" href="/Dashboard/EditPackage/@pkg.Id">Edit</a>
+                                <form method="post" action="/Dashboard/DisablePackage/@pkg.Id" class="inline" onsubmit="return confirm('Disable package @pkg.Name?');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-warning">Disable</button>
+                                </form>
+                                <form method="post" action="/Dashboard/DeletePackage/@pkg.Id" class="inline" onsubmit="return confirm('Hard delete package @pkg.Name? This cannot be undone.');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

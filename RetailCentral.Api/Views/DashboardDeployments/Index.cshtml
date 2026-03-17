@@ -1,0 +1,47 @@
+﻿@model List<RetailCentral.Api.Models.Dashboard.Deployments.DeploymentListItemViewModel>
+
+@{
+    ViewData["Title"] = "Deployments";
+}
+
+<h1>Deployments</h1>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">New Deployment</a>
+</p>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Package</th>
+            <th>Target</th>
+            <th>Mode</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Devices</th>
+            <th>Completed</th>
+            <th>Failed</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.PackageName</td>
+                <td>@item.TargetType - @item.TargetValue</td>
+                <td>@item.ExecuteMode</td>
+                <td>@item.Status</td>
+                <td>@item.CreatedUtc.ToLocalTime()</td>
+                <td>@item.DeviceCount</td>
+                <td>@item.CompletedCount</td>
+                <td>@item.FailedCount</td>
+                <td>
+                    <a asp-action="Details" asp-route-id="@item.Id">View</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

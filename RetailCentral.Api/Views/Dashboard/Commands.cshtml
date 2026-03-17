@@ -1,49 +1,68 @@
-﻿@model IEnumerable<RetailCentral.Api.ViewModels.CommandSummaryViewModel>
+@model IEnumerable<RetailCentral.Api.ViewModels.CommandSummaryViewModel>
 
-<h2>Commands</h2>
+@{
+    ViewData["Title"] = "Commands";
+}
 
-<div class="table-wrap">
-    <table>
-        <thead>
-            <tr>
-                <th style="width:28%;">Command</th>
-                <th style="width:18%;">Type</th>
-                <th style="width:16%;">Status</th>
-                <th style="width:14%;">Scope</th>
-                <th style="width:12%;">Store</th>
-                <th style="width:12%;">Created</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var c in Model)
-            {
-                var statusCss = c.Status?.ToLower() switch
-                {
-                    "succeeded" => "badge-succeeded",
-                    "failed" => "badge-failed",
-                    "pending" => "badge-pending",
-                    "inprogress" => "badge-inprogress",
-                    _ => "badge-pending"
-                };
+<div class="page-header">
+    <div>
+        <h1>Command History</h1>
+        <p>Track command issuance, execution status, and drill into detailed results.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/IssueCommand">🚀 Issue Command</a>
+        <a class="btn btn-secondary" href="/Dashboard/Failures">⚠ View Failures</a>
+    </div>
+</div>
 
-                var typeCss = c.Type?.ToLower() switch
-                {
-                    "echo" => "badge-echo",
-                    "collectsysteminfo" => "badge-collectsysteminfo",
-                    "runprocess" => "badge-runprocess",
-                    "downloadfile" => "badge-downloadfile",
-                    _ => "badge-echo"
-                };
-
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
                 <tr>
-                    <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
-                    <td><span class="badge @typeCss">@c.Type</span></td>
-                    <td><span class="badge @statusCss">@c.Status</span></td>
-                    <td>@c.Scope</td>
-                    <td>@c.StoreNumber</td>
-                    <td>@c.CreatedUtc</td>
+                    <th style="width:24%;">Command</th>
+                    <th style="width:16%;">Type</th>
+                    <th style="width:14%;">Status</th>
+                    <th style="width:12%;">Scope</th>
+                    <th style="width:10%;">Store</th>
+                    <th style="width:24%;">Created</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var c in Model)
+                {
+                    var statusCss = c.Status?.ToLower() switch
+                    {
+                        "succeeded" => "badge-succeeded",
+                        "failed" => "badge-failed",
+                        "pending" => "badge-pending",
+                        "inprogress" => "badge-inprogress",
+                        _ => "badge-muted"
+                    };
+
+                    var typeCss = c.Type?.ToLower() switch
+                    {
+                        "echo" => "badge-muted",
+                        "collectsysteminfo" => "badge-inprogress",
+                        "runprocess" => "badge-window",
+                        "downloadfile" => "badge-download",
+                        "installpackage" => "badge-active",
+                        _ => "badge-muted"
+                    };
+
+                    <tr>
+                        <td>
+                            <div><a href="/Dashboard/Command/@c.CommandId"><strong>@c.CommandId</strong></a></div>
+                            <div class="subtle">Device: @(c.DeviceId?.ToString() ?? "n/a")</div>
+                        </td>
+                        <td><span class="badge @typeCss">@c.Type</span></td>
+                        <td><span class="badge @statusCss">@c.Status</span></td>
+                        <td>@c.Scope</td>
+                        <td>@(string.IsNullOrWhiteSpace(c.StoreNumber) ? "-" : c.StoreNumber)</td>
+                        <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 </div>

@@ -1,25 +1,38 @@
-﻿@model List<RetailCentral.Api.ViewModels.VersionSummaryViewModel>
+@model List<RetailCentral.Api.ViewModels.VersionSummaryViewModel>
 
-<h2>Agent Version Summary</h2>
+@{
+    ViewData["Title"] = "Versions";
+}
 
-<table>
-    <thead>
-        <tr>
-            <th>Agent Version</th>
-            <th>Total Devices</th>
-            <th>Online</th>
-            <th>Offline</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var v in Model)
-        {
-            <tr>
-                <td>@v.AgentVersion</td>
-                <td>@v.DeviceCount</td>
-                <td class="online">@v.OnlineCount</td>
-                <td class="offline">@v.OfflineCount</td>
-            </tr>
-        }
-    </tbody>
-</table>
+<div class="page-header">
+    <div>
+        <h1>Agent Versions</h1>
+        <p>Track version distribution and identify upgrade lag in the field.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Agent Version</th>
+                    <th>Total Devices</th>
+                    <th>Online</th>
+                    <th>Offline</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var v in Model)
+                {
+                    <tr>
+                        <td>@v.AgentVersion</td>
+                        <td>@v.DeviceCount</td>
+                        <td class="online">@v.OnlineCount</td>
+                        <td class="offline">@v.OfflineCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

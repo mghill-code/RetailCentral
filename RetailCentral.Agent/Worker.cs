@@ -123,6 +123,7 @@ public sealed class Worker : BackgroundService
 
                     var resultBody = new
                     {
+                        commandType = cmd.Type,
                         status,
                         exitCode = exit,
                         stdOut = stdout,

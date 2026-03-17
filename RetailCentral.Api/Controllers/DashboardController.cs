@@ -1,19 +1,27 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Models;
+using RetailCentral.Api.Models.Deployments;
 using RetailCentral.Api.ViewModels;
+using RetailCentral.Api.Services.Deployments;
+using RetailCentral.Api.ViewModels.Deployments;
 using System.Text;
+
+
 
 namespace RetailCentral.Api.Controllers
 {
     public class DashboardController : Controller
     {
         private readonly RetailCentralDbContext _db;
+        private readonly IDeploymentService _deploymentService;
 
-        public DashboardController(RetailCentralDbContext db)
+        public DashboardController(RetailCentralDbContext db, IDeploymentService deploymentService)
         {
             _db = db;
+            _deploymentService = deploymentService;
         }
 
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
@@ -77,88 +85,89 @@ namespace RetailCentral.Api.Controllers
                 }
             };
         }
+
         private static List<HelpdeskCommandOptionViewModel> GetHelpdeskCommands()
         {
             return new List<HelpdeskCommandOptionViewModel>
-    {
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "CollectSystemInfo",
-            Name = "Collect System Info",
-            Description = "Collect the latest hardware, OS, memory, disk, network, and inventory details.",
-            Category = "Diagnostics",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = false
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "NetworkInfo",
-            Name = "Network Info",
-            Description = "Runs ipconfig /all and returns detailed network information.",
-            Category = "Diagnostics",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = false
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "RestartPOS",
-            Name = "Restart POS",
-            Description = "Placeholder command that calls POSRestart.cmd on the device.",
-            Category = "Application Recovery",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = true
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "RestartRetailShell",
-            Name = "Restart RetailShell",
-            Description = "Placeholder command that calls RetailShellRestart.cmd on the device.",
-            Category = "Application Recovery",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = true
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "RestartAgent",
-            Name = "Restart Agent",
-            Description = "Placeholder command that calls AgentRestart.cmd on the device.",
-            Category = "Application Recovery",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = true
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "RebootDevice",
-            Name = "Reboot Device",
-            Description = "Performs a forced reboot after a short delay.",
-            Category = "Device Recovery",
-            DeviceSupported = true,
-            StoreSupported = true,
-            GroupSupported = true,
-            Destructive = true
-        },
-        new HelpdeskCommandOptionViewModel
-        {
-            Key = "RequeueFailed",
-            Name = "Requeue Failed Commands",
-            Description = "Requeues recent failed commands for a single device only.",
-            Category = "Recovery",
-            DeviceSupported = true,
-            StoreSupported = false,
-            GroupSupported = false,
-            Destructive = false
-        }
-    };
+            {
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "CollectSystemInfo",
+                    Name = "Collect System Info",
+                    Description = "Collect the latest hardware, OS, memory, disk, network, and inventory details.",
+                    Category = "Diagnostics",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = false
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "NetworkInfo",
+                    Name = "Network Info",
+                    Description = "Runs ipconfig /all and returns detailed network information.",
+                    Category = "Diagnostics",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = false
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "RestartPOS",
+                    Name = "Restart POS",
+                    Description = "Placeholder command that calls POSRestart.cmd on the device.",
+                    Category = "Application Recovery",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = true
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "RestartRetailShell",
+                    Name = "Restart RetailShell",
+                    Description = "Placeholder command that calls RetailShellRestart.cmd on the device.",
+                    Category = "Application Recovery",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = true
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "RestartAgent",
+                    Name = "Restart Agent",
+                    Description = "Placeholder command that calls AgentRestart.cmd on the device.",
+                    Category = "Application Recovery",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = true
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "RebootDevice",
+                    Name = "Reboot Device",
+                    Description = "Performs a forced reboot after a short delay.",
+                    Category = "Device Recovery",
+                    DeviceSupported = true,
+                    StoreSupported = true,
+                    GroupSupported = true,
+                    Destructive = true
+                },
+                new HelpdeskCommandOptionViewModel
+                {
+                    Key = "RequeueFailed",
+                    Name = "Requeue Failed Commands",
+                    Description = "Requeues recent failed commands for a single device only.",
+                    Category = "Recovery",
+                    DeviceSupported = true,
+                    StoreSupported = false,
+                    GroupSupported = false,
+                    Destructive = false
+                }
+            };
         }
 
         public async Task<IActionResult> Index()
@@ -357,6 +366,222 @@ namespace RetailCentral.Api.Controllers
             };
 
             return View(model);
+        }
+        [HttpGet]
+        public async Task<IActionResult> Packages(CancellationToken cancellationToken)
+        {
+            var vm = new PackageListViewModel
+            {
+                Packages = await _deploymentService.GetPackagesAsync(cancellationToken),
+                Message = TempData["PackageMessage"]?.ToString()
+            };
+
+            return View(vm);
+        }
+
+        [HttpGet]
+        public IActionResult CreatePackage()
+        {
+            var vm = new CreatePackageViewModel
+            {
+                TimeoutSeconds = 1800,
+                RebootBehavior = 0,
+                PackageType = 1
+            };
+
+            PopulateCreatePackageLists(vm);
+            SetPackageFormViewData("Create", nameof(CreatePackage), "Create Package", "Create Package");
+            return View(vm);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> EditPackage(int id, CancellationToken cancellationToken)
+        {
+            var pkg = await _deploymentService.GetPackageByIdAsync(id, cancellationToken);
+            if (pkg == null)
+                return NotFound();
+
+            var vm = new CreatePackageViewModel
+            {
+                Name = pkg.Name,
+                Version = pkg.Version,
+                Description = pkg.Description,
+                PackageType = pkg.PackageType,
+                FileName = pkg.FileName,
+                StoragePath = pkg.StoragePath,
+                Sha256 = pkg.Sha256,
+                FileSizeBytes = pkg.FileSizeBytes,
+                ExecutionCommand = pkg.ExecutionCommand,
+                ExecutionArguments = pkg.ExecutionArguments,
+                WorkingDirectory = pkg.WorkingDirectory,
+                TimeoutSeconds = pkg.TimeoutSeconds,
+                RebootBehavior = pkg.RebootBehavior
+            };
+
+            PopulateCreatePackageLists(vm);
+            SetPackageFormViewData("Edit", nameof(EditPackage), "Save Package Changes", $"Edit Package #{pkg.Id}");
+            ViewData["PackageId"] = pkg.Id;
+            ViewData["PackageEnabled"] = pkg.IsEnabled;
+            return View("CreatePackage", vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreatePackage(CreatePackageViewModel model, CancellationToken cancellationToken)
+        {
+            return await SavePackageInternalAsync(model, null, cancellationToken);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditPackage(int id, CreatePackageViewModel model, CancellationToken cancellationToken)
+        {
+            return await SavePackageInternalAsync(model, id, cancellationToken);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DisablePackage(int id, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _deploymentService.DisablePackageAsync(id, cancellationToken);
+                TempData["PackageMessage"] = $"Package {id} disabled.";
+            }
+            catch (Exception ex)
+            {
+                TempData["PackageMessage"] = $"Disable failed: {ex.Message}";
+            }
+
+            return RedirectToAction(nameof(Packages));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeletePackage(int id, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _deploymentService.DeletePackageAsync(id, cancellationToken);
+                TempData["PackageMessage"] = $"Package {id} deleted.";
+            }
+            catch (Exception ex)
+            {
+                TempData["PackageMessage"] = $"Delete failed: {ex.Message}";
+            }
+
+            return RedirectToAction(nameof(Packages));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Deployments(CancellationToken cancellationToken)
+        {
+            ViewData["DeploymentMessage"] = TempData["DeploymentMessage"]?.ToString();
+
+            var vm = new DeploymentIndexViewModel
+            {
+                Packages = await _deploymentService.GetPackagesAsync(cancellationToken),
+                Deployments = await _deploymentService.GetDeploymentsAsync(cancellationToken)
+            };
+
+            return View(vm);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> DeploymentDetail(int id, CancellationToken cancellationToken)
+        {
+            var vm = await _deploymentService.GetDeploymentAsync(id, cancellationToken);
+            if (vm == null)
+            {
+                return NotFound();
+            }
+
+            ViewData["DeploymentMessage"] = TempData["DeploymentMessage"]?.ToString();
+            return View(vm);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> EditDeployment(int id, CancellationToken cancellationToken)
+        {
+            var deployment = await _deploymentService.GetDeploymentByIdAsync(id, cancellationToken);
+            if (deployment == null)
+                return NotFound();
+
+            var vm = new CreateDeploymentViewModel
+            {
+                PackageId = deployment.PackageId,
+                TargetType = deployment.TargetType,
+                TargetValue = deployment.TargetValue,
+                ExecuteMode = deployment.ExecuteMode,
+                WindowStartLocal = deployment.WindowStartLocal,
+                WindowEndLocal = deployment.WindowEndLocal,
+                UseStoreLocalTime = deployment.UseStoreLocalTime,
+                AllowOutsideWindow = deployment.AllowOutsideWindow,
+                RetryCount = deployment.RetryCount,
+                Notes = deployment.Notes
+            };
+
+            await PopulateCreateDeploymentLists(vm, cancellationToken);
+            SetDeploymentFormViewData("Edit", nameof(EditDeployment), "Save Deployment Changes", $"Edit Deployment #{deployment.Id}");
+            ViewData["DeploymentId"] = deployment.Id;
+            return View("CreateDeployment", vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RetryFailedDeploymentDevices(int id, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var retried = await _deploymentService.RetryFailedDevicesAsync(
+                    id,
+                    User?.Identity?.Name ?? "Dashboard",
+                    cancellationToken);
+
+                TempData["DeploymentMessage"] = retried > 0
+                    ? $"Requeued {retried} failed deployment device(s)."
+                    : "No failed deployment devices were eligible for retry.";
+            }
+            catch (Exception ex)
+            {
+                TempData["DeploymentMessage"] = $"Retry failed: {ex.Message}";
+            }
+
+            return RedirectToAction(nameof(DeploymentDetail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CancelDeployment(int id, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _deploymentService.CancelDeploymentAsync(id, cancellationToken);
+                TempData["DeploymentMessage"] = $"Deployment {id} cancelled.";
+            }
+            catch (Exception ex)
+            {
+                TempData["DeploymentMessage"] = $"Cancel failed: {ex.Message}";
+            }
+
+            return RedirectToAction(nameof(DeploymentDetail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteDeployment(int id, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _deploymentService.DeleteDeploymentAsync(id, cancellationToken);
+                TempData["DeploymentMessage"] = $"Deployment {id} deleted.";
+            }
+            catch (Exception ex)
+            {
+                TempData["DeploymentMessage"] = $"Delete failed: {ex.Message}";
+            }
+
+            return RedirectToAction(nameof(Deployments));
         }
 
         private static int Percentage(int count, int total)
@@ -766,6 +991,7 @@ namespace RetailCentral.Api.Controllers
 
             return View(groups);
         }
+
         [HttpGet]
         public async Task<IActionResult> HelpdeskCommands(Guid? deviceId, string? storeNumber, string? groupName)
         {
@@ -784,6 +1010,39 @@ namespace RetailCentral.Api.Controllers
 
             await PopulateHelpdeskCommandLists(model, OnlineCutoffUtc);
             return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> CreateDeployment(int? packageId, int? targetType, string? targetValue, CancellationToken cancellationToken)
+        {
+            var vm = new CreateDeploymentViewModel();
+            await PopulateCreateDeploymentLists(vm, cancellationToken);
+
+            if (packageId.HasValue && packageId.Value > 0)
+                vm.PackageId = packageId.Value;
+
+            if (targetType.HasValue && targetType.Value > 0)
+                vm.TargetType = targetType.Value;
+
+            if (!string.IsNullOrWhiteSpace(targetValue))
+                vm.TargetValue = targetValue.Trim();
+
+            SetDeploymentFormViewData("Create", nameof(CreateDeployment), "Create Deployment", "Create Deployment");
+            return View(vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateDeployment(CreateDeploymentViewModel model, CancellationToken cancellationToken)
+        {
+            return await SaveDeploymentInternalAsync(model, null, cancellationToken);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditDeployment(int id, CreateDeploymentViewModel model, CancellationToken cancellationToken)
+        {
+            return await SaveDeploymentInternalAsync(model, id, cancellationToken);
         }
 
         [HttpPost]
@@ -1063,10 +1322,10 @@ namespace RetailCentral.Api.Controllers
             var skipped = 0;
 
             var existingMembers = (await _db.DeviceGroupMembers
-            .Where(m => m.DeviceGroupId == group.DeviceGroupId)
-            .Select(m => m.DeviceId)
-            .ToListAsync())
-            .ToHashSet();
+                .Where(m => m.DeviceGroupId == group.DeviceGroupId)
+                .Select(m => m.DeviceId)
+                .ToListAsync())
+                .ToHashSet();
 
             var seenDeviceIdsThisImport = new HashSet<Guid>();
 
@@ -1388,7 +1647,6 @@ namespace RetailCentral.Api.Controllers
 
             return View(model);
         }
-
 
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -2045,6 +2303,7 @@ namespace RetailCentral.Api.Controllers
             var safeArguments = arguments.Replace("\\", "\\\\").Replace("\"", "\\\"");
             return $"{{\n  \"fileName\": \"{fileName}\",\n  \"arguments\": \"{safeArguments}\",\n  \"timeoutSeconds\": {timeoutSeconds}\n}}";
         }
+
         private async Task PopulateIssueCommandLists(
             IssueCommandViewModel model,
             DateTime cutoff,
@@ -2111,6 +2370,221 @@ namespace RetailCentral.Api.Controllers
                 IssuedBy = issuedBy,
                 IssuedUtc = issuedUtc
             };
+        }
+        private static void PopulateCreatePackageLists(CreatePackageViewModel model)
+        {
+            model.PackageTypes = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "1", Text = "MSI" },
+                new SelectListItem { Value = "2", Text = "EXE" },
+                new SelectListItem { Value = "3", Text = "PowerShell" },
+                new SelectListItem { Value = "4", Text = "CMD" },
+                new SelectListItem { Value = "5", Text = "BAT" },
+                new SelectListItem { Value = "6", Text = "ZIP" },
+                new SelectListItem { Value = "99", Text = "Other" }
+            };
+
+            model.RebootBehaviors = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "0", Text = "None" },
+                new SelectListItem { Value = "1", Text = "Allow" },
+                new SelectListItem { Value = "2", Text = "Require" }
+            };
+        }
+        private async Task PopulateCreateDeploymentLists(CreateDeploymentViewModel model, CancellationToken cancellationToken)
+        {
+            var packages = await _deploymentService.GetPackagesAsync(cancellationToken);
+
+            model.Packages = packages
+                .OrderBy(p => p.Name)
+                .Select(p => new SelectListItem
+                {
+                    Value = p.Id.ToString(),
+                    Text = string.IsNullOrWhiteSpace(p.Version)
+                        ? $"{p.Name} ({p.FileName})"
+                        : $"{p.Name} {p.Version} ({p.FileName})"
+                })
+                .ToList();
+
+            model.TargetTypes = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "1", Text = "Device" },
+                new SelectListItem { Value = "2", Text = "Store" },
+                new SelectListItem { Value = "3", Text = "Group" },
+                new SelectListItem { Value = "4", Text = "Fleet" }
+            };
+
+            model.ExecuteModes = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "1", Text = "Immediate" },
+                new SelectListItem { Value = "2", Text = "Windowed" },
+                new SelectListItem { Value = "3", Text = "Staged Only" }
+            };
+        }
+
+        private async Task<IActionResult> SavePackageInternalAsync(CreatePackageViewModel model, int? id, CancellationToken cancellationToken)
+        {
+            if (model.TimeoutSeconds <= 0)
+            {
+                model.TimeoutSeconds = 1800;
+            }
+
+            if (!ModelState.IsValid)
+            {
+                PopulateCreatePackageLists(model);
+                SetPackageFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditPackage) : nameof(CreatePackage), id.HasValue ? "Save Package Changes" : "Create Package", id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
+
+                var modelErrors = ModelState
+                    .Where(x => x.Value?.Errors.Count > 0)
+                    .SelectMany(x => x.Value!.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"))
+                    .ToList();
+
+                if (modelErrors.Count > 0)
+                {
+                    ViewData["DebugErrors"] = string.Join(" | ", modelErrors);
+                }
+
+                if (id.HasValue)
+                    ViewData["PackageId"] = id.Value;
+
+                return View("CreatePackage", model);
+            }
+
+            try
+            {
+                var request = new CreatePackageRequest
+                {
+                    Name = model.Name.Trim(),
+                    Version = model.Version?.Trim(),
+                    Description = model.Description?.Trim(),
+                    PackageType = model.PackageType,
+                    FileName = model.FileName.Trim(),
+                    StoragePath = model.StoragePath.Trim(),
+                    Sha256 = model.Sha256.Trim(),
+                    FileSizeBytes = model.FileSizeBytes,
+                    ExecutionCommand = string.IsNullOrWhiteSpace(model.ExecutionCommand) ? null : model.ExecutionCommand.Trim(),
+                    ExecutionArguments = string.IsNullOrWhiteSpace(model.ExecutionArguments) ? null : model.ExecutionArguments.Trim(),
+                    WorkingDirectory = string.IsNullOrWhiteSpace(model.WorkingDirectory) ? null : model.WorkingDirectory.Trim(),
+                    TimeoutSeconds = model.TimeoutSeconds,
+                    RebootBehavior = model.RebootBehavior
+                };
+
+                if (id.HasValue)
+                {
+                    var updated = await _deploymentService.UpdatePackageAsync(
+                        id.Value,
+                        request,
+                        User?.Identity?.Name ?? "Dashboard",
+                        cancellationToken);
+
+                    TempData["PackageMessage"] = $"Package '{updated.Name}' updated successfully.";
+                }
+                else
+                {
+                    var created = await _deploymentService.CreatePackageAsync(
+                        request,
+                        User?.Identity?.Name ?? "Dashboard",
+                        cancellationToken);
+
+                    TempData["PackageMessage"] = $"Package '{created.Name}' created successfully (Id {created.Id}).";
+                }
+
+                return RedirectToAction(nameof(Packages));
+            }
+            catch (Exception ex)
+            {
+                PopulateCreatePackageLists(model);
+                SetPackageFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditPackage) : nameof(CreatePackage), id.HasValue ? "Save Package Changes" : "Create Package", id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
+                if (id.HasValue)
+                    ViewData["PackageId"] = id.Value;
+                ModelState.AddModelError("", $"{(id.HasValue ? "EditPackage" : "CreatePackage")} failed: {ex.Message}");
+                ViewData["DebugErrors"] = ex.ToString();
+                return View("CreatePackage", model);
+            }
+        }
+
+        private async Task<IActionResult> SaveDeploymentInternalAsync(CreateDeploymentViewModel model, int? id, CancellationToken cancellationToken)
+        {
+            if (model.ExecuteMode == 2)
+            {
+                if (!model.WindowStartLocal.HasValue || !model.WindowEndLocal.HasValue)
+                {
+                    ModelState.AddModelError("", "Window start and end are required for Windowed deployments.");
+                }
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateCreateDeploymentLists(model, cancellationToken);
+                SetDeploymentFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment), id.HasValue ? "Save Deployment Changes" : "Create Deployment", id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+                if (id.HasValue)
+                    ViewData["DeploymentId"] = id.Value;
+                return View("CreateDeployment", model);
+            }
+
+            try
+            {
+                var request = new CreateDeploymentRequest
+                {
+                    PackageId = model.PackageId,
+                    TargetType = model.TargetType,
+                    TargetValue = model.TargetValue.Trim(),
+                    ExecuteMode = model.ExecuteMode,
+                    WindowStartLocal = model.WindowStartLocal,
+                    WindowEndLocal = model.WindowEndLocal,
+                    UseStoreLocalTime = model.UseStoreLocalTime,
+                    AllowOutsideWindow = model.AllowOutsideWindow,
+                    RetryCount = model.RetryCount,
+                    Notes = model.Notes?.Trim()
+                };
+
+                if (id.HasValue)
+                {
+                    var updated = await _deploymentService.UpdateDeploymentAsync(
+                        id.Value,
+                        request,
+                        User?.Identity?.Name ?? "Dashboard",
+                        cancellationToken);
+
+                    TempData["DeploymentMessage"] = $"Deployment {updated.Id} updated successfully.";
+                    return RedirectToAction(nameof(DeploymentDetail), new { id = updated.Id });
+                }
+                else
+                {
+                    var created = await _deploymentService.CreateDeploymentAsync(
+                        request,
+                        User?.Identity?.Name ?? "Dashboard",
+                        cancellationToken);
+
+                    TempData["DeploymentMessage"] = $"Deployment {created.Id} created successfully.";
+                    return RedirectToAction(nameof(DeploymentDetail), new { id = created.Id });
+                }
+            }
+            catch (Exception ex)
+            {
+                await PopulateCreateDeploymentLists(model, cancellationToken);
+                SetDeploymentFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment), id.HasValue ? "Save Deployment Changes" : "Create Deployment", id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+                if (id.HasValue)
+                    ViewData["DeploymentId"] = id.Value;
+                ModelState.AddModelError("", $"{(id.HasValue ? "EditDeployment" : "CreateDeployment")} failed: {ex.Message}");
+                return View("CreateDeployment", model);
+            }
+        }
+
+        private void SetPackageFormViewData(string formMode, string formAction, string submitText, string title)
+        {
+            ViewData["FormMode"] = formMode;
+            ViewData["FormAction"] = formAction;
+            ViewData["SubmitText"] = submitText;
+            ViewData["Title"] = title;
+        }
+
+        private void SetDeploymentFormViewData(string formMode, string formAction, string submitText, string title)
+        {
+            ViewData["FormMode"] = formMode;
+            ViewData["FormAction"] = formAction;
+            ViewData["SubmitText"] = submitText;
+            ViewData["Title"] = title;
         }
 
         private static List<string> SplitCsvLine(string line)

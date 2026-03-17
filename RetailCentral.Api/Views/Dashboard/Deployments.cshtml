@@ -1,0 +1,106 @@
+@model RetailCentral.Api.ViewModels.Deployments.DeploymentIndexViewModel
+
+@{
+    ViewData["Title"] = "Deployments";
+
+    string DeploymentStatusBadge(int status) => status switch
+    {
+        4 => "badge-succeeded",
+        5 => "badge-warning",
+        6 => "badge-danger",
+        3 => "badge-inprogress",
+        2 => "badge-pending",
+        _ => "badge-muted"
+    };
+
+    string DeploymentStatusLabel(int status) => status switch
+    {
+        1 => "Draft",
+        2 => "Queued",
+        3 => "Active",
+        4 => "Completed",
+        5 => "Partial Failure",
+        6 => "Cancelled",
+        _ => $"Status {status}"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1>Deployments</h1>
+        <p>Track deployment activity, rollout status, and drill into per-device execution results.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/CreateDeployment">➕ Create Deployment</a>
+        <a class="btn btn-secondary" href="/Dashboard/Packages">🗂 Packages</a>
+    </div>
+</div>
+
+@if (TempData["DeploymentMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["DeploymentMessage"]</div>
+}
+
+<div class="grid-3">
+    <div class="card metric-card progress-card">
+        <div class="metric-label">Total Deployments</div>
+        <div class="metric-value">@Model.Deployments.Count</div>
+    </div>
+    <div class="card metric-card success-card">
+        <div class="metric-label">Packages</div>
+        <div class="metric-value">@Model.Packages.Count</div>
+    </div>
+    <div class="card metric-card failed-card">
+        <div class="metric-label">Needs Attention</div>
+        <div class="metric-value">@Model.Deployments.Count(d => d.Status == 5)</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Recent Deployments</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:7%;">Id</th>
+                    <th style="width:18%;">Package</th>
+                    <th style="width:16%;">Target</th>
+                    <th style="width:12%;">Mode</th>
+                    <th style="width:12%;">Status</th>
+                    <th style="width:15%;">Created</th>
+                    <th style="width:20%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var dep in Model.Deployments)
+                {
+                    <tr>
+                        <td>@dep.Id</td>
+                        <td>
+                            <div><strong>@(dep.Package?.Name ?? "Unknown Package")</strong></div>
+                            <div class="subtle">@(string.IsNullOrWhiteSpace(dep.Package?.Version) ? dep.Package?.FileName : dep.Package?.Version)</div>
+                        </td>
+                        <td>@dep.TargetValue</td>
+                        <td>@dep.ExecuteMode</td>
+                        <td><span class="badge @DeploymentStatusBadge(dep.Status)">@DeploymentStatusLabel(dep.Status)</span></td>
+                        <td>@dep.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>
+                            <div class="action-row">
+                                <a class="btn btn-outline" href="/Dashboard/DeploymentDetail/@dep.Id">View</a>
+                                <a class="btn btn-secondary" href="/Dashboard/EditDeployment/@dep.Id">Edit</a>
+                                <form method="post" action="/Dashboard/CancelDeployment/@dep.Id" class="inline" onsubmit="return confirm('Cancel deployment @dep.Id?');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-warning">Cancel</button>
+                                </form>
+                                <form method="post" action="/Dashboard/DeleteDeployment/@dep.Id" class="inline" onsubmit="return confirm('Hard delete deployment @dep.Id? This removes its command history links.');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

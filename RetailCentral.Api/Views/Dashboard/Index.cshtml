@@ -1,45 +1,67 @@
-﻿@model RetailCentral.Api.ViewModels.DashboardIndexViewModel
+@model RetailCentral.Api.ViewModels.DashboardIndexViewModel
+
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Fleet Dashboard</h1>
+        <p>Operational visibility across devices, commands, health, version mix, and store-level exceptions.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="/Dashboard/CreateDeployment">🚀 New Deployment</a>
+        <a class="btn btn-secondary" href="/Dashboard/IssueCommand">🛠 Issue Command</a>
+    </div>
+</div>
 
 <div class="grid">
     <div class="card metric-card online-card">
-        <h3>Total Devices</h3>
+        <div class="metric-label">Total Devices</div>
         <div class="metric-value">@Model.TotalDevices</div>
+        <div class="metric-footnote">Registered active devices in inventory</div>
     </div>
-
     <div class="card metric-card success-card">
-        <h3>Online</h3>
+        <div class="metric-label">Online</div>
         <div class="metric-value online">@Model.OnlineDevices</div>
+        <div class="metric-footnote">Heartbeat within the last 5 minutes</div>
     </div>
-
     <div class="card metric-card failed-card">
-        <h3>Offline</h3>
+        <div class="metric-label">Offline</div>
         <div class="metric-value offline">@Model.OfflineDevices</div>
+        <div class="metric-footnote">Requires follow-up or store outreach</div>
     </div>
-
     <div class="card metric-card pending-card">
-        <h3>Pending Commands</h3>
+        <div class="metric-label">Pending Commands</div>
         <div class="metric-value pending">@Model.CommandsPending</div>
+        <div class="metric-footnote">Queued and waiting for agent pickup</div>
     </div>
-
     <div class="card metric-card progress-card">
-        <h3>In Progress</h3>
+        <div class="metric-label">In Progress</div>
         <div class="metric-value inprogress">@Model.CommandsInProgress</div>
+        <div class="metric-footnote">Currently locked by active agents</div>
     </div>
-
     <div class="card metric-card failed-card">
-        <h3>Failed (24h)</h3>
+        <div class="metric-label">Failed (24h)</div>
         <div class="metric-value offline">@Model.CommandsFailedLast24Hours</div>
+        <div class="metric-footnote">Recent failures requiring review</div>
     </div>
-
     <div class="card metric-card success-card">
-        <h3>Succeeded (24h)</h3>
+        <div class="metric-label">Succeeded (24h)</div>
         <div class="metric-value online">@Model.CommandsSucceededLast24Hours</div>
+        <div class="metric-footnote">Successful work completed today</div>
+    </div>
+    <div class="card metric-card warning-card">
+        <div class="metric-label">Critical Health</div>
+        <div class="metric-value">@Model.CriticalDevices</div>
+        <div class="metric-footnote">Devices scoring below warning threshold</div>
     </div>
 </div>
 
 <div class="grid-2">
     <div class="card">
         <h3>Online vs Offline</h3>
+        <p class="card-subtle">Current heartbeat-based device availability.</p>
         <div class="chart-box">
             <canvas id="deviceChart"></canvas>
         </div>
@@ -47,308 +69,211 @@
 
     <div class="card">
         <h3>Version Mix</h3>
+        <p class="card-subtle">Top agent versions in the fleet.</p>
         <div class="chart-box">
             <canvas id="versionChart"></canvas>
         </div>
     </div>
 </div>
 
-<div class="card">
-    <h3>Command Progress</h3>
-    @foreach (var p in Model.CommandProgress)
-    {
-        <div style="margin-bottom:12px;">
-            <div class="action-row" style="justify-content:space-between;">
-                <div>@p.Label</div>
-                <div>@p.Count (@p.Percent%)</div>
-            </div>
-            <div class="progress">
-                <div class="progress-bar @p.CssClass" style="width:@p.Percent%;"></div>
-            </div>
-        </div>
-    }
-</div>
-
-<div class="card">
-    <h3>Device Health Score</h3>
-    <div class="table-wrap">
-        <div class="card">
-            <h3>Device Health Score</h3>
-
-            <div class="health-legend">
-                <div class="legend-section">
-                    <strong>Score Calculation</strong>
-                    <ul>
-                        <li><b>Heartbeat healthy</b> (last 5 minutes) = +40</li>
-                        <li><b>Disk space OK</b> (≥ 15% free) = +25</li>
-                        <li><b>Memory OK</b> (≥ 4GB) = +15</li>
-                        <li><b>No command failures in last 24h</b> = +10</li>
-                        <li><b>Inventory refreshed in last 24h</b> = +10</li>
-                    </ul>
-                </div>
-
-                <div class="legend-section">
-                    <strong>Status Levels</strong>
-                    <ul>
-                        <li><span class="badge badge-online">Healthy</span> 90–100</li>
-                        <li><span class="badge badge-pending">Warning</span> 70–89</li>
-                        <li><span class="badge badge-offline">Critical</span> 0–69</li>
-                    </ul>
-                </div>
-
-                <div class="legend-section">
-                    <strong>Column Meanings</strong>
-                    <ul>
-                        <li><span class="health-ok">OK</span> = Passing check</li>
-                        <li><span class="health-issue">Issue</span> = Problem detected</li>
-                        <li><span class="health-stale">Stale</span> = Inventory older than 24h</li>
-                    </ul>
-                </div>
-            </div>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:12%;">Store</th>
-                    <th style="width:22%;">Hostname</th>
-                    <th style="width:18%;">Score</th>
-                    <th style="width:12%;">Status</th>
-                    <th style="width:8%;">Heartbeat</th>
-                    <th style="width:8%;">Disk</th>
-                    <th style="width:8%;">Memory</th>
-                    <th style="width:8%;">Failures</th>
-                    <th style="width:12%;">Inventory</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var d in Model.DeviceHealth)
-                {
-                    var statusCss = d.Status switch
-                    {
-                        "Healthy" => "badge-online",
-                        "Warning" => "badge-pending",
-                        _ => "badge-offline"
-                    };
-
-                    <tr>
-                        <td>@d.StoreNumber</td>
-                        <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
-                        <td class="health-score-cell">
-                            <div class="progress">
-                                <div class="progress-bar @(d.Status == "Healthy" ? "success" : d.Status == "Warning" ? "pending" : "failed")"
-                                     style="width:@d.Score%;"></div>
-                            </div>
-                            <div style="margin-top:6px;">@d.Score%</div>
-                        </td>
-                        <td>
-                            <span class="badge @statusCss">@d.Status</span>
-                        </td>
-                        <td class="@(d.HeartbeatHealthy ? "health-ok" : "health-issue")">
-                            @(d.HeartbeatHealthy ? "OK" : "Issue")
-                        </td>
-                        <td class="@(d.DiskHealthy ? "health-ok" : "health-issue")">
-                            @(d.DiskHealthy ? "OK" : "Issue")
-                        </td>
-                        <td class="@(d.MemoryHealthy ? "health-ok" : "health-issue")">
-                            @(d.MemoryHealthy ? "OK" : "Issue")
-                        </td>
-                        <td class="@(d.FailuresHealthy ? "health-ok" : "health-issue")">
-                            @(d.FailuresHealthy ? "OK" : "Issue")
-                        </td>
-                        <td class="@(d.InventoryFresh ? "health-ok" : "health-stale")">
-                            @(d.InventoryFresh ? "Fresh" : "Stale")
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="card">
-    <h3>Store Summary</h3>
-    <div class="store-tiles">
-        @foreach (var s in Model.StoreSummary)
-        {
-            <div class="store-tile">
-                <div><strong>Store @s.StoreNumber</strong></div>
-                <div class="subtle">Devices: @s.TotalDevices</div>
-                <div class="online">Online: @s.OnlineDevices</div>
-                <div class="offline">Offline: @s.OfflineDevices</div>
-            </div>
-        }
-    </div>
-</div>
+<div class="grid-2">
     <div class="card">
-        <h3>Fleet Health</h3>
-        <div class="grid">
-            <div class="card metric-card success-card">
-                <h3>Healthy Devices</h3>
-                <div class="metric-value">@Model.HealthyDevices</div>
-            </div>
-
-            <div class="card metric-card pending-card">
-                <h3>Warning Devices</h3>
-                <div class="metric-value">@Model.WarningDevices</div>
-            </div>
-
-            <div class="card metric-card failed-card">
-                <h3>Critical Devices</h3>
-                <div class="metric-value">@Model.CriticalDevices</div>
-            </div>
-        </div>
-    </div>
-<div class="card">
-    <h3>Store Outage Detection</h3>
-    @if (Model.StoreOutages.Count == 0)
-    {
-        <div class="subtle">No current store outages detected.</div>
-    }
-    else
-    {
-        <div class="store-tiles">
-            @foreach (var o in Model.StoreOutages)
-            {
-                <div class="store-tile @(o.IsOutage ? "heat-high" : "heat-med")">
-                    <div><strong>Store @o.StoreNumber</strong></div>
-                    <div>Total Devices: @o.TotalDevices</div>
-                    <div class="offline">Offline: @o.OfflineDevices</div>
-                    <div>@(o.IsOutage ? "Full outage suspected" : "Partial outage")</div>
-                </div>
-            }
-        </div>
-    }
-</div>
-
-<div class="card">
-    <h3>Device Heatmap</h3>
-    <div class="heatmap">
-        @foreach (var h in Model.DeviceHeatmap)
+        <h3>Command Progress</h3>
+        @foreach (var p in Model.CommandProgress)
         {
-            <div class="heatmap-tile heat-@h.Severity">
-                <div><strong>@h.Hostname</strong></div>
-                <div class="subtle">Store @h.StoreNumber</div>
-                <div>
-                    <span class="badge @(h.IsOnline ? "badge-online" : "badge-offline")">
-                        @(h.IsOnline ? "Online" : "Offline")
-                    </span>
+            <div style="margin-bottom:14px;">
+                <div class="toolbar-card" style="margin-bottom:6px;">
+                    <div><strong>@p.Label</strong></div>
+                    <div class="subtle">@p.Count of @p.Total (@p.Percent%)</div>
                 </div>
-                <div class="subtle" style="margin-top:6px;">@h.LastSeenUtc</div>
+                <div class="progress">
+                    <div class="progress-bar @p.CssClass" style="width:@p.Percent%;"></div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h3>Device Health Mix</h3>
+        <div class="status-list">
+            <div class="kv-item"><span class="kv-label">Healthy</span><span class="kv-value online">@Model.HealthyDevices</span></div>
+            <div class="kv-item"><span class="kv-label">Warning</span><span class="kv-value pending">@Model.WarningDevices</span></div>
+            <div class="kv-item"><span class="kv-label">Critical</span><span class="kv-value offline">@Model.CriticalDevices</span></div>
+            <div class="kv-item"><span class="kv-label">Stores with issues</span><span class="kv-value">@Model.StoreOutages.Count</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h3>Recent Devices</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>Hostname</th>
+                        <th>Status</th>
+                        <th>Version</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in Model.RecentDevices)
+                    {
+                        <tr>
+                            <td>@d.StoreNumber</td>
+                            <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
+                            <td><span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">@(d.IsOnline ? "Online" : "Offline")</span></td>
+                            <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
+                            <td>@d.LastSeenUtc?.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Recent Commands</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Scope</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.RecentCommands)
+                    {
+                        var statusCss = c.Status?.ToLower() switch
+                        {
+                            "succeeded" => "badge-succeeded",
+                            "failed" => "badge-failed",
+                            "pending" => "badge-pending",
+                            "inprogress" => "badge-inprogress",
+                            _ => "badge-muted"
+                        };
+                        <tr>
+                            <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
+                            <td>@c.Type</td>
+                            <td><span class="badge @statusCss">@c.Status</span></td>
+                            <td>@c.Scope</td>
+                            <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h3>Top Agent Versions</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Total</th>
+                        <th>Online</th>
+                        <th>Offline</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in Model.VersionSummary.Take(10))
+                    {
+                        <tr>
+                            <td>@v.AgentVersion</td>
+                            <td>@v.DeviceCount</td>
+                            <td class="online">@v.OnlineCount</td>
+                            <td class="offline">@v.OfflineCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Stores with Outages or Offline Devices</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>Total Devices</th>
+                        <th>Offline</th>
+                        <th>Condition</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Model.StoreOutages)
+                    {
+                        <tr>
+                            <td>@s.StoreNumber</td>
+                            <td>@s.TotalDevices</td>
+                            <td class="offline">@s.OfflineDevices</td>
+                            <td>
+                                <span class="badge @(s.IsOutage ? "badge-failed" : "badge-pending")">
+                                    @(s.IsOutage ? "Store Outage" : "Partial Impact")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Fleet Heatmap</h3>
+    <p class="card-subtle">Sample of recently seen devices by severity.</p>
+    <div class="heatmap">
+        @foreach (var tile in Model.DeviceHeatmap)
+        {
+            <div class="heatmap-tile heat-@tile.Severity">
+                <div><strong>@tile.Hostname</strong></div>
+                <div class="subtle">Store @tile.StoreNumber</div>
+                <div style="margin-top:8px;">
+                    <span class="badge @(tile.IsOnline ? "badge-online" : "badge-offline")">@(tile.IsOnline ? "Online" : "Offline")</span>
+                </div>
+                <div class="subtle" style="margin-top:8px;">Last seen: @tile.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
             </div>
         }
     </div>
 </div>
 
-<div class="card">
-    <h3>Recent Devices</h3>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:14%;">Store</th>
-                    <th style="width:34%;">Hostname</th>
-                    <th style="width:16%;">Status</th>
-                    <th style="width:18%;">Version</th>
-                    <th style="width:18%;">Last Seen</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var d in Model.RecentDevices)
-                {
-                    <tr>
-                        <td>@d.StoreNumber</td>
-                        <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
-                        <td>
-                            <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
-                                @(d.IsOnline ? "Online" : "Offline")
-                            </span>
-                        </td>
-                        <td>@d.AgentVersion</td>
-                        <td>@d.LastSeenUtc</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="card">
-    <h3>Recent Commands</h3>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:28%;">Command</th>
-                    <th style="width:18%;">Type</th>
-                    <th style="width:16%;">Status</th>
-                    <th style="width:18%;">Scope</th>
-                    <th style="width:20%;">Created</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var c in Model.RecentCommands)
-                {
-                    var statusCss = c.Status?.ToLower() switch
-                    {
-                        "succeeded" => "badge-succeeded",
-                        "failed" => "badge-failed",
-                        "pending" => "badge-pending",
-                        "inprogress" => "badge-inprogress",
-                        _ => "badge-pending"
-                    };
-
-                    var typeCss = c.Type?.ToLower() switch
-                    {
-                        "echo" => "badge-echo",
-                        "collectsysteminfo" => "badge-collectsysteminfo",
-                        "runprocess" => "badge-runprocess",
-                        "downloadfile" => "badge-downloadfile",
-                        _ => "badge-echo"
-                    };
-
-                    <tr>
-                        <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
-                        <td><span class="badge @typeCss">@c.Type</span></td>
-                        <td><span class="badge @statusCss">@c.Status</span></td>
-                        <td>@c.Scope</td>
-                        <td>@c.CreatedUtc</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
-
+@section Scripts {
 <script>
-    new Chart(document.getElementById("deviceChart"), {
-        type: "pie",
-        data: {
-            labels: ["Online", "Offline"],
-            datasets: [{
-                data: [@Model.OnlineDevices, @Model.OfflineDevices],
-                backgroundColor: ["#16a34a", "#dc2626"]
-            }]
-        },
-        options: {
-            maintainAspectRatio: false
-        }
-    });
+    const deviceCtx = document.getElementById('deviceChart');
+    if (deviceCtx) {
+        new Chart(deviceCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Online', 'Offline'],
+                datasets: [{ data: [@Model.OnlineDevices, @Model.OfflineDevices] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
 
-    new Chart(document.getElementById("versionChart"), {
-        type: "bar",
-        data: {
-            labels: [@Html.Raw(string.Join(",", Model.VersionSummary.Select(v => $"\"{v.AgentVersion}\"")))],
-            datasets: [{
-                label: "Devices",
-                data: [@string.Join(",", Model.VersionSummary.Select(v => v.DeviceCount))],
-                backgroundColor: "#2563eb"
-            }]
-        },
-        options: {
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true }
-            }
-        }
-    });
+    const versionCtx = document.getElementById('versionChart');
+    if (versionCtx) {
+        new Chart(versionCtx, {
+            type: 'bar',
+            data: {
+                labels: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => $"'{(v.AgentVersion ?? "Unknown").Replace("'", "\\'")}'")))],
+                datasets: [{ label: 'Devices', data: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => v.DeviceCount)))] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
 </script>
+}

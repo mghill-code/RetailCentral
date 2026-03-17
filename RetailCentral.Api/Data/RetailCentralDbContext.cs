@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using RetailCentral.Api.Data.Entities;
 using RetailCentral.Api.Models;
 
 namespace RetailCentral.Api.Data
@@ -15,6 +16,9 @@ namespace RetailCentral.Api.Data
         public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
         public DbSet<DeviceGroupMember> DeviceGroupMembers => Set<DeviceGroupMember>();
         public DbSet<RegisterInventory> RegisterInventories => Set<RegisterInventory>();
+        public DbSet<Package> Packages => Set<Package>();
+        public DbSet<Deployment> Deployments => Set<Deployment>();
+        public DbSet<DeploymentDevice> DeploymentDevices => Set<DeploymentDevice>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -108,6 +112,60 @@ namespace RetailCentral.Api.Data
 
                 entity.Property(x => x.ScannerName).HasMaxLength(200);
                 entity.Property(x => x.ScannerSerialNumber).HasMaxLength(100);
+            });
+            modelBuilder.Entity<Package>(entity =>
+            {
+                entity.ToTable("Packages");
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Version).HasMaxLength(50);
+                entity.Property(x => x.Description).HasMaxLength(1000);
+                entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+                entity.Property(x => x.StoragePath).HasMaxLength(1000).IsRequired();
+                entity.Property(x => x.Sha256).HasMaxLength(128).IsRequired();
+                entity.Property(x => x.ExecutionCommand).HasMaxLength(500);
+                entity.Property(x => x.ExecutionArguments).HasMaxLength(2000);
+                entity.Property(x => x.WorkingDirectory).HasMaxLength(500);
+                entity.Property(x => x.CreatedBy).HasMaxLength(100);
+            });
+
+            modelBuilder.Entity<Deployment>(entity =>
+            {
+                entity.ToTable("Deployments");
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.TargetValue).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Notes).HasMaxLength(1000);
+                entity.Property(x => x.CreatedBy).HasMaxLength(100);
+
+                entity.HasOne(x => x.Package)
+                    .WithMany(x => x.Deployments)
+                    .HasForeignKey(x => x.PackageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => x.PackageId);
+                entity.HasIndex(x => x.Status);
+            });
+
+            modelBuilder.Entity<DeploymentDevice>(entity =>
+            {
+                entity.ToTable("DeploymentDevices");
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.StoreNumber).HasMaxLength(50);
+                entity.Property(x => x.Hostname).HasMaxLength(200);
+                entity.Property(x => x.ResultMessage).HasMaxLength(2000);
+                entity.Property(x => x.FilePath).HasMaxLength(500);
+
+                entity.HasOne(x => x.Deployment)
+                    .WithMany(x => x.DeploymentDevices)
+                    .HasForeignKey(x => x.DeploymentId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(x => x.DeploymentId);
+                entity.HasIndex(x => x.DeviceId);
+                entity.HasIndex(x => x.Status);
             });
         }
     }

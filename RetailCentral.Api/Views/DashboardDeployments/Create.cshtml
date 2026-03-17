@@ -1,0 +1,79 @@
+﻿@model RetailCentral.Api.Models.Dashboard.Deployments.CreateDeploymentPageViewModel
+
+@{
+    ViewData["Title"] = "Create Deployment";
+}
+
+<h1>Create Deployment</h1>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+
+    <div class="mb-3">
+        <label asp-for="Input.PackageId" class="form-label"></label>
+        <select asp-for="Input.PackageId" class="form-select">
+            <option value="">-- Select Package --</option>
+            @foreach (var pkg in Model.Packages)
+            {
+                <option value="@pkg.Id">@pkg.DisplayName</option>
+            }
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.TargetType" class="form-label">Target Type</label>
+        <select asp-for="Input.TargetType" class="form-select">
+            <option value="1">Device</option>
+            <option value="2">Store</option>
+            <option value="3">Group</option>
+            <option value="4">Fleet</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.TargetValue" class="form-label">Target Value</label>
+        <input asp-for="Input.TargetValue" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.ExecuteMode" class="form-label">Execute Mode</label>
+        <select asp-for="Input.ExecuteMode" class="form-select">
+            <option value="1">Immediate</option>
+            <option value="2">Windowed</option>
+            <option value="3">Staged Only</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.WindowStartLocal" class="form-label">Window Start</label>
+        <input asp-for="Input.WindowStartLocal" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.WindowEndLocal" class="form-label">Window End</label>
+        <input asp-for="Input.WindowEndLocal" class="form-control" />
+    </div>
+
+    <div class="form-check mb-2">
+        <input asp-for="Input.UseStoreLocalTime" class="form-check-input" />
+        <label asp-for="Input.UseStoreLocalTime" class="form-check-label">Use Store Local Time</label>
+    </div>
+
+    <div class="form-check mb-2">
+        <input asp-for="Input.AllowOutsideWindow" class="form-check-input" />
+        <label asp-for="Input.AllowOutsideWindow" class="form-check-label">Allow Outside Window</label>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.RetryCount" class="form-label">Retry Count</label>
+        <input asp-for="Input.RetryCount" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Input.Notes" class="form-label">Notes</label>
+        <textarea asp-for="Input.Notes" class="form-control"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create Deployment</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>

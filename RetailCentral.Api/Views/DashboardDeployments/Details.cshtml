@@ -1,0 +1,46 @@
+﻿@model RetailCentral.Api.Models.Dashboard.Deployments.DeploymentDetailsViewModel
+
+@{
+    ViewData["Title"] = "Deployment Details";
+}
+
+<h1>Deployment @Model.Id</h1>
+
+<div class="mb-3">
+    <strong>Package:</strong> @Model.PackageName @Model.PackageVersion<br />
+    <strong>Target:</strong> @Model.TargetType - @Model.TargetValue<br />
+    <strong>Mode:</strong> @Model.ExecuteMode<br />
+    <strong>Status:</strong> @Model.Status<br />
+    <strong>Created:</strong> @Model.CreatedUtc.ToLocalTime()<br />
+    <strong>Created By:</strong> @Model.CreatedBy<br />
+    <strong>Window:</strong> @Model.WindowStartLocal - @Model.WindowEndLocal<br />
+    <strong>Notes:</strong> @Model.Notes
+</div>
+
+<table class="table table-bordered table-sm">
+    <thead>
+        <tr>
+            <th>Store</th>
+            <th>Hostname</th>
+            <th>Device Id</th>
+            <th>Status</th>
+            <th>Exit Code</th>
+            <th>Last Heartbeat</th>
+            <th>Message</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in Model.DeviceRows)
+        {
+            <tr>
+                <td>@row.StoreNumber</td>
+                <td>@row.Hostname</td>
+                <td>@row.DeviceId</td>
+                <td>@row.Status</td>
+                <td>@row.ExitCode</td>
+                <td>@row.LastHeartbeatUtc</td>
+                <td>@row.ResultMessage</td>
+            </tr>
+        }
+    </tbody>
+</table>

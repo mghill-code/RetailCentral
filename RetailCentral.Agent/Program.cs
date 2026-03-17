@@ -62,9 +62,13 @@ builder.Services.AddSingleton(sp =>
     cfg.DefaultTimeoutSeconds = int.Parse(builder.Configuration["Execution:DefaultTimeoutSeconds"] ?? "30");
     cfg.MaxStdoutChars = int.Parse(builder.Configuration["Execution:MaxStdoutChars"] ?? "8000");
     cfg.MaxStderrChars = int.Parse(builder.Configuration["Execution:MaxStderrChars"] ?? "8000");
+    cfg.InstallCheckSeconds = int.Parse(builder.Configuration["Execution:InstallCheckSeconds"] ?? "30");
 
     cfg.DownloadRootFolder = builder.Configuration["Downloads:RootFolder"] ?? @"C:\RetailCentral\Agent\downloads";
     Directory.CreateDirectory(cfg.DownloadRootFolder);
+
+    cfg.StagingRootFolder = builder.Configuration["Downloads:StagingRootFolder"] ?? @"C:\RetailCentral\Agent\staging";
+    Directory.CreateDirectory(cfg.StagingRootFolder);
 
     var allowed = builder.Configuration.GetSection("Execution:AllowedCommands").Get<string[]>() ?? Array.Empty<string>();
     cfg.AllowedCommands = new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
@@ -82,6 +86,8 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<HmacSigner>();
 builder.Services.AddSingleton<AgentApiClient>();
 builder.Services.AddSingleton<FileDownloadService>();
+builder.Services.AddSingleton<DeploymentWindowService>();
+builder.Services.AddSingleton<PackageExecutionService>();
 builder.Services.AddSingleton<CommandExecutor>();
 builder.Services.AddHostedService<Worker>();
 
@@ -113,6 +119,10 @@ public sealed class AgentConfig
     public int DefaultTimeoutSeconds { get; set; } = 30;
     public int MaxStdoutChars { get; set; } = 8000;
     public int MaxStderrChars { get; set; } = 8000;
+    public int InstallCheckSeconds { get; set; } = 30;
+
     public string DownloadRootFolder { get; set; } = "";
+    public string StagingRootFolder { get; set; } = "";
+
     public HashSet<string> AllowedCommands { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
+using RetailCentral.Api.Data.Entities;
+using RetailCentral.Api.Data.Enums;
 using System.Linq;
 using System.Text.Json;
 
@@ -286,6 +288,9 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             });
 
             cmd.Status = req.Status;
+            cmd.LastError = string.Equals(req.Status, "Failed", StringComparison.OrdinalIgnoreCase)
+                ? (req.StdErr ?? req.StdOut)
+                : null;
 
             await _db.SaveChangesAsync();
 
@@ -295,7 +300,193 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 await UpsertRegisterInventoryFromSystemInfo(device.DeviceId, req.StdOut);
             }
 
+            if (string.Equals(cmd.Type, "InstallPackage", StringComparison.OrdinalIgnoreCase))
+            {
+                await UpdateDeploymentTrackingAsync(cmd, device.DeviceId, req);
+            }
+
             return Ok(new { serverUtc = DateTime.UtcNow });
+        }
+
+
+        private async Task UpdateDeploymentTrackingAsync(Command cmd, Guid deviceId, CommandResultRequest req)
+        {
+            var deploymentId = TryGetDeploymentId(cmd.PayloadJson);
+            if (deploymentId == null)
+                return;
+
+            var deployment = await _db.Deployments
+                .Include(x => x.DeploymentDevices)
+                .FirstOrDefaultAsync(x => x.Id == deploymentId.Value);
+
+            if (deployment == null)
+                return;
+
+            var row = deployment.DeploymentDevices.FirstOrDefault(x => x.DeviceId == deviceId);
+            if (row == null)
+                return;
+
+            var nowUtc = DateTime.UtcNow;
+            row.LastHeartbeatUtc = nowUtc;
+            row.ExitCode = req.ExitCode;
+            row.ResultMessage = BuildResultMessage(req);
+            row.AttemptCount = Math.Max(row.AttemptCount, 1);
+            row.DownloadStartedUtc ??= req.StartedUtc ?? nowUtc;
+            row.ExecuteStartedUtc ??= req.StartedUtc ?? nowUtc;
+
+            if (string.Equals(req.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
+            {
+                row.Status = (int)DeploymentDeviceStatus.Completed;
+                row.DownloadStatus = (int)DeploymentDownloadStatus.Downloaded;
+                row.ExecuteStatus = (int)DeploymentExecuteStatus.Completed;
+                row.DownloadCompletedUtc ??= req.FinishedUtc ?? nowUtc;
+                row.ExecuteCompletedUtc = req.FinishedUtc ?? nowUtc;
+                row.FilePath = TryExtractFilePath(req.StdOut);
+            }
+            else if (string.Equals(req.Status, "Deferred", StringComparison.OrdinalIgnoreCase))
+            {
+                row.Status = (int)DeploymentDeviceStatus.WaitingForWindow;
+                row.DownloadStatus = (int)DeploymentDownloadStatus.Downloaded;
+                row.ExecuteStatus = (int)DeploymentExecuteStatus.Waiting;
+                row.DownloadCompletedUtc ??= req.FinishedUtc ?? nowUtc;
+            }
+            else
+            {
+                row.Status = MapFailedStatus(req);
+                row.DownloadStatus = row.Status == (int)DeploymentDeviceStatus.FailedExecution || row.Status == (int)DeploymentDeviceStatus.TimedOut
+                    ? (int)DeploymentDownloadStatus.Downloaded
+                    : (int)DeploymentDownloadStatus.Failed;
+                row.ExecuteStatus = row.Status == (int)DeploymentDeviceStatus.TimedOut
+                    ? (int)DeploymentExecuteStatus.TimedOut
+                    : (int)DeploymentExecuteStatus.Failed;
+                row.DownloadCompletedUtc ??= req.FinishedUtc ?? nowUtc;
+                row.ExecuteCompletedUtc = req.FinishedUtc ?? nowUtc;
+            }
+
+            RecalculateDeploymentRollup(deployment);
+            await _db.SaveChangesAsync();
+        }
+
+        private static int? TryGetDeploymentId(string? payloadJson)
+        {
+            if (string.IsNullOrWhiteSpace(payloadJson))
+                return null;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(payloadJson);
+                if (doc.RootElement.TryGetProperty("deploymentId", out var prop) && prop.TryGetInt32(out var deploymentId))
+                    return deploymentId;
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static int MapFailedStatus(CommandResultRequest req)
+        {
+            var error = $"{req.StdErr}\n{req.StdOut}";
+
+            if (req.ExitCode == 902 || error.Contains("SHA256 mismatch", StringComparison.OrdinalIgnoreCase))
+                return (int)DeploymentDeviceStatus.FailedHash;
+
+            if (req.ExitCode == 124 || error.Contains("Timed out", StringComparison.OrdinalIgnoreCase))
+                return (int)DeploymentDeviceStatus.TimedOut;
+
+            if (error.Contains("HttpRequestException", StringComparison.OrdinalIgnoreCase) ||
+                error.Contains("No such host is known", StringComparison.OrdinalIgnoreCase) ||
+                error.Contains("DownloadAsync", StringComparison.OrdinalIgnoreCase))
+                return (int)DeploymentDeviceStatus.FailedDownload;
+
+            return (int)DeploymentDeviceStatus.FailedExecution;
+        }
+
+        private static string? TryExtractFilePath(string? stdOut)
+        {
+            if (string.IsNullOrWhiteSpace(stdOut))
+                return null;
+
+            const string marker = "Downloaded to: ";
+            var idx = stdOut.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0)
+                return null;
+
+            var remainder = stdOut[(idx + marker.Length)..];
+            var line = remainder.Split('\n', '\r').FirstOrDefault();
+            return string.IsNullOrWhiteSpace(line) ? null : line.Trim();
+        }
+
+        private static string? BuildResultMessage(CommandResultRequest req)
+        {
+            if (!string.IsNullOrWhiteSpace(req.StdErr))
+                return Truncate(req.StdErr, 1800);
+
+            if (!string.IsNullOrWhiteSpace(req.StdOut))
+                return Truncate(req.StdOut, 1800);
+
+            return string.IsNullOrWhiteSpace(req.Status) ? null : req.Status;
+        }
+
+        private static string? Truncate(string? value, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return value;
+
+            return value.Length <= maxLength ? value : value[..maxLength];
+        }
+
+        private static void RecalculateDeploymentRollup(Deployment deployment)
+        {
+            var devices = deployment.DeploymentDevices.ToList();
+            if (devices.Count == 0)
+                return;
+
+            var allCancelled = devices.All(x => x.Status == (int)DeploymentDeviceStatus.Cancelled);
+            var allCompleted = devices.All(x => x.Status == (int)DeploymentDeviceStatus.Completed);
+            var allTerminal = devices.All(x => IsTerminalDeploymentStatus(x.Status));
+            var anyFailure = devices.Any(x =>
+                x.Status == (int)DeploymentDeviceStatus.FailedDownload ||
+                x.Status == (int)DeploymentDeviceStatus.FailedHash ||
+                x.Status == (int)DeploymentDeviceStatus.FailedExecution ||
+                x.Status == (int)DeploymentDeviceStatus.TimedOut);
+
+            deployment.StartedUtc ??= DateTime.UtcNow;
+
+            if (allCancelled)
+            {
+                deployment.Status = (int)DeploymentStatus.Cancelled;
+                deployment.CompletedUtc ??= DateTime.UtcNow;
+                return;
+            }
+
+            if (allCompleted)
+            {
+                deployment.Status = (int)DeploymentStatus.Completed;
+                deployment.CompletedUtc ??= DateTime.UtcNow;
+                return;
+            }
+
+            if (allTerminal && anyFailure)
+            {
+                deployment.Status = (int)DeploymentStatus.PartialFailure;
+                deployment.CompletedUtc ??= DateTime.UtcNow;
+                return;
+            }
+
+            deployment.Status = (int)DeploymentStatus.Active;
+            deployment.CompletedUtc = null;
+        }
+
+        private static bool IsTerminalDeploymentStatus(int status)
+        {
+            return status == (int)DeploymentDeviceStatus.Completed ||
+                   status == (int)DeploymentDeviceStatus.FailedDownload ||
+                   status == (int)DeploymentDeviceStatus.FailedHash ||
+                   status == (int)DeploymentDeviceStatus.FailedExecution ||
+                   status == (int)DeploymentDeviceStatus.TimedOut ||
+                   status == (int)DeploymentDeviceStatus.Cancelled;
         }
 
         private async Task EnsureCollectSystemInfoQueuedAsync(Device device, string issuedBy, int priority)
