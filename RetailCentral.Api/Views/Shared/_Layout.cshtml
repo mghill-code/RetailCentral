@@ -139,7 +139,7 @@
             return document.querySelector("form") !== null;
         }
 
-        function shouldSkipAutoRefresh() {
+        function pageDisablesRefresh() {
             const skipAuto = document.body.getAttribute("data-no-autorefresh");
             if (skipAuto === "true") return true;
             if (pageHasForm()) return true;
@@ -147,8 +147,33 @@
             return false;
         }
 
+        function safeRefresh() {
+            formDirty = false;
+            const nextUrl = window.location.pathname + window.location.search + window.location.hash;
+            window.location.assign(nextUrl);
+        }
+
+        function updateRefreshUiState() {
+            const disabled = pageDisablesRefresh();
+
+            if (autoRefreshSelect) {
+                autoRefreshSelect.disabled = disabled;
+                autoRefreshSelect.title = disabled
+                    ? "Auto refresh is disabled while editing a form."
+                    : "";
+            }
+
+            if (refreshNowBtn) {
+                refreshNowBtn.disabled = disabled;
+                refreshNowBtn.title = disabled
+                    ? "Refresh is disabled while editing a form."
+                    : "";
+            }
+        }
+
         function setAutoRefresh(seconds) {
             clearAutoRefresh();
+
             const parsed = parseInt(seconds, 10) || 0;
             localStorage.setItem("dashboard-auto-refresh-seconds", parsed.toString());
 
@@ -159,8 +184,10 @@
             if (parsed > 0) {
                 refreshIntervalHandle = setInterval(() => {
                     updateRefreshStamp();
-                    if (!shouldSkipAutoRefresh()) {
-                        window.location.reload();
+                    updateRefreshUiState();
+
+                    if (!pageDisablesRefresh()) {
+                        safeRefresh();
                     }
                 }, parsed * 1000);
             }
@@ -168,16 +195,29 @@
 
         function wireFormTracking() {
             const forms = document.querySelectorAll("form");
-            if (!forms.length) return;
+            if (!forms.length) {
+                updateRefreshUiState();
+                return;
+            }
 
             const fields = document.querySelectorAll("form input, form textarea, form select");
             fields.forEach(field => {
-                field.addEventListener("input", () => formDirty = true);
-                field.addEventListener("change", () => formDirty = true);
+                field.addEventListener("input", () => {
+                    formDirty = true;
+                    updateRefreshUiState();
+                });
+
+                field.addEventListener("change", () => {
+                    formDirty = true;
+                    updateRefreshUiState();
+                });
             });
 
             forms.forEach(form => {
-                form.addEventListener("submit", () => formDirty = false);
+                form.addEventListener("submit", () => {
+                    formDirty = false;
+                    updateRefreshUiState();
+                });
             });
 
             window.addEventListener("beforeunload", function (e) {
@@ -185,6 +225,8 @@
                 e.preventDefault();
                 e.returnValue = "";
             });
+
+            updateRefreshUiState();
         }
 
         function openMobileSidebar() {
@@ -224,6 +266,7 @@
                 closeMobileSidebar();
             }
             applyDesktopSidebarState();
+            updateRefreshUiState();
         });
 
         if (toggle) {
@@ -235,16 +278,15 @@
 
         autoRefreshSelect?.addEventListener("change", function () {
             setAutoRefresh(this.value);
+            updateRefreshUiState();
         });
 
         refreshNowBtn?.addEventListener("click", function () {
-            if (pageHasForm() || formDirty) {
-                const ok = confirm("You have unsaved form data on this page. Refresh anyway?");
-                if (!ok) return;
+            if (pageDisablesRefresh()) {
+                return;
             }
 
-            formDirty = false;
-            window.location.reload();
+            safeRefresh();
         });
 
         wireFormTracking();
@@ -257,6 +299,7 @@
         setAutoRefresh(savedRefresh);
 
         updateRefreshStamp();
+        updateRefreshUiState();
     </script>
 
     @await RenderSectionAsync("Scripts", required: false)

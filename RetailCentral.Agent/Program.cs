@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Win32;
 using Serilog;
 
 var exeDir = AppContext.BaseDirectory;
@@ -20,6 +21,9 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 Log.Information("RetailCentral Agent starting...");
+
+// Enforce RDP shadow policy on startup
+RemoteDesktopShadowPolicy.EnsureEnabled();
 
 // TEMP: useful for manually generating a protected secret
 // if (args.Length > 0 && args[0].Equals("protect-secret", StringComparison.OrdinalIgnoreCase))
@@ -125,4 +129,42 @@ public sealed class AgentConfig
     public string StagingRootFolder { get; set; } = "";
 
     public HashSet<string> AllowedCommands { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public static class RemoteDesktopShadowPolicy
+{
+    private const string PolicyKeyPath = @"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services";
+    private const string ShadowValueName = "Shadow";
+    private const int ShadowValue = 2;
+
+    public static void EnsureEnabled()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.CreateSubKey(PolicyKeyPath, writable: true);
+
+            if (key == null)
+            {
+                Log.Warning("Unable to open or create registry key for RDP shadow policy: {KeyPath}", PolicyKeyPath);
+                return;
+            }
+
+            var currentValue = key.GetValue(ShadowValueName);
+            var currentInt = currentValue != null ? Convert.ToInt32(currentValue) : -1;
+
+            if (currentInt != ShadowValue)
+            {
+                key.SetValue(ShadowValueName, ShadowValue, RegistryValueKind.DWord);
+                Log.Information("Updated registry policy {KeyPath}\\{ValueName} to {Value}.", PolicyKeyPath, ShadowValueName, ShadowValue);
+            }
+            else
+            {
+                Log.Information("Registry policy {KeyPath}\\{ValueName} already set to {Value}.", PolicyKeyPath, ShadowValueName, ShadowValue);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to set registry policy {KeyPath}\\{ValueName}.", PolicyKeyPath, ShadowValueName);
+        }
+    }
 }

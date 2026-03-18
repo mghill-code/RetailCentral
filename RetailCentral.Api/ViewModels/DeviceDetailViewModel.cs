@@ -20,10 +20,45 @@
         public List<string> Groups { get; set; } = new();
         public DeviceHealthViewModel? Health { get; set; }
 
+        // ===== Health Legend =====
         public string HealthLegendHeartbeat { get; set; } = "Heartbeat healthy (last 5 minutes) = +40";
         public string HealthLegendDisk { get; set; } = "Disk space OK (>= 15% free) = +25";
         public string HealthLegendMemory { get; set; } = "Memory OK (>= 4GB) = +15";
         public string HealthLegendFailures { get; set; } = "No command failures in last 24h = +10";
         public string HealthLegendInventory { get; set; } = "Inventory refreshed in last 24h = +10";
+
+        // ===== Remote Assistance =====
+
+        // Prefer IP over hostname (DHCP-safe)
+        public string? RemoteAssistanceTarget =>
+            !string.IsNullOrWhiteSpace(LastIp)
+                ? LastIp
+                : !string.IsNullOrWhiteSpace(Hostname)
+                    ? Hostname
+                    : null;
+
+        // Explicit values (optional for UI display)
+        public string? RemoteAssistanceIpTarget =>
+            !string.IsNullOrWhiteSpace(LastIp) ? LastIp : null;
+
+        public string? RemoteAssistanceHostTarget =>
+            !string.IsNullOrWhiteSpace(Hostname) ? Hostname : null;
+
+        // Command built from preferred target
+        public string? RemoteAssistanceCommand =>
+            !string.IsNullOrWhiteSpace(RemoteAssistanceTarget)
+                ? $"mstsc /shadow:1 /v:{RemoteAssistanceTarget} /noConsentPrompt /control"
+                : null;
+
+        public bool CanLaunchRemoteAssistance =>
+            !string.IsNullOrWhiteSpace(RemoteAssistanceTarget);
+
+        // Helpful UI label
+        public string RemoteAssistanceTargetLabel =>
+            !string.IsNullOrWhiteSpace(LastIp)
+                ? "IP Address (Preferred)"
+                : !string.IsNullOrWhiteSpace(Hostname)
+                    ? "Hostname"
+                    : "Unavailable";
     }
 }

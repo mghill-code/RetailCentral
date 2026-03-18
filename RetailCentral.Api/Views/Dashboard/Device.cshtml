@@ -1,8 +1,11 @@
-@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
+﻿@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
+@using System.Text.Json
 
 @{
     ViewData["Title"] = "Device Detail";
     var recentFailed = Model.RecentCommands.Where(c => c.Status == "Failed").Take(5).ToList();
+    var protocolTargetEncoded = Uri.EscapeDataString(Model.RemoteAssistanceTarget ?? "");
+    var protocolLaunchUrl = $"retailshadow://shadow?target={protocolTargetEncoded}";
 }
 
 @if (TempData["DeviceMessage"] != null)
@@ -16,8 +19,8 @@
         <p>Device detail, health posture, quick actions, and recent command activity.</p>
     </div>
     <div class="page-actions">
-        <a class="btn" href="/Dashboard/CreateDeployment?targetType=1&targetValue=@Model.DeviceId">🚀 Deploy to Device</a>
-        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">🛠 Helpdesk</a>
+        <a class="btn" href="/Dashboard/CreateDeployment?targetType=1&targetValue=@Model.DeviceId">Deploy to Device</a>
+        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">Helpdesk</a>
         <a class="btn btn-outline" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">Advanced Command</a>
     </div>
 </div>
@@ -65,7 +68,9 @@
 
         <div class="device-health-summary">
             <div class="device-health-score-block">
-                <div class="progress"><div class="progress-bar @(h.Status == "Healthy" ? "success" : h.Status == "Warning" ? "pending" : "failed")" style="width:@h.Score%;"></div></div>
+                <div class="progress">
+                    <div class="progress-bar @(h.Status == "Healthy" ? "success" : h.Status == "Warning" ? "pending" : "failed")" style="width:@h.Score%;"></div>
+                </div>
                 <div class="device-health-score-text">@h.Score%</div>
                 <div style="margin-top:8px;"><span class="badge @statusCss">@h.Status</span></div>
             </div>
@@ -100,6 +105,7 @@
             <div class="kv-item"><span class="kv-label">First Seen</span><span class="kv-value">@Model.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             <div class="kv-item"><span class="kv-label">Enabled</span><span class="kv-value">@(Model.IsEnabled ? "Yes" : "Retired")</span></div>
         </div>
+
         @if (Model.Groups.Count > 0)
         {
             <div style="margin-top:14px;">
@@ -122,40 +128,143 @@
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="CollectSystemInfo" />
-                <button type="submit">📊 Collect System Info</button>
+                <button type="submit">Collect System Info</button>
             </form>
+
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="NetworkInfo" />
-                <button type="submit">🌐 Network Info</button>
+                <button type="submit">Network Info</button>
             </form>
+
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Restart POS on @Model.Hostname?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RestartPOS" />
-                <button type="submit" class="btn btn-secondary">🧾 Restart POS</button>
+                <button type="submit" class="btn btn-secondary">Restart POS</button>
             </form>
+
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Reboot @Model.Hostname?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RebootDevice" />
-                <button type="submit" class="btn btn-danger">🔄 Reboot Device</button>
+                <button type="submit" class="btn btn-danger">Reboot Device</button>
             </form>
+
             <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-                <button type="submit">🔁 Requeue Failed Commands</button>
+                <button type="submit">Requeue Failed Commands</button>
             </form>
+
             <form method="post" action="/Dashboard/RetireDevice" class="inline" onsubmit="return confirm('Retire this device?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-                <button class="btn btn-danger" @(Model.IsOnline ? "disabled" : "")>Retire Device</button>
+                <button type="submit" class="btn btn-danger" @(Model.IsOnline ? "disabled" : null)>Retire Device</button>
             </form>
         </div>
+    </div>
+
+    <div class="card">
+        <h3>Remote Shadow Session</h3>
+        <p class="subtle">Use the installed RetailShadowHelper on the technician workstation to launch a one-click shadow session. This runs on the technician PC, not on the register.</p>
+
+        @if (Model.CanLaunchRemoteAssistance)
+        {
+            var remoteCommandJson = JsonSerializer.Serialize(Model.RemoteAssistanceCommand ?? "");
+            var remoteTargetJson = JsonSerializer.Serialize(Model.RemoteAssistanceTarget ?? "");
+            var remoteIpJson = JsonSerializer.Serialize(Model.RemoteAssistanceIpTarget ?? "");
+            var remoteHostJson = JsonSerializer.Serialize(Model.RemoteAssistanceHostTarget ?? "");
+            var protocolLaunchJson = JsonSerializer.Serialize(protocolLaunchUrl);
+
+            <div class="helpdesk-quick-actions">
+                <a class="btn btn-primary" href="@protocolLaunchUrl">
+                    Launch Shadow Session
+                </a>
+
+               <!-- <button type="button"
+                        class="btn btn-secondary"
+                        onclick='copyShadowCommand(@Html.Raw(remoteCommandJson))'>
+                    Copy Shadow Session Command
+                </button>
+
+                <button type="button"
+                        class="btn btn-outline"
+                        onclick='copyText(@Html.Raw(protocolLaunchJson), "RetailShadowHelper link copied.")'>
+                    Copy Helper Link
+                </button>
+
+                <button type="button"
+                        class="btn btn-outline"
+                        onclick='copyText(@Html.Raw(remoteTargetJson), "Preferred target copied.")'>
+                    Copy Preferred Target
+                 </button>-->
+
+                @if (!string.IsNullOrWhiteSpace(Model.RemoteAssistanceIpTarget))
+                {
+                   <!-- <button type="button"
+                            class="btn btn-outline"
+                            onclick='copyText(@Html.Raw(remoteIpJson), "IP address copied.")'>
+                        Copy IP
+                     </button>-->
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.RemoteAssistanceHostTarget))
+                {
+                   <!-- <button type="button"
+                            class="btn btn-outline"
+                            onclick='copyText(@Html.Raw(remoteHostJson), "Hostname copied.")'>
+                        Copy Hostname
+                     </button>-->
+                }
+            </div>
+
+            <div class="mt-2">
+                <label class="form-label">Preferred Target</label>
+                <div class="kv-grid">
+                    <div class="kv-item">
+                        <span class="kv-label">Target Type</span>
+                        <span class="kv-value">@Model.RemoteAssistanceTargetLabel</span>
+                    </div>
+                    <div class="kv-item">
+                        <span class="kv-label">Preferred Target</span>
+                        <span class="kv-value">@Model.RemoteAssistanceTarget</span>
+                    </div>
+                    <div class="kv-item">
+                        <span class="kv-label">IP Address</span>
+                        <span class="kv-value">@(Model.RemoteAssistanceIpTarget ?? "-")</span>
+                    </div>
+                    <div class="kv-item">
+                        <span class="kv-label">Hostname</span>
+                        <span class="kv-value">@(Model.RemoteAssistanceHostTarget ?? "-")</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-2">
+                <label class="form-label">RetailShadowHelper Launch Link</label>
+                <pre>@protocolLaunchUrl</pre>
+            </div>
+
+            <div class="mt-2">
+                <label class="form-label">Shadow Session Command</label>
+                <pre>@Model.RemoteAssistanceCommand</pre>
+            </div>
+
+            <div class="form-text">
+                Launch Shadow Session now uses the installed <strong>RetailShadowHelper</strong> custom protocol on the technician PC. The copied command and helper link prefer the device IP address when available to avoid DHCP and name resolution issues.
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                No hostname or IP is available for a Remote Desktop Shadow session.
+            </div>
+        }
     </div>
 </div>
 
@@ -183,6 +292,7 @@
                         "inprogress" => "badge-inprogress",
                         _ => "badge-muted"
                     };
+
                     <tr>
                         <td><a href="/Dashboard/Command/@c.CommandId">@c.CommandId</a></td>
                         <td>@c.Type</td>
@@ -224,4 +334,36 @@
             </table>
         </div>
     </div>
+}
+
+@section Scripts {
+    <script>
+        async function copyShadowCommand(cmd) {
+            if (!cmd) {
+                alert('No shadow session command is available for this device.');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(cmd);
+                alert('Shadow session command copied:\n\n' + cmd);
+            } catch {
+                alert('Unable to copy shadow session command.\n\n' + cmd);
+            }
+        }
+
+        async function copyText(text, successMessage) {
+            if (!text) {
+                alert('No value is available to copy for this device.');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(text);
+                alert(successMessage || ('Copied: ' + text));
+            } catch {
+                alert('Unable to copy: ' + text);
+            }
+        }
+    </script>
 }

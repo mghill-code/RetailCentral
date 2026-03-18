@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "RetailShadowHelper": {
+      "commandName": "Project",
+      "commandLineArgs": "retailshadow://shadow?target=10.10.10.25"
+    }
+  }
+}

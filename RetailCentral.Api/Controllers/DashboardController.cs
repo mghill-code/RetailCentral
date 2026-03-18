@@ -4,12 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Models.Deployments;
-using RetailCentral.Api.ViewModels;
 using RetailCentral.Api.Services.Deployments;
+using RetailCentral.Api.ViewModels;
 using RetailCentral.Api.ViewModels.Deployments;
 using System.Text;
-
-
 
 namespace RetailCentral.Api.Controllers
 {
@@ -367,6 +365,7 @@ namespace RetailCentral.Api.Controllers
 
             return View(model);
         }
+
         [HttpGet]
         public async Task<IActionResult> Packages(CancellationToken cancellationToken)
         {
@@ -2371,6 +2370,7 @@ namespace RetailCentral.Api.Controllers
                 IssuedUtc = issuedUtc
             };
         }
+
         private static void PopulateCreatePackageLists(CreatePackageViewModel model)
         {
             model.PackageTypes = new List<SelectListItem>
@@ -2391,6 +2391,7 @@ namespace RetailCentral.Api.Controllers
                 new SelectListItem { Value = "2", Text = "Require" }
             };
         }
+
         private async Task PopulateCreateDeploymentLists(CreateDeploymentViewModel model, CancellationToken cancellationToken)
         {
             var packages = await _deploymentService.GetPackagesAsync(cancellationToken);
@@ -2432,7 +2433,11 @@ namespace RetailCentral.Api.Controllers
             if (!ModelState.IsValid)
             {
                 PopulateCreatePackageLists(model);
-                SetPackageFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditPackage) : nameof(CreatePackage), id.HasValue ? "Save Package Changes" : "Create Package", id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
+                SetPackageFormViewData(
+                    id.HasValue ? "Edit" : "Create",
+                    id.HasValue ? nameof(EditPackage) : nameof(CreatePackage),
+                    id.HasValue ? "Save Package Changes" : "Create Package",
+                    id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
 
                 var modelErrors = ModelState
                     .Where(x => x.Value?.Errors.Count > 0)
@@ -2494,9 +2499,15 @@ namespace RetailCentral.Api.Controllers
             catch (Exception ex)
             {
                 PopulateCreatePackageLists(model);
-                SetPackageFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditPackage) : nameof(CreatePackage), id.HasValue ? "Save Package Changes" : "Create Package", id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
+                SetPackageFormViewData(
+                    id.HasValue ? "Edit" : "Create",
+                    id.HasValue ? nameof(EditPackage) : nameof(CreatePackage),
+                    id.HasValue ? "Save Package Changes" : "Create Package",
+                    id.HasValue ? $"Edit Package #{id.Value}" : "Create Package");
+
                 if (id.HasValue)
                     ViewData["PackageId"] = id.Value;
+
                 ModelState.AddModelError("", $"{(id.HasValue ? "EditPackage" : "CreatePackage")} failed: {ex.Message}");
                 ViewData["DebugErrors"] = ex.ToString();
                 return View("CreatePackage", model);
@@ -2516,9 +2527,15 @@ namespace RetailCentral.Api.Controllers
             if (!ModelState.IsValid)
             {
                 await PopulateCreateDeploymentLists(model, cancellationToken);
-                SetDeploymentFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment), id.HasValue ? "Save Deployment Changes" : "Create Deployment", id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+                SetDeploymentFormViewData(
+                    id.HasValue ? "Edit" : "Create",
+                    id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment),
+                    id.HasValue ? "Save Deployment Changes" : "Create Deployment",
+                    id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+
                 if (id.HasValue)
                     ViewData["DeploymentId"] = id.Value;
+
                 return View("CreateDeployment", model);
             }
 
@@ -2563,9 +2580,15 @@ namespace RetailCentral.Api.Controllers
             catch (Exception ex)
             {
                 await PopulateCreateDeploymentLists(model, cancellationToken);
-                SetDeploymentFormViewData(id.HasValue ? "Edit" : "Create", id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment), id.HasValue ? "Save Deployment Changes" : "Create Deployment", id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+                SetDeploymentFormViewData(
+                    id.HasValue ? "Edit" : "Create",
+                    id.HasValue ? nameof(EditDeployment) : nameof(CreateDeployment),
+                    id.HasValue ? "Save Deployment Changes" : "Create Deployment",
+                    id.HasValue ? $"Edit Deployment #{id.Value}" : "Create Deployment");
+
                 if (id.HasValue)
                     ViewData["DeploymentId"] = id.Value;
+
                 ModelState.AddModelError("", $"{(id.HasValue ? "EditDeployment" : "CreateDeployment")} failed: {ex.Message}");
                 return View("CreateDeployment", model);
             }
@@ -2585,6 +2608,34 @@ namespace RetailCentral.Api.Controllers
             ViewData["FormAction"] = formAction;
             ViewData["SubmitText"] = submitText;
             ViewData["Title"] = title;
+        }
+
+        [HttpGet]
+        public IActionResult DownloadShadow(string target)
+        {
+            if (string.IsNullOrWhiteSpace(target))
+                return BadRequest("An IP address or hostname is required.");
+
+            var safeTarget = target.Trim();
+
+            var script = new StringBuilder();
+            script.AppendLine("@echo off");
+            script.AppendLine("setlocal");
+            script.AppendLine($"echo Launching Remote Desktop Shadow Session to {safeTarget}...");
+            script.AppendLine($"mstsc /shadow:1 /v:{safeTarget} /noConsentPrompt /control");
+            script.AppendLine("endlocal");
+
+            var fileNameSafe = new string(safeTarget
+                .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' ? ch : '_')
+                .ToArray());
+
+            if (string.IsNullOrWhiteSpace(fileNameSafe))
+                fileNameSafe = "ShadowSession";
+
+            return File(
+                Encoding.UTF8.GetBytes(script.ToString()),
+                "application/octet-stream",
+                $"ShadowSession_{fileNameSafe}.cmd");
         }
 
         private static List<string> SplitCsvLine(string line)
