@@ -27,5 +27,16 @@ namespace RetailCentral.Api.Dtos
         public string? Domain { get; set; }
         public string? OSVersion { get; set; }
         public string? CPUArch { get; set; }
+        public string? StoreName { get; set; }
+        public string? StoreAddress { get; set; }
+        public string? StoreCity { get; set; }
+        public string? StoreState { get; set; }
+        public string? StoreZipCode { get; set; }
+        public string? ReleaseLevel { get; set; }
+        public string? ReleaseApplied { get; set; }
+        public string? VerifoneModel { get; set; }
+        public string? VerifoneIP { get; set; }
+        public string? ScannerName { get; set; }
+        public string? ScannerSerialNumber { get; set; }
     }
 }

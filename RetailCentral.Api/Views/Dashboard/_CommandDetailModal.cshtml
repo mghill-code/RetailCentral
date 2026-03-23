@@ -1,0 +1,94 @@
+﻿@model RetailCentral.Api.ViewModels.CommandDetailViewModel
+
+@{
+    ViewData["Title"] = "Command Detail";
+    var statusCss = Model.Status?.ToLower() switch
+    {
+        "succeeded" => "badge-succeeded",
+        "failed" => "badge-failed",
+        "pending" => "badge-pending",
+        "inprogress" => "badge-inprogress",
+        _ => "badge-muted"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1>Command Detail</h1>
+        <p>Review payload, lock information, and command result output.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="/Dashboard/Commands">Back to Commands</a>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h3>Command Summary</h3>
+        <div class="kv-grid">
+            <div class="kv-item"><span class="kv-label">Command Id</span><span class="kv-value">@Model.CommandId</span></div>
+            <div class="kv-item"><span class="kv-label">Status</span><span class="kv-value"><span class="badge @statusCss">@Model.Status</span></span></div>
+            <div class="kv-item"><span class="kv-label">Type</span><span class="kv-value">@Model.Type</span></div>
+            <div class="kv-item"><span class="kv-label">Scope</span><span class="kv-value">@Model.Scope</span></div>
+            <div class="kv-item"><span class="kv-label">Store Number</span><span class="kv-value">@(Model.StoreNumber ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Group Name</span><span class="kv-value">@(Model.GroupName ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Device Id</span><span class="kv-value">@(Model.DeviceId?.ToString() ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Priority</span><span class="kv-value">@Model.Priority</span></div>
+            <div class="kv-item"><span class="kv-label">Attempt Count</span><span class="kv-value">@Model.AttemptCount</span></div>
+            <div class="kv-item"><span class="kv-label">Max Attempts</span><span class="kv-value">@Model.MaxAttempts</span></div>
+            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Issued By</span><span class="kv-value">@(Model.IssuedBy ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Issued Utc</span><span class="kv-value">@Model.IssuedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Locked Utc</span><span class="kv-value">@Model.LockedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Locked By Device</span><span class="kv-value">@(Model.LockedByDeviceId?.ToString() ?? "-")</span></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Last Error</h3>
+        @if (string.IsNullOrWhiteSpace(Model.LastError))
+        {
+            <div class="empty-state">No command error recorded.</div>
+        }
+        else
+        {
+            <pre>@Model.LastError</pre>
+        }
+    </div>
+</div>
+
+<div class="card section-stack">
+    <div>
+        <h3>Payload JSON</h3>
+        <pre>@Model.PayloadJson</pre>
+    </div>
+
+    <div>
+        <h3>Execution Result</h3>
+        @if (Model.Result != null)
+        {
+            <div class="kv-grid" style="margin-bottom:14px;">
+                <div class="kv-item"><span class="kv-label">Command Result Id</span><span class="kv-value">@Model.Result.CommandResultId</span></div>
+                <div class="kv-item"><span class="kv-label">Result Status</span><span class="kv-value">@Model.Result.Status</span></div>
+                <div class="kv-item"><span class="kv-label">Exit Code</span><span class="kv-value">@Model.Result.ExitCode</span></div>
+                <div class="kv-item"><span class="kv-label">Device Id</span><span class="kv-value">@Model.Result.DeviceId</span></div>
+                <div class="kv-item"><span class="kv-label">Started</span><span class="kv-value">@Model.Result.StartedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+                <div class="kv-item"><span class="kv-label">Finished</span><span class="kv-value">@Model.Result.FinishedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            </div>
+            <div class="grid-2">
+                <div>
+                    <h4>StdOut</h4>
+                    <pre>@Model.Result.StdOut</pre>
+                </div>
+                <div>
+                    <h4>StdErr</h4>
+                    <pre>@Model.Result.StdErr</pre>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">No result has been recorded yet.</div>
+        }
+    </div>
+</div>

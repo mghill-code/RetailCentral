@@ -7,9 +7,6 @@ using System.Text.Json;
 using System.Text;
 using System.IO;
 
-
-
-
 public sealed class CommandExecutor
 {
     private readonly AgentConfig _cfg;
@@ -171,6 +168,25 @@ public sealed class CommandExecutor
                         var finished = DateTime.UtcNow;
                         return ("Succeeded", 0, Trunc(json, _cfg.MaxStdoutChars), "", started, finished);
                     }
+                case "CollectSoftwareInventory":
+                    {
+                        var software = GetInstalledSoftware();
+                        var updates = GetWindowsUpdates();
+
+                        var payload = new
+                        {
+                            InstalledSoftware = software,
+                            WindowsUpdates = updates
+                        };
+
+                        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        });
+
+                        var finished = DateTime.UtcNow;
+                        return ("Succeeded", 0, json, "", started, finished);
+                    }
 
                 case "DownloadFile":
                     {
@@ -298,7 +314,17 @@ public sealed class CommandExecutor
                             finishedExec
                         );
                     }
+                case "CollectProcessStatus":
+                    {
+                        var status = GetProcessStatus();
+                        var json = JsonSerializer.Serialize(status, new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        });
 
+                        var finished = DateTime.UtcNow;
+                        return ("Succeeded", 0, json, "", started, finished);
+                    }
                 case "InstallPackage":
                     {
                         var payload = JsonSerializer.Deserialize<PackageDeploymentCommand>(
@@ -411,12 +437,40 @@ public sealed class CommandExecutor
                             );
                         }
 
+                        var exitCode = execResult.ExitCode ?? 1;
+                        var rebootRequired = exitCode == 3010;
+                        var rebootInitiated = exitCode == 1641;
+                        var succeeded = exitCode == 0 || rebootRequired || rebootInitiated;
+
+                        var statusMessage = exitCode switch
+                        {
+                            0 => "Package installed successfully.",
+                            3010 => "Package installed successfully. Reboot required to complete installation.",
+                            1641 => "Package installed successfully. Installer initiated a reboot.",
+                            _ => $"Package installation failed with exit code {exitCode}."
+                        };
+
+                        var stdoutBuilder = new StringBuilder();
+                        stdoutBuilder.AppendLine($"Downloaded to: {downloadedPath}");
+                        stdoutBuilder.AppendLine($"SHA256: {actualSha256}");
+                        stdoutBuilder.AppendLine(statusMessage);
+
+                        if (!string.IsNullOrWhiteSpace(payload.RebootBehavior))
+                        {
+                            stdoutBuilder.AppendLine($"RebootBehavior: {payload.RebootBehavior}");
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(execResult.StdOut))
+                        {
+                            stdoutBuilder.AppendLine(execResult.StdOut);
+                        }
+
                         return
                         (
-                            execResult.ExitCode == 0 ? "Succeeded" : "Failed",
-                            execResult.ExitCode ?? 1,
-                            $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}\n{execResult.StdOut}",
-                            execResult.StdErr,
+                            succeeded ? "Succeeded" : "Failed",
+                            exitCode,
+                            Trunc(stdoutBuilder.ToString(), _cfg.MaxStdoutChars),
+                            Trunc(execResult.StdErr ?? "", _cfg.MaxStderrChars),
                             started,
                             finishedExec
                         );
@@ -747,7 +801,187 @@ public sealed class CommandExecutor
 
         return string.Join("-", bytes.Select(b => b.ToString("X2")));
     }
+    private static List<object> GetInstalledSoftware()
+    {
+        var results = new List<object>();
 
+        string[] registryPaths =
+        {
+        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    };
+
+        foreach (var path in registryPaths)
+        {
+            using var baseKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path);
+            if (baseKey == null) continue;
+
+            foreach (var subKeyName in baseKey.GetSubKeyNames())
+            {
+                using var subKey = baseKey.OpenSubKey(subKeyName);
+                if (subKey == null) continue;
+
+                var name = subKey.GetValue("DisplayName") as string;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+
+                results.Add(new
+                {
+                    Name = name,
+                    Version = subKey.GetValue("DisplayVersion") as string,
+                    Publisher = subKey.GetValue("Publisher") as string,
+                    InstallDate = subKey.GetValue("InstallDate") as string
+                });
+            }
+        }
+
+        return results;
+    }
+    private object GetProcessStatus()
+    {
+        return new
+        {
+            PosProcessName = _cfg.PosProcessName,
+            RetailShellProcessName = _cfg.RetailShellProcessName,
+            AgentProcessName = _cfg.AgentProcessName,
+
+            Pos = GetSingleProcessStatus(_cfg.PosProcessName),
+            RetailShell = GetSingleProcessStatus(_cfg.RetailShellProcessName),
+            Agent = GetSingleProcessStatus(_cfg.AgentProcessName)
+        };
+    }
+
+    private static object GetSingleProcessStatus(string? configuredName)
+    {
+        var processName = NormalizeProcessName(configuredName);
+
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            return new
+            {
+                ConfiguredName = configuredName,
+                ProcessName = processName,
+                IsConfigured = false,
+                IsRunning = false,
+                ProcessCount = 0,
+                CpuPercent = (decimal?)null,
+                WorkingSetMb = (decimal?)null,
+                StartedAtLocal = (DateTime?)null
+            };
+        }
+
+        try
+        {
+            var matches = Process.GetProcessesByName(processName);
+
+            if (matches.Length == 0)
+            {
+                return new
+                {
+                    ConfiguredName = configuredName,
+                    ProcessName = processName,
+                    IsConfigured = true,
+                    IsRunning = false,
+                    ProcessCount = 0,
+                    CpuPercent = (decimal?)null,
+                    WorkingSetMb = (decimal?)null,
+                    StartedAtLocal = (DateTime?)null
+                };
+            }
+
+            var primary = matches
+                .OrderByDescending(p => SafeWorkingSet64(p))
+                .First();
+
+            var workingSetMb = Math.Round(SafeWorkingSet64(primary) / 1024m / 1024m, 2);
+
+            DateTime? startedAtLocal = null;
+            try
+            {
+                startedAtLocal = primary.StartTime;
+            }
+            catch
+            {
+            }
+
+            return new
+            {
+                ConfiguredName = configuredName,
+                ProcessName = processName,
+                IsConfigured = true,
+                IsRunning = true,
+                ProcessCount = matches.Length,
+                CpuPercent = (decimal?)null,
+                WorkingSetMb = workingSetMb,
+                StartedAtLocal = startedAtLocal
+            };
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                ConfiguredName = configuredName,
+                ProcessName = processName,
+                IsConfigured = true,
+                IsRunning = false,
+                ProcessCount = 0,
+                CpuPercent = (decimal?)null,
+                WorkingSetMb = (decimal?)null,
+                StartedAtLocal = (DateTime?)null,
+                Error = ex.Message
+            };
+        }
+    }
+
+    private static string NormalizeProcessName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var name = value.Trim();
+
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+
+        return name;
+    }
+
+    private static long SafeWorkingSet64(Process process)
+    {
+        try
+        {
+            return process.WorkingSet64;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+    private static List<object> GetWindowsUpdates()
+    {
+        var updates = new List<object>();
+
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT HotFixID, Description, InstalledOn FROM Win32_QuickFixEngineering");
+
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                updates.Add(new
+                {
+                    HotFixId = obj["HotFixID"]?.ToString(),
+                    Description = obj["Description"]?.ToString(),
+                    InstalledOn = obj["InstalledOn"]?.ToString()
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            updates.Add(new { Error = ex.Message });
+        }
+
+        return updates;
+    }
     private static string Trunc(string s, int max)
     {
         if (string.IsNullOrEmpty(s))

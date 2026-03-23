@@ -7,6 +7,7 @@ using RetailCentral.Api.Models.Deployments;
 using RetailCentral.Api.Services.Deployments;
 using RetailCentral.Api.ViewModels;
 using RetailCentral.Api.ViewModels.Deployments;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace RetailCentral.Api.Controllers
@@ -15,24 +16,31 @@ namespace RetailCentral.Api.Controllers
     {
         private readonly RetailCentralDbContext _db;
         private readonly IDeploymentService _deploymentService;
+        private readonly IWebHostEnvironment _environment;
 
-        public DashboardController(RetailCentralDbContext db, IDeploymentService deploymentService)
+        public DashboardController(
+            RetailCentralDbContext db,
+            IDeploymentService deploymentService,
+            IWebHostEnvironment environment)
         {
             _db = db;
             _deploymentService = deploymentService;
-        }
+            _environment = environment;
+        }   
 
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
 
         private static List<string> GetAvailableCommandTypes()
         {
             return new List<string>
-            {
-                "Echo",
-                "CollectSystemInfo",
-                "RunProcess",
-                "DownloadFile"
-            };
+    {
+        "Echo",
+        "CollectSystemInfo",
+        "CollectProcessStatus",
+        "CollectSoftwareInventory",
+        "RunProcess",
+        "DownloadFile"
+    };
         }
 
         private static List<CommandTemplateOptionViewModel> GetCommandTemplates()
@@ -385,7 +393,8 @@ namespace RetailCentral.Api.Controllers
             {
                 TimeoutSeconds = 1800,
                 RebootBehavior = 0,
-                PackageType = 1
+                PackageType = 1,
+                StoreInDistro = true
             };
 
             PopulateCreatePackageLists(vm);
@@ -409,12 +418,13 @@ namespace RetailCentral.Api.Controllers
                 FileName = pkg.FileName,
                 StoragePath = pkg.StoragePath,
                 Sha256 = pkg.Sha256,
-                FileSizeBytes = pkg.FileSizeBytes,
+                FileSizeBytes = pkg.FileSizeBytes ?? 0,
                 ExecutionCommand = pkg.ExecutionCommand,
                 ExecutionArguments = pkg.ExecutionArguments,
                 WorkingDirectory = pkg.WorkingDirectory,
                 TimeoutSeconds = pkg.TimeoutSeconds,
-                RebootBehavior = pkg.RebootBehavior
+                RebootBehavior = pkg.RebootBehavior,
+                StoreInDistro = IsDistroPath(pkg.StoragePath)
             };
 
             PopulateCreatePackageLists(vm);
@@ -594,6 +604,43 @@ namespace RetailCentral.Api.Controllers
             if (lastSeenUtc >= onlineCutoffUtc) return "low";
             if (lastSeenUtc >= onlineCutoffUtc.AddMinutes(-15)) return "med";
             return "high";
+        }
+                private static void ApplyFriendlyOsNames(List<RegisterInventoryRowViewModel> rows)
+        {
+            foreach (var row in rows)
+            {
+                row.OSVersion = ToFriendlyOsName(row.OSVersion);
+            }
+        }
+
+        private static string ToFriendlyOsName(string? osVersion)
+        {
+            if (string.IsNullOrWhiteSpace(osVersion))
+                return "";
+
+            var s = osVersion.Trim();
+            var friendly = s;
+
+            if (s.Contains("10.0.26200") || s.Contains("10.0.26100"))
+                friendly = "Windows 11 24H2";
+            else if (s.Contains("10.0.22631"))
+                friendly = "Windows 11 23H2";
+            else if (s.Contains("10.0.22621"))
+                friendly = "Windows 11 22H2";
+            else if (s.Contains("10.0.22000"))
+                friendly = "Windows 11 21H2";
+            else if (s.Contains("10.0.19045"))
+                friendly = "Windows 10 22H2";
+            else if (s.Contains("10.0.19044"))
+                friendly = "Windows 10 21H2";
+            else if (s.Contains("10.0.19043"))
+                friendly = "Windows 10 21H1";
+            else if (s.Contains("10.0.19042"))
+                friendly = "Windows 10 20H2";
+            else if (s.Contains("10.0.19041"))
+                friendly = "Windows 10 2004";
+
+            return friendly == s ? s : $"{friendly} ({s})";
         }
 
         private static DeviceHealthViewModel BuildDeviceHealth(
@@ -825,6 +872,60 @@ namespace RetailCentral.Api.Controllers
 
             var inventory = await _db.RegisterInventories
                 .FirstOrDefaultAsync(r => r.DeviceId == id);
+            
+            var installedSoftware = await _db.InstalledSoftwares
+                .Where(x => x.DeviceId == id)
+                .OrderBy(x => x.Name)
+                .Select(x => new InstalledSoftwareViewModel
+                {
+                    Name = x.Name,
+                    Version = x.Version,
+                    Publisher = x.Publisher,
+                    InstallDate = x.InstallDate,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToListAsync();
+
+            var installedWindowsUpdates = await _db.InstalledWindowsUpdates
+                .Where(x => x.DeviceId == id)
+                .OrderByDescending(x => x.InstalledOn)
+                .ThenBy(x => x.HotFixId)
+                .Select(x => new InstalledWindowsUpdateViewModel
+                {
+                    HotFixId = x.HotFixId,
+                    Description = x.Description,
+                    InstalledOn = x.InstalledOn,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToListAsync();
+            var processStatus = await _db.ProcessStatusInventories
+                .Where(x => x.DeviceId == id)
+                .Select(x => new ProcessStatusInventoryViewModel
+                {
+                    PosProcessName = x.PosProcessName,
+                    PosRunning = x.PosRunning,
+                    PosProcessCount = x.PosProcessCount,
+                    PosCpuPercent = x.PosCpuPercent,
+                    PosWorkingSetMb = x.PosWorkingSetMb,
+                    PosStartedAtLocal = x.PosStartedAtLocal,
+
+                    RetailShellProcessName = x.RetailShellProcessName,
+                    RetailShellRunning = x.RetailShellRunning,
+                    RetailShellProcessCount = x.RetailShellProcessCount,
+                    RetailShellCpuPercent = x.RetailShellCpuPercent,
+                    RetailShellWorkingSetMb = x.RetailShellWorkingSetMb,
+                    RetailShellStartedAtLocal = x.RetailShellStartedAtLocal,
+
+                    AgentProcessName = x.AgentProcessName,
+                    AgentRunning = x.AgentRunning,
+                    AgentProcessCount = x.AgentProcessCount,
+                    AgentCpuPercent = x.AgentCpuPercent,
+                    AgentWorkingSetMb = x.AgentWorkingSetMb,
+                    AgentStartedAtLocal = x.AgentStartedAtLocal,
+
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .FirstOrDefaultAsync();
 
             var hasRecentFailure = await _db.CommandResults
                 .AnyAsync(r => r.DeviceId == id && r.Status == "Failed" && r.FinishedUtc >= since24);
@@ -854,7 +955,10 @@ namespace RetailCentral.Api.Controllers
                 RecentCommands = recentCommands,
                 RecentHeartbeats = recentHeartbeats,
                 Groups = groups,
-                Health = health
+                Health = health,
+                InstalledSoftware = installedSoftware,
+                InstalledWindowsUpdates = installedWindowsUpdates,
+                ProcessStatus = processStatus
             };
 
             return View(model);
@@ -971,6 +1075,53 @@ namespace RetailCentral.Api.Controllers
                 .ToList();
 
             return View(model);
+        }
+        [HttpGet]
+        public async Task<IActionResult> CommandModal(Guid id)
+        {
+            var cmd = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
+            if (cmd == null)
+                return NotFound();
+
+            var result = await _db.CommandResults
+                .Where(r => r.CommandId == id)
+                .Select(r => new CommandResultDetailViewModel
+                {
+                    CommandResultId = r.CommandResultId,
+                    CommandId = r.CommandId,
+                    DeviceId = r.DeviceId,
+                    Status = r.Status,
+                    ExitCode = r.ExitCode,
+                    StdOut = r.StdOut,
+                    StdErr = r.StdErr,
+                    StartedUtc = r.StartedUtc,
+                    FinishedUtc = r.FinishedUtc
+                })
+                .FirstOrDefaultAsync();
+
+            var model = new CommandDetailViewModel
+            {
+                CommandId = cmd.CommandId,
+                Type = cmd.Type,
+                Scope = cmd.Scope,
+                StoreNumber = cmd.StoreNumber,
+                GroupName = cmd.GroupName,
+                DeviceId = cmd.DeviceId,
+                Status = cmd.Status,
+                PayloadJson = cmd.PayloadJson,
+                Priority = cmd.Priority,
+                AttemptCount = cmd.AttemptCount,
+                MaxAttempts = cmd.MaxAttempts,
+                CreatedUtc = cmd.CreatedUtc,
+                LockedUtc = cmd.LockedUtc,
+                LockedByDeviceId = cmd.LockedByDeviceId,
+                LastError = cmd.LastError,
+                IssuedBy = cmd.IssuedBy,
+                IssuedUtc = cmd.IssuedUtc,
+                Result = result
+            };
+
+            return PartialView("_CommandDetailModal", model);
         }
 
         [HttpGet]
@@ -1168,7 +1319,15 @@ namespace RetailCentral.Api.Controllers
                 : $"{commandName} created for {createdCommands.Count} device(s).";
 
             if (createdCommands.Count == 1)
+            {
+                if (model.DeviceId != null)
+                {
+                    TempData["DeviceMessage"] = $"{commandName} command created successfully.";
+                    return RedirectToAction(nameof(Device), new { id = model.DeviceId.Value });
+                }
+
                 return RedirectToAction(nameof(Command), new { id = createdCommands[0].CommandId });
+            }
 
             return RedirectToAction(nameof(Commands));
         }
@@ -1804,6 +1963,12 @@ namespace RetailCentral.Api.Controllers
 
             if (createdCommands.Count == 1)
             {
+                if (model.DeviceId != null)
+                {
+                    TempData["DeviceMessage"] = $"Command '{model.Type}' created successfully.";
+                    return RedirectToAction(nameof(Device), new { id = model.DeviceId.Value });
+                }
+
                 return RedirectToAction(nameof(Command), new { id = createdCommands[0].CommandId });
             }
 
@@ -1888,6 +2053,8 @@ namespace RetailCentral.Api.Controllers
                 row.FailuresHealthy = failuresHealthy;
                 row.InventoryFresh = inventoryFresh;
             }
+
+            ApplyFriendlyOsNames(rows);
 
             var model = new RegisterInventoryPageViewModel
             {
@@ -2001,6 +2168,8 @@ namespace RetailCentral.Api.Controllers
                 row.FailuresHealthy = failuresHealthy;
                 row.InventoryFresh = inventoryFresh;
             }
+
+            ApplyFriendlyOsNames(rows);
 
             var sb = new StringBuilder();
 
@@ -2430,6 +2599,37 @@ namespace RetailCentral.Api.Controllers
                 model.TimeoutSeconds = 1800;
             }
 
+            var uploadedFileProvided = model.UploadFile != null && model.UploadFile.Length > 0;
+
+            if (uploadedFileProvided)
+            {
+                var uploadValidationError = ValidateDistroUpload(model.UploadFile!);
+                if (uploadValidationError != null)
+                {
+                    ModelState.AddModelError(nameof(model.UploadFile), uploadValidationError);
+                }
+            }
+
+            if (uploadedFileProvided && string.IsNullOrWhiteSpace(model.FileName))
+            {
+                model.FileName = Path.GetFileName(model.UploadFile!.FileName);
+            }
+
+            if (!uploadedFileProvided && string.IsNullOrWhiteSpace(model.FileName))
+            {
+                ModelState.AddModelError(nameof(model.FileName), "File Name is required.");
+            }
+
+            if (!uploadedFileProvided && string.IsNullOrWhiteSpace(model.StoragePath))
+            {
+                ModelState.AddModelError(nameof(model.StoragePath), "Storage Path is required when no file is uploaded.");
+            }
+
+            if (!uploadedFileProvided && string.IsNullOrWhiteSpace(model.Sha256))
+            {
+                ModelState.AddModelError(nameof(model.Sha256), "SHA256 is required when no file is uploaded.");
+            }
+
             if (!ModelState.IsValid)
             {
                 PopulateCreatePackageLists(model);
@@ -2457,15 +2657,25 @@ namespace RetailCentral.Api.Controllers
 
             try
             {
+                if (uploadedFileProvided)
+                {
+                    var distroResult = await SaveFileToDistroAsync(model.UploadFile!, cancellationToken);
+
+                    model.FileName = distroResult.FileName;
+                    model.StoragePath = BuildDistroUrl(distroResult.FileName);
+                    model.FileSizeBytes = distroResult.FileSizeBytes;
+                    model.Sha256 = distroResult.Sha256;
+                }
+
                 var request = new CreatePackageRequest
                 {
                     Name = model.Name.Trim(),
                     Version = model.Version?.Trim(),
                     Description = model.Description?.Trim(),
                     PackageType = model.PackageType,
-                    FileName = model.FileName.Trim(),
-                    StoragePath = model.StoragePath.Trim(),
-                    Sha256 = model.Sha256.Trim(),
+                    FileName = string.IsNullOrWhiteSpace(model.FileName) ? "" : model.FileName.Trim(),
+                    StoragePath = string.IsNullOrWhiteSpace(model.StoragePath) ? "" : model.StoragePath.Trim(),
+                    Sha256 = string.IsNullOrWhiteSpace(model.Sha256) ? "" : model.Sha256.Trim(),
                     FileSizeBytes = model.FileSizeBytes,
                     ExecutionCommand = string.IsNullOrWhiteSpace(model.ExecutionCommand) ? null : model.ExecutionCommand.Trim(),
                     ExecutionArguments = string.IsNullOrWhiteSpace(model.ExecutionArguments) ? null : model.ExecutionArguments.Trim(),
@@ -2636,6 +2846,82 @@ namespace RetailCentral.Api.Controllers
                 Encoding.UTF8.GetBytes(script.ToString()),
                 "application/octet-stream",
                 $"ShadowSession_{fileNameSafe}.cmd");
+        }
+
+        private string? ValidateDistroUpload(IFormFile file)
+        {
+            var extension = Path.GetExtension(file.FileName);
+            var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".msi",
+                ".exe",
+                ".ps1",
+                ".cmd",
+                ".bat",
+                ".zip"
+            };
+
+            if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
+            {
+                return "Only .msi, .exe, .ps1, .cmd, .bat, and .zip files are supported for distro uploads.";
+            }
+
+            return null;
+        }
+
+        private async Task<(string FileName, long FileSizeBytes, string Sha256)> SaveFileToDistroAsync(IFormFile file, CancellationToken cancellationToken)
+        {
+            var distroRoot = Path.Combine(_environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "distro");
+            Directory.CreateDirectory(distroRoot);
+
+            var originalName = Path.GetFileName(file.FileName);
+            var safeFileName = SanitizeFileName(originalName);
+            if (string.IsNullOrWhiteSpace(safeFileName))
+            {
+                throw new InvalidOperationException("Uploaded file name is invalid.");
+            }
+
+            var destinationPath = Path.Combine(distroRoot, safeFileName);
+
+            await using (var stream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await file.CopyToAsync(stream, cancellationToken);
+            }
+
+            var sha256 = await ComputeSha256Async(destinationPath, cancellationToken);
+            var fileInfo = new FileInfo(destinationPath);
+
+            return (safeFileName, fileInfo.Length, sha256);
+        }
+
+        private string BuildDistroUrl(string fileName)
+        {
+            var request = HttpContext.Request;
+            return $"{request.Scheme}://{request.Host}/distro/{Uri.EscapeDataString(fileName)}";
+        }
+
+        private static string SanitizeFileName(string fileName)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            var cleaned = new string(fileName.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+            return cleaned.Replace(" ", "_");
+        }
+
+        private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
+        {
+            await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var sha = SHA256.Create();
+            var hash = await sha.ComputeHashAsync(stream, cancellationToken);
+            return Convert.ToHexString(hash);
+        }
+
+        private static bool IsDistroPath(string? storagePath)
+        {
+            if (string.IsNullOrWhiteSpace(storagePath))
+                return false;
+
+            return storagePath.Contains("/distro/", StringComparison.OrdinalIgnoreCase)
+                   || storagePath.Contains("\\distro\\", StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<string> SplitCsvLine(string line)

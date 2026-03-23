@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Dtos;
@@ -230,7 +230,10 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 req.TimestampUtc,
                 req.StoreNumber,
                 req.Hostname,
+                req.AgentVersion,
+                req.OsVersion,
                 req.Metrics,
+                req.Inventory,
                 req.Extra
             });
 
@@ -299,15 +302,91 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             {
                 await UpsertRegisterInventoryFromSystemInfo(device.DeviceId, req.StdOut);
             }
+            if (string.Equals(cmd.Type, "CollectSoftwareInventory", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(req.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
+            {
+                await UpsertSoftwareInventory(device.DeviceId, req.StdOut);
+            }
 
             if (string.Equals(cmd.Type, "InstallPackage", StringComparison.OrdinalIgnoreCase))
             {
                 await UpdateDeploymentTrackingAsync(cmd, device.DeviceId, req);
             }
 
+            if (string.Equals(cmd.Type, "CollectProcessStatus", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(req.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
+            {
+                await UpsertProcessStatusInventory(device.DeviceId, req.StdOut);
+            }
+
             return Ok(new { serverUtc = DateTime.UtcNow });
         }
+        private async Task UpsertProcessStatusInventory(Guid deviceId, string? stdOut)
+        {
+            if (string.IsNullOrWhiteSpace(stdOut))
+                return;
 
+            using var doc = JsonDocument.Parse(stdOut);
+            var root = doc.RootElement;
+
+            var row = await _db.ProcessStatusInventories
+                .FirstOrDefaultAsync(x => x.DeviceId == deviceId);
+
+            if (row == null)
+            {
+                row = new ProcessStatusInventory
+                {
+                    DeviceId = deviceId
+                };
+                _db.ProcessStatusInventories.Add(row);
+            }
+
+            if (root.TryGetProperty("PosProcessName", out var posName))
+                row.PosProcessName = posName.GetString();
+
+            if (root.TryGetProperty("RetailShellProcessName", out var shellName))
+                row.RetailShellProcessName = shellName.GetString();
+
+            if (root.TryGetProperty("AgentProcessName", out var agentName))
+                row.AgentProcessName = agentName.GetString();
+
+            if (root.TryGetProperty("Pos", out var pos))
+            {
+                var isRunning = TryGetBool(pos, "IsRunning") ?? false;
+
+                row.PosRunning = isRunning;
+                row.PosProcessCount = TryGetInt(pos, "ProcessCount") ?? 0;
+                row.PosCpuPercent = isRunning ? TryGetDecimal(pos, "CpuPercent") : null;
+                row.PosWorkingSetMb = isRunning ? TryGetDecimal(pos, "WorkingSetMb") : null;
+                row.PosStartedAtLocal = isRunning ? TryGetDateTime(pos, "StartedAtLocal") : null;
+            }
+
+            if (root.TryGetProperty("RetailShell", out var shell))
+            {
+                var isRunning = TryGetBool(shell, "IsRunning") ?? false;
+
+                row.RetailShellRunning = isRunning;
+                row.RetailShellProcessCount = TryGetInt(shell, "ProcessCount") ?? 0;
+                row.RetailShellCpuPercent = isRunning ? TryGetDecimal(shell, "CpuPercent") : null;
+                row.RetailShellWorkingSetMb = isRunning ? TryGetDecimal(shell, "WorkingSetMb") : null;
+                row.RetailShellStartedAtLocal = isRunning ? TryGetDateTime(shell, "StartedAtLocal") : null;
+            }
+
+            if (root.TryGetProperty("Agent", out var agent))
+            {
+                var isRunning = TryGetBool(agent, "IsRunning") ?? false;
+
+                row.AgentRunning = isRunning;
+                row.AgentProcessCount = TryGetInt(agent, "ProcessCount") ?? 0;
+                row.AgentCpuPercent = isRunning ? TryGetDecimal(agent, "CpuPercent") : null;
+                row.AgentWorkingSetMb = isRunning ? TryGetDecimal(agent, "WorkingSetMb") : null;
+                row.AgentStartedAtLocal = isRunning ? TryGetDateTime(agent, "StartedAtLocal") : null;
+            }
+
+            row.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync();
+        }
 
         private async Task UpdateDeploymentTrackingAsync(Command cmd, Guid deviceId, CommandResultRequest req)
         {
@@ -533,19 +612,85 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 _db.RegisterInventories.Add(row);
             }
 
-            row.ComputerName = req.Hostname ?? row.ComputerName;
-            row.Store = req.StoreNumber ?? device.StoreNumber ?? row.Store;
+            // ===== Identity =====
+            row.ComputerName =
+                req.Inventory?.ComputerName
+                ?? req.Hostname
+                ?? row.ComputerName;
 
-            row.IPAddress = !string.IsNullOrWhiteSpace(remoteIp)
-                ? remoteIp
-                : row.IPAddress;
+            row.Store =
+                req.Inventory?.Store
+                ?? req.StoreNumber
+                ?? device.StoreNumber
+                ?? row.Store;
 
-            row.OSVersion = req.OsVersion ?? row.OSVersion;
+            // ===== 🔥 THIS IS YOUR MAIN FIX =====
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.RegisterNumber))
+                row.RegisterNumber = req.Inventory.RegisterNumber;
+
+            // ===== Networking =====
+            row.IPAddress =
+                !string.IsNullOrWhiteSpace(req.Inventory?.IPAddress)
+                    ? req.Inventory.IPAddress
+                    : !string.IsNullOrWhiteSpace(remoteIp)
+                        ? remoteIp
+                        : row.IPAddress;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.MACAddress))
+                row.MACAddress = req.Inventory.MACAddress;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.Domain))
+                row.Domain = req.Inventory.Domain;
+
+            // ===== OS =====
+            row.OSVersion =
+                req.Inventory?.OSVersion
+                ?? req.OsVersion
+                ?? row.OSVersion;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.CPUArch))
+                row.CPUArch = req.Inventory.CPUArch;
+
+            // ===== timestamps =====
             row.LastHeartbeatUtc = DateTime.UtcNow;
             row.UpdatedUtc = DateTime.UtcNow;
 
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.StoreName))
+                row.StoreName = req.Inventory.StoreName;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.StoreAddress))
+                row.StoreAddress = req.Inventory.StoreAddress;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.StoreCity))
+                row.StoreCity = req.Inventory.StoreCity;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.StoreState))
+                row.StoreState = req.Inventory.StoreState;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.StoreZipCode))
+                row.StoreZipCode = req.Inventory.StoreZipCode;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.ReleaseLevel))
+                row.ReleaseLevel = req.Inventory.ReleaseLevel;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.ReleaseApplied))
+                row.ReleaseApplied = req.Inventory.ReleaseApplied;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.VerifoneModel))
+                row.VerifoneModel = req.Inventory.VerifoneModel;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.VerifoneIP))
+                row.VerifoneIP = req.Inventory.VerifoneIP;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.ScannerName))
+                row.ScannerName = req.Inventory.ScannerName;
+
+            if (!string.IsNullOrWhiteSpace(req.Inventory?.ScannerSerialNumber))
+                row.ScannerSerialNumber = req.Inventory.ScannerSerialNumber;
+
             await _db.SaveChangesAsync();
         }
+
 
         private async Task UpsertRegisterInventoryFromSystemInfo(Guid deviceId, string? stdOut)
         {
@@ -677,7 +822,85 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             return null;
         }
+        private async Task UpsertSoftwareInventory(Guid deviceId, string? stdOut)
+        {
+            if (string.IsNullOrWhiteSpace(stdOut))
+                return;
 
+            using var doc = JsonDocument.Parse(stdOut);
+            var root = doc.RootElement;
+
+            // 🔥 DELETE EXISTING (Option A behavior)
+            var existingSoftware = _db.Set<InstalledSoftware>()
+                .Where(x => x.DeviceId == deviceId);
+
+            var existingUpdates = _db.Set<InstalledWindowsUpdate>()
+                .Where(x => x.DeviceId == deviceId);
+
+            _db.RemoveRange(existingSoftware);
+            _db.RemoveRange(existingUpdates);
+
+            // ===== SOFTWARE =====
+            if (root.TryGetProperty("InstalledSoftware", out var softwareArray) &&
+                softwareArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in softwareArray.EnumerateArray())
+                {
+                    _db.Add(new InstalledSoftware
+                    {
+                        DeviceId = deviceId,
+                        Name = TryGetString(item, "Name"),
+                        Version = TryGetString(item, "Version"),
+                        Publisher = TryGetString(item, "Publisher"),
+                        InstallDate = TryGetString(item, "InstallDate"),
+                        UpdatedUtc = DateTime.UtcNow
+                    });
+                }
+            }
+
+            // ===== WINDOWS UPDATES =====
+            if (root.TryGetProperty("WindowsUpdates", out var updatesArray) &&
+                updatesArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in updatesArray.EnumerateArray())
+                {
+                    _db.Add(new InstalledWindowsUpdate
+                    {
+                        DeviceId = deviceId,
+                        HotFixId = TryGetString(item, "HotFixId"),
+                        Description = TryGetString(item, "Description"),
+                        InstalledOn = TryGetString(item, "InstalledOn"),
+                        UpdatedUtc = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await _db.SaveChangesAsync();
+        }
+        private static bool? TryGetBool(JsonElement element, string propertyName)
+        {
+            if (element.ValueKind == JsonValueKind.Object &&
+                element.TryGetProperty(propertyName, out var prop) &&
+                (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
+            {
+                return prop.GetBoolean();
+            }
+
+            return null;
+        }
+
+        private static int? TryGetInt(JsonElement element, string propertyName)
+        {
+            if (element.ValueKind == JsonValueKind.Object &&
+                element.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.Number &&
+                prop.TryGetInt32(out var value))
+            {
+                return value;
+            }
+
+            return null;
+        }
         private static DateTime? TryGetDateTime(JsonElement element, string propertyName)
         {
             if (element.ValueKind == JsonValueKind.Object &&

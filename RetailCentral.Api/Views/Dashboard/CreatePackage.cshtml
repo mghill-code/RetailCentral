@@ -18,7 +18,11 @@
     </div>
 </div>
 
-<form asp-action="@formAction" asp-route-id="@packageId" method="post" class="card shadow-sm border-0">
+<form asp-action="@formAction"
+      asp-route-id="@packageId"
+      method="post"
+      enctype="multipart/form-data"
+      class="card shadow-sm border-0">
     @Html.AntiForgeryToken()
 
     <div class="card-body section-stack">
@@ -43,11 +47,13 @@
                     <span asp-validation-for="Name" class="text-danger"></span>
                     <div class="form-text">Friendly name shown in package and deployment views.</div>
                 </div>
+
                 <div class="col-md-3">
                     <label asp-for="Version" class="form-label fw-semibold">Version</label>
                     <input asp-for="Version" class="form-control" placeholder="Example: 3.4.2" />
                     <span asp-validation-for="Version" class="text-danger"></span>
                 </div>
+
                 <div class="col-md-3">
                     <label asp-for="PackageType" class="form-label fw-semibold">Package Type</label>
                     <select asp-for="PackageType" class="form-select dashboard-select">
@@ -66,9 +72,13 @@
                     </select>
                     <span asp-validation-for="PackageType" class="text-danger"></span>
                 </div>
+
                 <div class="col-12">
                     <label asp-for="Description" class="form-label fw-semibold">Description</label>
-                    <textarea asp-for="Description" class="form-control" rows="3" placeholder="What does this package deploy? Which environment or store set is it intended for?"></textarea>
+                    <textarea asp-for="Description"
+                              class="form-control"
+                              rows="3"
+                              placeholder="What does this package deploy? Which environment or store set is it intended for?"></textarea>
                     <span asp-validation-for="Description" class="text-danger"></span>
                 </div>
             </div>
@@ -76,27 +86,76 @@
 
         <div>
             <h3>Package Source</h3>
+
+            <div class="alert alert-info">
+                <strong>Recommended workflow:</strong> upload the installer directly into RetailCentral distro hosting.
+                The application will save the file to <code>wwwroot\distro</code>, calculate the SHA256 hash,
+                and generate the hosted URL automatically.
+            </div>
+
             <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="form-check mt-4">
+                        <input asp-for="StoreInDistro" class="form-check-input" />
+                        <label asp-for="StoreInDistro" class="form-check-label fw-semibold">
+                            Store uploaded file in RetailCentral distro
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        When checked, an uploaded file will be hosted by this application under <code>/distro</code>.
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <label asp-for="UploadFile" class="form-label fw-semibold">Upload Package File</label>
+                    <input asp-for="UploadFile" type="file" class="form-control" />
+                    <span asp-validation-for="UploadFile" class="text-danger"></span>
+                    <div class="form-text">
+                        Supported types: <code>.msi</code>, <code>.exe</code>, <code>.ps1</code>,
+                        <code>.cmd</code>, <code>.bat</code>, <code>.zip</code>, <code>.msu</code>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.HostedFileUrl))
+                {
+                    <div class="col-12">
+                        <div class="alert alert-success" style="margin-bottom:0;">
+                            <strong>Hosted URL:</strong><br />
+                            <code>@Model.HostedFileUrl</code>
+                        </div>
+                    </div>
+                }
+
                 <div class="col-md-4">
                     <label asp-for="FileName" class="form-label fw-semibold">File Name</label>
                     <input asp-for="FileName" class="form-control" placeholder="Example: POS_3_4_2.msi" />
                     <span asp-validation-for="FileName" class="text-danger"></span>
+                    <div class="form-text">
+                        Filled automatically when you upload a file, or enter manually for external/manual hosting.
+                    </div>
                 </div>
+
                 <div class="col-md-8">
                     <label asp-for="StoragePath" class="form-label fw-semibold">Storage Path / Download URL</label>
-                    <input asp-for="StoragePath" class="form-control" placeholder="Example: https://cdn.company.com/pos/POS_3_4_2.msi" />
+                    <input asp-for="StoragePath" class="form-control" placeholder="Example: https://localhost:7149/distro/POS_3_4_2.msi" />
                     <span asp-validation-for="StoragePath" class="text-danger"></span>
-                    <div class="form-text">Must be reachable from the target register or store network path used by the agent.</div>
+                    <div class="form-text">
+                        Auto-generated for distro uploads. For manual hosting, enter the full path or URL here.
+                    </div>
                 </div>
+
                 <div class="col-md-8">
                     <label asp-for="Sha256" class="form-label fw-semibold">SHA256 Hash</label>
-                    <input asp-for="Sha256" class="form-control" placeholder="Paste full SHA256 hash" />
+                    <input asp-for="Sha256" class="form-control" placeholder="Paste full SHA256 hash or let upload calculate it" />
                     <span asp-validation-for="Sha256" class="text-danger"></span>
-                    <div class="form-text">Required so the agent can verify integrity before install or execution.</div>
+                    <div class="form-text">
+                        Automatically calculated for uploaded files. Required for externally hosted/manual files.
+                    </div>
                 </div>
+
                 <div class="col-md-4">
                     <label asp-for="FileSizeBytes" class="form-label fw-semibold">File Size (Bytes)</label>
-                    <input asp-for="FileSizeBytes" class="form-control" placeholder="Optional" />
+                    <input asp-for="FileSizeBytes" class="form-control" placeholder="Optional or auto-filled by upload" />
                     <span asp-validation-for="FileSizeBytes" class="text-danger"></span>
                 </div>
             </div>
@@ -111,22 +170,29 @@
                     <span asp-validation-for="ExecutionCommand" class="text-danger"></span>
                     <div class="form-text">Leave blank to allow server-side defaults based on package type.</div>
                 </div>
+
                 <div class="col-md-8">
                     <label asp-for="ExecutionArguments" class="form-label fw-semibold">Execution Arguments</label>
                     <input asp-for="ExecutionArguments" class="form-control" placeholder='Example: /i {file} /qb /norestart' />
                     <span asp-validation-for="ExecutionArguments" class="text-danger"></span>
                     <div class="form-text">Use <code>{file}</code> to insert the downloaded file path.</div>
                 </div>
+
                 <div class="col-md-8">
                     <label asp-for="WorkingDirectory" class="form-label fw-semibold">Working Directory</label>
                     <input asp-for="WorkingDirectory" class="form-control" placeholder='Example: C:\RetailCentral\Agent\staging\6' />
                     <span asp-validation-for="WorkingDirectory" class="text-danger"></span>
                 </div>
+
                 <div class="col-md-2">
                     <label asp-for="TimeoutSeconds" class="form-label fw-semibold">Timeout (Seconds)</label>
-                    <input asp-for="TimeoutSeconds" class="form-control" placeholder="1800" value="@(Model.TimeoutSeconds <= 0 ? 1800 : Model.TimeoutSeconds)" />
+                    <input asp-for="TimeoutSeconds"
+                           class="form-control"
+                           placeholder="1800"
+                           value="@(Model.TimeoutSeconds <= 0 ? 1800 : Model.TimeoutSeconds)" />
                     <span asp-validation-for="TimeoutSeconds" class="text-danger"></span>
                 </div>
+
                 <div class="col-md-2">
                     <label asp-for="RebootBehavior" class="form-label fw-semibold">Reboot Behavior</label>
                     <select asp-for="RebootBehavior" class="form-select dashboard-select">
@@ -156,6 +222,7 @@
                 Execution Arguments = <code>/c {file}</code><br />
                 Timeout = <code>1800</code>
             </div>
+
             <div class="alert alert-secondary" style="margin-bottom:0;">
                 <strong>Recommended MSI package</strong><br />
                 Package Type = <code>MSI</code><br />
@@ -169,16 +236,16 @@
     <div class="card-footer bg-white d-flex gap-2">
         <button type="submit" class="btn btn-primary">@submitText</button>
         <a href="/Dashboard/Packages" class="btn btn-secondary">Cancel</a>
+
         @if (isEdit && !string.IsNullOrWhiteSpace(packageId))
         {
-            <form method="post" action="/Dashboard/DeletePackage/@packageId" class="inline" onsubmit="return confirm('Hard delete this package?');">
-                @Html.AntiForgeryToken()
-                <button type="submit" class="btn btn-danger">Delete Package</button>
-            </form>
+            <button type="submit"
+                    class="btn btn-danger"
+                    formaction="/Dashboard/DeletePackage/@packageId"
+                    formmethod="post"
+                    onclick="return confirm('Hard delete this package?');">
+                Delete Package
+            </button>
         }
     </div>
 </form>
-
-@section Scripts {
-    <partial name="_ValidationScriptsPartial" />
-}

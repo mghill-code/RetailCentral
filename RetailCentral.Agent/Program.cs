@@ -33,6 +33,9 @@ RemoteDesktopShadowPolicy.EnsureEnabled();
 // }
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 // IMPORTANT: wire Microsoft ILogger<T> to Serilog
 builder.Services.AddSerilog();
@@ -54,6 +57,10 @@ builder.Services.AddSingleton(sp =>
     cfg.BaseUrl = builder.Configuration["Server:BaseUrl"] ?? "";
     cfg.StoreNumber = builder.Configuration["Agent:StoreNumber"] ?? "";
     cfg.Hostname = builder.Configuration["Agent:Hostname"] ?? Environment.MachineName;
+    cfg.RegisterNumber = builder.Configuration["Agent:RegisterNumber"] ?? "";
+    cfg.RegisterMetadataPath = builder.Configuration["Agent:RegisterMetadataPath"]
+        ?? @"C:\RetailCentral\Agent\register-metadata.json";
+
     cfg.AgentVersion = builder.Configuration["Agent:AgentVersion"] ?? "0.0.0";
     cfg.DeviceId = builder.Configuration["Agent:DeviceId"] ?? "";
     cfg.DeviceSecret = builder.Configuration["Agent:DeviceSecret"] ?? "";
@@ -82,7 +89,9 @@ builder.Services.AddSingleton(sp =>
     {
         cfg.DeviceSecret = DeviceSecretStore.Unprotect(cfg.DeviceSecretProtected);
     }
-
+    cfg.PosProcessName = builder.Configuration["ProcessMonitoring:PosProcessName"] ?? "bncpos";
+    cfg.RetailShellProcessName = builder.Configuration["ProcessMonitoring:RetailShellProcessName"] ?? "RetailShell";
+    cfg.AgentProcessName = builder.Configuration["ProcessMonitoring:AgentProcessName"] ?? "RetailCentral.Agent";
     return cfg;
 });
 
@@ -110,7 +119,9 @@ public sealed class AgentConfig
 {
     public string BaseUrl { get; set; } = "";
     public string StoreNumber { get; set; } = "";
+    public string RegisterNumber { get; set; } = "";
     public string Hostname { get; set; } = "";
+    public string RegisterMetadataPath { get; set; } = "";
     public string AgentVersion { get; set; } = "";
     public string DeviceId { get; set; } = "";
     public string DeviceSecret { get; set; } = "";
@@ -127,7 +138,9 @@ public sealed class AgentConfig
 
     public string DownloadRootFolder { get; set; } = "";
     public string StagingRootFolder { get; set; } = "";
-
+    public string PosProcessName { get; set; } = "bncpos";
+    public string RetailShellProcessName { get; set; } = "RetailShell";
+    public string AgentProcessName { get; set; } = "RetailCentral.Agent";
     public HashSet<string> AllowedCommands { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

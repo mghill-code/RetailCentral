@@ -142,7 +142,6 @@
         function pageDisablesRefresh() {
             const skipAuto = document.body.getAttribute("data-no-autorefresh");
             if (skipAuto === "true") return true;
-            if (pageHasForm()) return true;
             if (formDirty) return true;
             return false;
         }

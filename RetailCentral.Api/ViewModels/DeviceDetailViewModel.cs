@@ -19,6 +19,15 @@
         public List<HeartbeatSummaryViewModel> RecentHeartbeats { get; set; } = new();
         public List<string> Groups { get; set; } = new();
         public DeviceHealthViewModel? Health { get; set; }
+        public List<InstalledSoftwareViewModel> InstalledSoftware { get; set; } = new();
+        public List<InstalledWindowsUpdateViewModel> InstalledWindowsUpdates { get; set; } = new();
+        public ProcessStatusInventoryViewModel? ProcessStatus { get; set; }
+        public DateTime? LastSoftwareInventoryUtc =>
+            InstalledSoftware
+                .Select(x => (DateTime?)x.UpdatedUtc)
+                .Concat(InstalledWindowsUpdates.Select(x => (DateTime?)x.UpdatedUtc))
+                .OrderByDescending(x => x)
+                .FirstOrDefault();
 
         // ===== Health Legend =====
         public string HealthLegendHeartbeat { get; set; } = "Heartbeat healthy (last 5 minutes) = +40";

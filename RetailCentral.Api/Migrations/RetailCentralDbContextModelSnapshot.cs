@@ -22,6 +22,76 @@ namespace RetailCentral.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("InstalledSoftware", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("InstallDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Publisher")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Version")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("InstalledSoftwares");
+                });
+
+            modelBuilder.Entity("InstalledWindowsUpdate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("HotFixId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("InstalledOn")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("InstalledWindowsUpdates");
+                });
+
             modelBuilder.Entity("RetailCentral.Api.Data.Entities.Deployment", b =>
                 {
                     b.Property<int>("Id")
@@ -472,6 +542,85 @@ namespace RetailCentral.Api.Migrations
                     b.ToTable("Heartbeats");
                 });
 
+            modelBuilder.Entity("RetailCentral.Api.Models.ProcessStatusInventory", b =>
+                {
+                    b.Property<long>("ProcessStatusInventoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ProcessStatusInventoryId"));
+
+                    b.Property<decimal?>("AgentCpuPercent")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("AgentProcessCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AgentProcessName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("AgentRunning")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("AgentStartedAtLocal")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("AgentWorkingSetMb")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("PosCpuPercent")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("PosProcessCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PosProcessName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("PosRunning")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("PosStartedAtLocal")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("PosWorkingSetMb")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("RetailShellCpuPercent")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RetailShellProcessCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RetailShellProcessName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("RetailShellRunning")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("RetailShellStartedAtLocal")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("RetailShellWorkingSetMb")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ProcessStatusInventoryId");
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessStatusInventories");
+                });
+
             modelBuilder.Entity("RetailCentral.Api.Models.RegisterInventory", b =>
                 {
                     b.Property<long>("RegisterInventoryId")
@@ -653,6 +802,15 @@ namespace RetailCentral.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Device");
+                });
+
+            modelBuilder.Entity("RetailCentral.Api.Models.ProcessStatusInventory", b =>
+                {
+                    b.HasOne("RetailCentral.Api.Models.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RetailCentral.Api.Models.RegisterInventory", b =>

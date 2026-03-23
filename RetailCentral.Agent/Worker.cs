@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Management;
 
 public sealed class Worker : BackgroundService
 {
@@ -15,7 +17,8 @@ public sealed class Worker : BackgroundService
 
     private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
     };
 
     public Worker(AgentConfig cfg, AgentApiClient api, CommandExecutor exec, ILogger<Worker> logger)
@@ -51,11 +54,11 @@ public sealed class Worker : BackgroundService
                     _cfg.DeviceSecret = enroll.Value.DeviceSecret;
                     _cfg.DeviceSecretProtected = protectedSecret;
 
-                    var appsettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+                    var appsettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.Local.json");
                     AgentConfigWriter.SaveProtectedSecret(appsettingsPath, _cfg.DeviceId, protectedSecret);
 
                     _logger.LogInformation("ENROLLED DeviceId={DeviceId}", _cfg.DeviceId);
-                    _logger.LogInformation("Device secret was received, protected, and written to appsettings.json.");
+                    _logger.LogInformation("Device secret was received, protected, and written to appsettings.Local.json.");
                     _logger.LogInformation("Restart the agent/service so it continues using protected credentials.");
 
                     return;
@@ -80,6 +83,8 @@ public sealed class Worker : BackgroundService
             {
                 if (DateTime.UtcNow >= _nextHeartbeatUtc)
                 {
+                    RefreshRegisterMetadataWithDetectedValues();
+
                     var hb = new
                     {
                         timestampUtc = DateTime.UtcNow,
@@ -151,47 +156,268 @@ public sealed class Worker : BackgroundService
         }
     }
 
-    private static object BuildHeartbeatInventory()
+    private object BuildHeartbeatInventory()
     {
-        var store = Environment.GetEnvironmentVariable("Store") ?? "";
-        var regNum = Environment.GetEnvironmentVariable("REG_NUM") ?? "";
+        var store = _cfg.StoreNumber ?? "";
 
-        var primaryNic = NetworkInterface
+        var hostnameForRegister = !string.IsNullOrWhiteSpace(_cfg.Hostname)
+            ? _cfg.Hostname
+            : Environment.MachineName;
+
+        var regNum = !string.IsNullOrWhiteSpace(_cfg.RegisterNumber)
+            ? _cfg.RegisterNumber
+            : ParseRegisterFromHostname(hostnameForRegister);
+
+        var adapters = NetworkInterface
             .GetAllNetworkInterfaces()
             .Where(n =>
                 n.OperationalStatus == OperationalStatus.Up &&
-                n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                n.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                n.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
             .Select(n => new
             {
                 Nic = n,
-                Props = n.GetIPProperties()
+                Props = n.GetIPProperties(),
+                MacBytes = n.GetPhysicalAddress().GetAddressBytes()
             })
-            .FirstOrDefault(x => x.Props.UnicastAddresses.Any(a =>
-                a.Address.AddressFamily == AddressFamily.InterNetwork));
+            .Where(x =>
+                x.Props.UnicastAddresses.Any(a => a.Address.AddressFamily == AddressFamily.InterNetwork) &&
+                x.MacBytes.Length > 0)
+            .OrderByDescending(x =>
+                x.Nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                x.Nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+            .ToList();
+
+        var primaryNic = adapters.FirstOrDefault();
 
         string? ip = primaryNic?.Props.UnicastAddresses
             .FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
             ?.Address.ToString();
 
         string? mac = null;
-        if (primaryNic != null)
+        if (primaryNic != null && primaryNic.MacBytes.Length > 0)
         {
-            var bytes = primaryNic.Nic.GetPhysicalAddress().GetAddressBytes();
-            if (bytes.Length > 0)
-                mac = string.Join("-", bytes.Select(b => b.ToString("X2")));
+            mac = string.Join("-", primaryNic.MacBytes.Select(b => b.ToString("X2")));
         }
+
+        var metadata = ReadRegisterMetadata();
+
+        _logger.LogInformation(
+            "Inventory details: Host={Host} Store={Store} Register={Register} IP={IP} MAC={MAC}",
+            hostnameForRegister,
+            store,
+            regNum,
+            ip ?? "(null)",
+            mac ?? "(null)");
+
+        _logger.LogInformation(
+            "Metadata loaded: StoreName={StoreName}, StoreAddress={StoreAddress}, StoreCity={StoreCity}, StoreState={StoreState}, StoreZipCode={StoreZipCode}, ReleaseLevel={ReleaseLevel}, ReleaseApplied={ReleaseApplied}, VerifoneModel={VerifoneModel}, VerifoneIP={VerifoneIP}, ScannerName={ScannerName}, ScannerSerialNumber={ScannerSerialNumber}",
+            metadata.StoreName ?? "(null)",
+            metadata.StoreAddress ?? "(null)",
+            metadata.StoreCity ?? "(null)",
+            metadata.StoreState ?? "(null)",
+            metadata.StoreZipCode ?? "(null)",
+            metadata.ReleaseLevel ?? "(null)",
+            metadata.ReleaseApplied ?? "(null)",
+            metadata.VerifoneModel ?? "(null)",
+            metadata.VerifoneIP ?? "(null)",
+            metadata.ScannerName ?? "(null)",
+            metadata.ScannerSerialNumber ?? "(null)");
 
         return new
         {
-            computerName = Environment.MachineName,
+            computerName = hostnameForRegister,
             store = store,
             registerNumber = regNum,
             ipAddress = ip,
             macAddress = mac,
             domain = Environment.UserDomainName,
             osVersion = Environment.OSVersion.ToString(),
-            cpuArch = RuntimeInformation.OSArchitecture.ToString()
+            cpuArch = RuntimeInformation.OSArchitecture.ToString(),
+
+            storeName = metadata.StoreName,
+            storeAddress = metadata.StoreAddress,
+            storeCity = metadata.StoreCity,
+            storeState = metadata.StoreState,
+            storeZipCode = metadata.StoreZipCode,
+            releaseLevel = metadata.ReleaseLevel,
+            releaseApplied = metadata.ReleaseApplied,
+            verifoneModel = metadata.VerifoneModel,
+            verifoneIP = metadata.VerifoneIP,
+            scannerName = metadata.ScannerName,
+            scannerSerialNumber = metadata.ScannerSerialNumber
         };
+    }
+
+    private void RefreshRegisterMetadataWithDetectedValues()
+    {
+        var path = _cfg.RegisterMetadataPath;
+        _logger.LogInformation("Refreshing register metadata at {Path}", path);
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _logger.LogWarning("RegisterMetadataPath is blank. Skipping metadata refresh.");
+            return;
+        }
+
+        try
+        {
+            JsonObject root;
+
+            if (!File.Exists(path))
+            {
+                root = new JsonObject();
+            }
+            else
+            {
+                var existingJson = File.ReadAllText(path);
+                root = string.IsNullOrWhiteSpace(existingJson)
+                    ? new JsonObject()
+                    : (JsonNode.Parse(existingJson)?.AsObject() ?? new JsonObject());
+            }
+
+            var scannerInfo = DetectScannerInfo();
+
+            if (!string.IsNullOrWhiteSpace(scannerInfo.ScannerName))
+            {
+                var currentScannerName = root["scannerName"]?.ToString();
+                if (!string.Equals(currentScannerName, scannerInfo.ScannerName, StringComparison.Ordinal))
+                {
+                    root["scannerName"] = scannerInfo.ScannerName;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(scannerInfo.ScannerSerialNumber))
+            {
+                var currentScannerSerial = root["scannerSerialNumber"]?.ToString();
+                if (!string.Equals(currentScannerSerial, scannerInfo.ScannerSerialNumber, StringComparison.Ordinal))
+                {
+                    root["scannerSerialNumber"] = scannerInfo.ScannerSerialNumber;
+                }
+            }
+
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, root.ToJsonString(JsonOpts));
+
+            _logger.LogInformation(
+                "Register metadata refresh complete. ScannerName={ScannerName}, ScannerSerialNumber={ScannerSerialNumber}",
+                root["scannerName"]?.ToString() ?? "(null)",
+                root["scannerSerialNumber"]?.ToString() ?? "(null)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to refresh register metadata at {Path}", path);
+        }
+    }
+
+    private RegisterMetadata ReadRegisterMetadata()
+    {
+        var path = _cfg.RegisterMetadataPath;
+        _logger.LogInformation("Reading register metadata from {Path}", path);
+
+        if (string.IsNullOrWhiteSpace(path))
+            return new RegisterMetadata();
+
+        try
+        {
+            if (!File.Exists(path))
+            {
+                _logger.LogInformation("Register metadata file not found at {Path}", path);
+                return new RegisterMetadata();
+            }
+
+            var json = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                _logger.LogInformation("Register metadata file is empty at {Path}", path);
+                return new RegisterMetadata();
+            }
+
+            var metadata = JsonSerializer.Deserialize<RegisterMetadata>(json, JsonOpts);
+            return metadata ?? new RegisterMetadata();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read register metadata from {Path}", path);
+            return new RegisterMetadata();
+        }
+    }
+
+    private (string? ScannerName, string? ScannerSerialNumber) DetectScannerInfo()
+    {
+        try
+        {
+            string? scannerName = null;
+            string? scannerSerialNumber = null;
+
+            using (var searcher = new ManagementObjectSearcher(@"root\CIMV2", "SELECT * FROM Symbol_BarcodeScanner"))
+            {
+                foreach (ManagementObject mo in searcher.Get())
+                {
+                    scannerName = mo["Name"]?.ToString();
+                    scannerSerialNumber = mo["SerialNumber"]?.ToString();
+
+                    if (!string.IsNullOrWhiteSpace(scannerName) || !string.IsNullOrWhiteSpace(scannerSerialNumber))
+                        break;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(scannerName))
+            {
+                var normalizedName = NormalizeScannerName(scannerName);
+                return (normalizedName, scannerSerialNumber);
+            }
+
+            using (var pnp = new ManagementObjectSearcher("SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%Barcode%' OR Name LIKE '%Scanner%'"))
+            {
+                foreach (ManagementObject mo in pnp.Get())
+                {
+                    var name = mo["Name"]?.ToString() ?? "";
+
+                    if (name.IndexOf("HP ElitePOS 2D Barcode Scanner", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return ("HP ElitePOS 2D Barcode Scanner", null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Scanner detection failed");
+        }
+
+        return (null, null);
+    }
+
+    private static string NormalizeScannerName(string scannerName)
+    {
+        if (string.IsNullOrWhiteSpace(scannerName))
+            return "UnknownScanner";
+
+        if (scannerName.Contains("4308", StringComparison.OrdinalIgnoreCase)) return "DS4308";
+        if (scannerName.Contains("9208", StringComparison.OrdinalIgnoreCase)) return "DS9208";
+        if (scannerName.Contains("DS4208-HD", StringComparison.OrdinalIgnoreCase)) return "DS4208-HD";
+        if (scannerName.Contains("DS4208-SR", StringComparison.OrdinalIgnoreCase)) return "DS4208-SR";
+        if (scannerName.Contains("DS4208-DL", StringComparison.OrdinalIgnoreCase)) return "DS4208-DL";
+        if (scannerName.Contains("LS4208", StringComparison.OrdinalIgnoreCase)) return "LS4208";
+
+        return scannerName;
+    }
+
+    private static string ParseRegisterFromHostname(string hostname)
+    {
+        if (string.IsNullOrWhiteSpace(hostname))
+            return "";
+
+        var parts = hostname.Split('-', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 2)
+            return "";
+
+        return parts[^1];
     }
 
     private sealed class PendingCommand
@@ -200,5 +426,20 @@ public sealed class Worker : BackgroundService
         public string? Type { get; set; }
         public string? Scope { get; set; }
         public string? PayloadJson { get; set; }
+    }
+
+    private sealed class RegisterMetadata
+    {
+        public string? StoreName { get; set; }
+        public string? StoreAddress { get; set; }
+        public string? StoreCity { get; set; }
+        public string? StoreState { get; set; }
+        public string? StoreZipCode { get; set; }
+        public string? ReleaseLevel { get; set; }
+        public string? ReleaseApplied { get; set; }
+        public string? VerifoneModel { get; set; }
+        public string? VerifoneIP { get; set; }
+        public string? ScannerName { get; set; }
+        public string? ScannerSerialNumber { get; set; }
     }
 }

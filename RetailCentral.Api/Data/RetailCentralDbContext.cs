@@ -19,7 +19,9 @@ namespace RetailCentral.Api.Data
         public DbSet<Package> Packages => Set<Package>();
         public DbSet<Deployment> Deployments => Set<Deployment>();
         public DbSet<DeploymentDevice> DeploymentDevices => Set<DeploymentDevice>();
-
+         public DbSet<InstalledSoftware> InstalledSoftwares => Set<InstalledSoftware>();
+        public DbSet<InstalledWindowsUpdate> InstalledWindowsUpdates => Set<InstalledWindowsUpdate>();
+        public DbSet<ProcessStatusInventory> ProcessStatusInventories => Set<ProcessStatusInventory>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Device>()
@@ -129,6 +131,26 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.WorkingDirectory).HasMaxLength(500);
                 entity.Property(x => x.CreatedBy).HasMaxLength(100);
             });
+            modelBuilder.Entity<InstalledSoftware>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+                entity.HasIndex(x => x.DeviceId);
+
+                entity.Property(x => x.Name).HasMaxLength(500);
+                entity.Property(x => x.Version).HasMaxLength(100);
+                entity.Property(x => x.Publisher).HasMaxLength(200);
+                entity.Property(x => x.InstallDate).HasMaxLength(50);
+            });
+
+            modelBuilder.Entity<InstalledWindowsUpdate>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+                entity.HasIndex(x => x.DeviceId);
+
+                entity.Property(x => x.HotFixId).HasMaxLength(100);
+                entity.Property(x => x.Description).HasMaxLength(500);
+                entity.Property(x => x.InstalledOn).HasMaxLength(50);
+            });
 
             modelBuilder.Entity<Deployment>(entity =>
             {
@@ -146,6 +168,23 @@ namespace RetailCentral.Api.Data
 
                 entity.HasIndex(x => x.PackageId);
                 entity.HasIndex(x => x.Status);
+            });
+
+            modelBuilder.Entity<ProcessStatusInventory>(entity =>
+            {
+                entity.HasKey(x => x.ProcessStatusInventoryId);
+
+                entity.HasIndex(x => x.DeviceId)
+                    .IsUnique();
+
+                entity.HasOne<Device>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeviceId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(x => x.PosProcessName).HasMaxLength(200);
+                entity.Property(x => x.RetailShellProcessName).HasMaxLength(200);
+                entity.Property(x => x.AgentProcessName).HasMaxLength(200);
             });
 
             modelBuilder.Entity<DeploymentDevice>(entity =>

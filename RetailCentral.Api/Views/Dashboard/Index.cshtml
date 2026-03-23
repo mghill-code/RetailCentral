@@ -37,17 +37,17 @@
         <div class="metric-footnote">Queued and waiting for agent pickup</div>
     </div>
     <div class="card metric-card progress-card">
-        <div class="metric-label">In Progress</div>
+        <div class="metric-label">Commands In Progress</div>
         <div class="metric-value inprogress">@Model.CommandsInProgress</div>
         <div class="metric-footnote">Currently locked by active agents</div>
     </div>
     <div class="card metric-card failed-card">
-        <div class="metric-label">Failed (24h)</div>
+        <div class="metric-label">Commands Failed (24h)</div>
         <div class="metric-value offline">@Model.CommandsFailedLast24Hours</div>
         <div class="metric-footnote">Recent failures requiring review</div>
     </div>
     <div class="card metric-card success-card">
-        <div class="metric-label">Succeeded (24h)</div>
+        <div class="metric-label">Commands Succeeded (24h)</div>
         <div class="metric-value online">@Model.CommandsSucceededLast24Hours</div>
         <div class="metric-footnote">Successful work completed today</div>
     </div>
