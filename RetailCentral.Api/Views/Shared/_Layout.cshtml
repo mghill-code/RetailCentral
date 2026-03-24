@@ -8,6 +8,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    @using Microsoft.AspNetCore.Authorization
+    @inject IAuthorizationService AuthorizationService
     @{
         var currentPath = Context?.Request?.Path.Value ?? string.Empty;
 
@@ -20,6 +22,11 @@
             ? "nav-active"
             : string.Empty;
         }
+
+        var canView = (await AuthorizationService.AuthorizeAsync(User, "DashboardViewer")).Succeeded;
+        var canHelpdesk = (await AuthorizationService.AuthorizeAsync(User, "DashboardHelpdesk")).Succeeded;
+        var canEngineer = (await AuthorizationService.AuthorizeAsync(User, "DashboardEngineer")).Succeeded;
+        var canAdmin = (await AuthorizationService.AuthorizeAsync(User, "DashboardAdmin")).Succeeded;
     }
 
     <div class="app-shell">
@@ -33,23 +40,48 @@
             </div>
 
             <nav class="sidebar-nav">
-                <div class="sidebar-section-label">Fleet Overview</div>
-                <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-emoji">🏠</span><span>Dashboard</span></a>
-                <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")"><span class="nav-emoji">🧾</span><span>Register Inventory</span></a>
-                <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-emoji">💻</span><span>Devices</span></a>
-                <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")"><span class="nav-emoji">👥</span><span>Groups</span></a>
-                <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")"><span class="nav-emoji">📊</span><span>Versions</span></a>
+                @if (canView)
+                {
+                    <div class="sidebar-section-label">Fleet Overview</div>
+                    <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-emoji">🏠</span><span>Dashboard</span></a>
+                    <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")"><span class="nav-emoji">🧾</span><span>Register Inventory</span></a>
+                    <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-emoji">💻</span><span>Devices</span></a>
+                    <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")"><span class="nav-emoji">👥</span><span>Groups</span></a>
+                    <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")"><span class="nav-emoji">📊</span><span>Versions</span></a>
 
-                <div class="sidebar-section-label">Commands &amp; Support</div>
-                <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-emoji">📜</span><span>Commands</span></a>
-                <a href="/Dashboard/Failures" class="@NavClass("/Dashboard/Failures")"><span class="nav-emoji">⚠️</span><span>Failures</span></a>
-                <a href="/Dashboard/HelpdeskCommands" class="@NavClass("/Dashboard/HelpdeskCommands")"><span class="nav-emoji">🛠</span><span>Helpdesk Commands</span></a>
-                <a href="/Dashboard/IssueCommand" class="@NavClass("/Dashboard/IssueCommand")"><span class="nav-emoji">🚀</span><span>Issue Command</span></a>
+                    <div class="sidebar-section-label">Commands &amp; Support</div>
+                    <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-emoji">📜</span><span>Commands</span></a>
+                    <a href="/Dashboard/Failures" class="@NavClass("/Dashboard/Failures")"><span class="nav-emoji">⚠️</span><span>Failures</span></a>
+                }
 
-                <div class="sidebar-section-label">Deployments</div>
-                <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")"><span class="nav-emoji">🗂</span><span>Packages</span></a>
-                <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-emoji">🧪</span><span>Create Deployment</span></a>
-                <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-emoji">📦</span><span>Deployments</span></a>
+                @if (canHelpdesk)
+                {
+                    <a href="/Dashboard/HelpdeskCommands" class="@NavClass("/Dashboard/HelpdeskCommands")"><span class="nav-emoji">🛠</span><span>Helpdesk Commands</span></a>
+                }
+
+                @if (canEngineer)
+                {
+                    <a href="/Dashboard/IssueCommand" class="@NavClass("/Dashboard/IssueCommand")"><span class="nav-emoji">🚀</span><span>Issue Command</span></a>
+
+                    <div class="sidebar-section-label">Deployments</div>
+                    <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")"><span class="nav-emoji">🗂</span><span>Packages</span></a>
+                    <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-emoji">🧪</span><span>Create Deployment</span></a>
+                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-emoji">📦</span><span>Deployments</span></a>
+                }
+
+                @if (canAdmin)
+                {
+                    <div class="sidebar-section-label">Administration</div>
+                    <a href="/Dashboard/Audit" class="@NavClass("/Dashboard/Audit")">
+                        <span class="nav-emoji">🧾</span>
+                        <span>Audit Logs</span>
+                    </a>
+                    <a href="/Dashboard/LogsDashboard" class="@NavClass("/Dashboard/LogsDashboard")">
+                        <span class="nav-emoji">📚</span>
+                        <span>Logs Dashboard</span>
+                    </a>
+
+                }
             </nav>
         </aside>
 

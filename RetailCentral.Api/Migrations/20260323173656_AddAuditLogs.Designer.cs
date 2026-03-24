@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RetailCentral.Api.Data;
 
@@ -11,9 +12,11 @@ using RetailCentral.Api.Data;
 namespace RetailCentral.Api.Migrations
 {
     [DbContext(typeof(RetailCentralDbContext))]
-    partial class RetailCentralDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260323173656_AddAuditLogs")]
+    partial class AddAuditLogs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -593,8 +596,7 @@ namespace RetailCentral.Api.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ProcessStatusInventoryId"));
 
                     b.Property<decimal?>("AgentCpuPercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("AgentProcessCount")
                         .HasColumnType("int");
@@ -610,15 +612,13 @@ namespace RetailCentral.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("AgentWorkingSetMb")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal?>("PosCpuPercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("PosProcessCount")
                         .HasColumnType("int");
@@ -634,12 +634,10 @@ namespace RetailCentral.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("PosWorkingSetMb")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal?>("RetailShellCpuPercent")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("RetailShellProcessCount")
                         .HasColumnType("int");
@@ -655,8 +653,7 @@ namespace RetailCentral.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("RetailShellWorkingSetMb")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("decimal(10,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");

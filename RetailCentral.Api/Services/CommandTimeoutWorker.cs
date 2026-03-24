@@ -22,7 +22,7 @@ namespace RetailCentral.Api.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("CommandTimeoutWorker started.");
+            _logger.LogDebug("CommandTimeoutWorker started.");
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -38,7 +38,7 @@ namespace RetailCentral.Api.Services
                 await Task.Delay(TimeSpan.FromSeconds(_options.Value.SweepSeconds), stoppingToken);
             }
 
-            _logger.LogInformation("CommandTimeoutWorker stopped.");
+            _logger.LogDebug("CommandTimeoutWorker stopped.");
         }
 
         private async Task SweepOnce(CancellationToken ct)

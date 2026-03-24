@@ -19,9 +19,11 @@ namespace RetailCentral.Api.Data
         public DbSet<Package> Packages => Set<Package>();
         public DbSet<Deployment> Deployments => Set<Deployment>();
         public DbSet<DeploymentDevice> DeploymentDevices => Set<DeploymentDevice>();
-         public DbSet<InstalledSoftware> InstalledSoftwares => Set<InstalledSoftware>();
+        public DbSet<InstalledSoftware> InstalledSoftwares => Set<InstalledSoftware>();
         public DbSet<InstalledWindowsUpdate> InstalledWindowsUpdates => Set<InstalledWindowsUpdate>();
         public DbSet<ProcessStatusInventory> ProcessStatusInventories => Set<ProcessStatusInventory>();
+        public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Device>()
@@ -115,6 +117,7 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.ScannerName).HasMaxLength(200);
                 entity.Property(x => x.ScannerSerialNumber).HasMaxLength(100);
             });
+
             modelBuilder.Entity<Package>(entity =>
             {
                 entity.ToTable("Packages");
@@ -131,6 +134,7 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.WorkingDirectory).HasMaxLength(500);
                 entity.Property(x => x.CreatedBy).HasMaxLength(100);
             });
+
             modelBuilder.Entity<InstalledSoftware>(entity =>
             {
                 entity.HasKey(x => x.Id);
@@ -185,6 +189,16 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.PosProcessName).HasMaxLength(200);
                 entity.Property(x => x.RetailShellProcessName).HasMaxLength(200);
                 entity.Property(x => x.AgentProcessName).HasMaxLength(200);
+
+                // CPU percentages
+                entity.Property(x => x.PosCpuPercent).HasPrecision(5, 2);
+                entity.Property(x => x.RetailShellCpuPercent).HasPrecision(5, 2);
+                entity.Property(x => x.AgentCpuPercent).HasPrecision(5, 2);
+
+                // Working set memory in MB
+                entity.Property(x => x.PosWorkingSetMb).HasPrecision(10, 2);
+                entity.Property(x => x.RetailShellWorkingSetMb).HasPrecision(10, 2);
+                entity.Property(x => x.AgentWorkingSetMb).HasPrecision(10, 2);
             });
 
             modelBuilder.Entity<DeploymentDevice>(entity =>

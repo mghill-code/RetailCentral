@@ -2,12 +2,23 @@
 
 @{
     ViewData["Title"] = "Devices";
+
+    string chipClass(string value)
+    {
+        return string.Equals(Model.Status, value, StringComparison.OrdinalIgnoreCase)
+            ? "chip nav-active"
+            : "chip";
+    }
+
+    var selectedGroupText = string.IsNullOrWhiteSpace(Model.GroupName)
+        ? "More Filters"
+        : $"Group: {Model.GroupName}";
 }
 
 <div class="page-header">
     <div>
         <h1>Devices</h1>
-        <p>Browse active devices, inspect health, and take recovery actions.</p>
+        <p>Browse devices, inspect health, and take recovery actions.</p>
     </div>
     <div class="page-actions">
         <a class="btn" href="/Dashboard/HelpdeskCommands">🛠 Helpdesk Commands</a>
@@ -16,16 +27,51 @@
 </div>
 
 <div class="card toolbar-card">
-    <div class="chips">
-        <a class="chip" href="/Dashboard/Devices">All Devices</a>
-        <a class="chip" href="/Dashboard/Devices?status=Online">Online</a>
-        <a class="chip" href="/Dashboard/Devices?status=Offline">Offline</a>
-        @foreach (var g in Model.AvailableGroups.Take(8))
+    <div class="chips" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <a class="@chipClass("Active")" href="/Dashboard/Devices?status=Active">All Devices (Active)</a>
+        <a class="@chipClass("Online")" href="/Dashboard/Devices?status=Online">Online</a>
+        <a class="@chipClass("Offline")" href="/Dashboard/Devices?status=Offline">Offline</a>
+        <a class="@chipClass("Retired")" href="/Dashboard/Devices?status=Retired">Retired</a>
+
+        <form method="get" action="/Dashboard/Devices" style="display:inline-flex; gap:8px; align-items:center;">
+            <input type="hidden" name="status" value="@Model.Status" />
+            <select name="groupName" onchange="this.form.submit()" class="compact-select">
+                <option value="">More Filters</option>
+                @foreach (var g in Model.AvailableGroups)
+                {
+                    if (string.Equals(Model.GroupName, g, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="@g" selected>@g</option>
+                    }
+                    else
+                    {
+                        <option value="@g">@g</option>
+                    }
+                }
+            </select>
+            @if (!string.IsNullOrWhiteSpace(Model.GroupName))
+            {
+                <a class="btn btn-secondary" href="/Dashboard/Devices?status=@Model.Status">Clear Group</a>
+            }
+        </form>
+    </div>
+
+    <div class="subtle" style="margin-top:10px;">
+        Showing @Model.Devices.Count
+        @if (string.Equals(Model.Status, "Retired", StringComparison.OrdinalIgnoreCase))
         {
-            <a class="chip" href="/Dashboard/Devices?groupName=@Uri.EscapeDataString(g)">@g</a>
+            <text> retired devices</text>
+        }
+        else
+        {
+            <text> active devices</text>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Model.GroupName))
+        {
+            <text> in group "@Model.GroupName"</text>
         }
     </div>
-    <div class="subtle">Showing @Model.Devices.Count active devices</div>
 </div>
 
 <div class="card">
@@ -44,6 +90,8 @@
             <tbody>
                 @foreach (var d in Model.Devices)
                 {
+                    var isRetired = string.Equals(Model.Status, "Retired", StringComparison.OrdinalIgnoreCase);
+
                     <tr>
                         <td>@d.StoreNumber</td>
                         <td>
@@ -51,21 +99,32 @@
                             <div class="subtle">DeviceId: @d.DeviceId</div>
                         </td>
                         <td>
-                            <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
-                                @(d.IsOnline ? "Online" : "Offline")
-                            </span>
+                            @if (isRetired)
+                            {
+                                <span class="badge badge-offline">Retired</span>
+                            }
+                            else
+                            {
+                                <span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">
+                                    @(d.IsOnline ? "Online" : "Offline")
+                                </span>
+                            }
                         </td>
                         <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
                         <td>@(d.LastSeenUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</td>
                         <td>
                             <div class="action-row">
                                 <a class="btn btn-outline" href="/Dashboard/Device/@d.DeviceId">Open</a>
-                                <form method="post" action="/Dashboard/RetireDevice" class="inline"
-                                      onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="deviceId" value="@d.DeviceId" />
-                                    <button class="btn btn-danger" @(d.IsOnline ? "disabled" : "")>Retire</button>
-                                </form>
+
+                                @if (!isRetired)
+                                {
+                                    <form method="post" action="/Dashboard/RetireDevice" class="inline"
+                                          onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="deviceId" value="@d.DeviceId" />
+                                        <button class="btn btn-danger" @(d.IsOnline ? "disabled" : null)>Retire</button>
+                                    </form>
+                                }
                             </div>
                         </td>
                     </tr>

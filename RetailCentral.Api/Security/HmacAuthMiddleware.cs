@@ -64,10 +64,21 @@ namespace RetailCentral.Api.Security
 
             // Load device + secret
             var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
-            if (device == null || !device.IsEnabled)
+            if (device == null)
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsync("Unknown/disabled device");
+                await context.Response.WriteAsync("Unknown device");
+                return;
+            }
+
+            var isHeartbeat = path.Equals("/api/agent/v1/heartbeat", StringComparison.OrdinalIgnoreCase);
+
+            // Allow disabled devices to heartbeat so the API can auto-reactivate them.
+            // Keep disabled devices blocked for other agent endpoints.
+            if (!device.IsEnabled && !isHeartbeat)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsync("Disabled device");
                 return;
             }
 

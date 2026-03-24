@@ -126,7 +126,7 @@ namespace RetailCentral.Api.Services
 
             if (toAdd.Count == 0)
             {
-                _logger.LogInformation("Register inventory refresh scan complete. No online devices needed refresh.");
+                _logger.LogDebug("Register inventory refresh scan complete. No online devices needed refresh.");
                 return;
             }
 

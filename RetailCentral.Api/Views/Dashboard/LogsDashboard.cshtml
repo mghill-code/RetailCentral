@@ -1,0 +1,88 @@
+﻿@model RetailCentral.Api.ViewModels.LogsDashboardViewModel
+
+@{
+    ViewData["Title"] = "Logs Dashboard";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Logs Dashboard</h1>
+        <p>Operational reports for reactivated, inactive, and newly enrolled devices.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Summary Reports</h2>
+    </div>
+    <div class="card-body">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:16px;">
+            <div class="card">
+                <div class="card-header"><h2>Inactive Devices</h2></div>
+                <div class="card-body">
+                    <div>Last 30 Days: <strong>@Model.Inactive30Days</strong></div>
+                    <div>Last 60 Days: <strong>@Model.Inactive60Days</strong></div>
+                    <div>Last 90 Days: <strong>@Model.Inactive90Days</strong></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2>New Devices</h2></div>
+                <div class="card-body">
+                    <div>Last 30 Days: <strong>@Model.New30Days</strong></div>
+                    <div>Last 60 Days: <strong>@Model.New60Days</strong></div>
+                    <div>Last 90 Days: <strong>@Model.New90Days</strong></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2>Reactivated Devices</h2></div>
+                <div class="card-body">
+                    <div>Recent Returned Devices: <strong>@Model.ReactivatedDevices.Count</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <div class="card-header">
+        <h2>Reactivated Devices</h2>
+    </div>
+    <div class="card-body">
+        @if (!Model.ReactivatedDevices.Any())
+        {
+            <p>No reactivated devices found.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time (UTC)</th>
+                            <th>Device ID</th>
+                            <th>Hostname</th>
+                            <th>Store</th>
+                            <th>IP Address</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.ReactivatedDevices)
+                        {
+                            <tr>
+                                <td>@row.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@row.DeviceId</td>
+                                <td>@row.Hostname</td>
+                                <td>@row.StoreNumber</td>
+                                <td>@row.RemoteIp</td>
+                                <td>@row.Reason</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>

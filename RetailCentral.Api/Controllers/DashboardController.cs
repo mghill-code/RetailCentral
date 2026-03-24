@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Models.Deployments;
+using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
 using RetailCentral.Api.ViewModels;
 using RetailCentral.Api.ViewModels.Deployments;
@@ -12,23 +14,51 @@ using System.Text;
 
 namespace RetailCentral.Api.Controllers
 {
+    [Authorize(Policy = "DashboardViewer")]
     public class DashboardController : Controller
     {
         private readonly RetailCentralDbContext _db;
         private readonly IDeploymentService _deploymentService;
         private readonly IWebHostEnvironment _environment;
+        private readonly AuditService _auditService;
 
         public DashboardController(
             RetailCentralDbContext db,
             IDeploymentService deploymentService,
-            IWebHostEnvironment environment)
+            IWebHostEnvironment environment,
+            AuditService auditService)
         {
             _db = db;
             _deploymentService = deploymentService;
             _environment = environment;
-        }   
+            _auditService = auditService;
+        }
 
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
+
+        private string CurrentActor()
+        {
+            return User?.Identity?.Name ?? "Dashboard";
+        }
+
+        private async Task AuditAsync(
+            string action,
+            string? targetType = null,
+            string? targetId = null,
+            object? details = null,
+            bool success = true,
+            string? errorMessage = null,
+            CancellationToken cancellationToken = default)
+        {
+            await _auditService.LogAsync(
+                action: action,
+                targetType: targetType,
+                targetId: targetId,
+                details: details,
+                success: success,
+                errorMessage: errorMessage,
+                cancellationToken: cancellationToken);
+        }
 
         private static List<string> GetAvailableCommandTypes()
         {
@@ -374,6 +404,170 @@ namespace RetailCentral.Api.Controllers
             return View(model);
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
+        [HttpGet]
+        public async Task<IActionResult> LogsDashboard(CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            var d30 = now.AddDays(-30);
+            var d60 = now.AddDays(-60);
+            var d90 = now.AddDays(-90);
+
+            var reactivatedAuditRows = await _db.AuditLogs
+                .Where(a => a.Action == "DeviceAutoReactivated")
+                .OrderByDescending(a => a.TimestampUtc)
+                .Take(200)
+                .Select(a => new
+                {
+                    a.TimestampUtc,
+                    a.TargetId,
+                    a.Details
+                })
+                .ToListAsync(ct);
+            var reactivated = reactivatedAuditRows
+                .Select(a =>
+                {
+                    string? hostname = null;
+                    string? storeNumber = null;
+                    string? remoteIp = null;
+                    string? reason = null;
+
+                    if (!string.IsNullOrWhiteSpace(a.Details))
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(a.Details);
+                        var root = doc.RootElement;
+
+                        if (root.TryGetProperty("Hostname", out var h))
+                            hostname = h.GetString();
+
+                        if (root.TryGetProperty("StoreNumber", out var s))
+                            storeNumber = s.GetString();
+
+                        if (root.TryGetProperty("remoteIp", out var ip))
+                            remoteIp = ip.GetString();
+
+                        if (root.TryGetProperty("Reason", out var r))
+                            reason = r.GetString();
+                    }
+
+                    return new ReactivatedDeviceLogViewModel
+                    {
+                        TimestampUtc = a.TimestampUtc,
+                        DeviceId = a.TargetId,
+                        Hostname = hostname,
+                        StoreNumber = storeNumber,
+                        RemoteIp = remoteIp,
+                        Reason = reason
+                    };
+                })
+                .ToList();
+
+            var inactive30 = await _db.Devices.CountAsync(d => d.IsEnabled && d.LastSeenUtc < d30, ct);
+            var inactive60 = await _db.Devices.CountAsync(d => d.IsEnabled && d.LastSeenUtc < d60, ct);
+            var inactive90 = await _db.Devices.CountAsync(d => d.IsEnabled && d.LastSeenUtc < d90, ct);
+
+            var new30 = await _db.Devices.CountAsync(d => d.FirstSeenUtc >= d30, ct);
+            var new60 = await _db.Devices.CountAsync(d => d.FirstSeenUtc >= d60, ct);
+            var new90 = await _db.Devices.CountAsync(d => d.FirstSeenUtc >= d90, ct);
+
+            var model = new LogsDashboardViewModel
+            {
+                ReactivatedDevices = reactivated,
+                Inactive30Days = inactive30,
+                Inactive60Days = inactive60,
+                Inactive90Days = inactive90,
+                New30Days = new30,
+                New60Days = new60,
+                New90Days = new90
+            };
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardAdmin")]
+        [HttpGet]
+        public async Task<IActionResult> Audit(AuditViewModel model, CancellationToken ct)
+        {
+            var query = _db.AuditLogs.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(model.UserName))
+                query = query.Where(x => x.UserName.Contains(model.UserName));
+
+            if (!string.IsNullOrWhiteSpace(model.ActionName))
+                query = query.Where(x => x.Action.Contains(model.ActionName));
+
+            if (!string.IsNullOrWhiteSpace(model.TargetType))
+                query = query.Where(x => x.TargetType == model.TargetType);
+
+            if (!string.IsNullOrWhiteSpace(model.TargetId))
+                query = query.Where(x => x.TargetId == model.TargetId);
+
+            if (model.FromUtc.HasValue)
+                query = query.Where(x => x.TimestampUtc >= model.FromUtc.Value);
+
+            if (model.ToUtc.HasValue)
+                query = query.Where(x => x.TimestampUtc <= model.ToUtc.Value);
+
+            if (model.Success.HasValue)
+                query = query.Where(x => x.Success == model.Success.Value);
+
+            model.Results = await query
+                .OrderByDescending(x => x.TimestampUtc)
+                .Take(500) // safety cap
+                .ToListAsync(ct);
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardAdmin")]
+        [HttpGet]
+        public async Task<IActionResult> ExportAudit(AuditViewModel model, CancellationToken ct)
+        {
+            var query = _db.AuditLogs.AsQueryable();
+
+            // same filters as above
+            if (!string.IsNullOrWhiteSpace(model.UserName))
+                query = query.Where(x => x.UserName.Contains(model.UserName));
+
+            if (!string.IsNullOrWhiteSpace(model.ActionName))
+                query = query.Where(x => x.Action.Contains(model.ActionName));
+
+            if (!string.IsNullOrWhiteSpace(model.TargetType))
+                query = query.Where(x => x.TargetType == model.TargetType);
+
+            if (!string.IsNullOrWhiteSpace(model.TargetId))
+                query = query.Where(x => x.TargetId == model.TargetId);
+
+            if (model.FromUtc.HasValue)
+                query = query.Where(x => x.TimestampUtc >= model.FromUtc.Value);
+
+            if (model.ToUtc.HasValue)
+                query = query.Where(x => x.TimestampUtc <= model.ToUtc.Value);
+
+            if (model.Success.HasValue)
+                query = query.Where(x => x.Success == model.Success.Value);
+
+            var data = await query
+                .OrderByDescending(x => x.TimestampUtc)
+                .Take(5000)
+                .ToListAsync(ct);
+
+            var lines = new List<string>
+    {
+        "TimestampUtc,UserName,Action,TargetType,TargetId,Success,IpAddress,ErrorMessage"
+    };
+
+            foreach (var x in data)
+            {
+                lines.Add($"\"{x.TimestampUtc:O}\",\"{x.UserName}\",\"{x.Action}\",\"{x.TargetType}\",\"{x.TargetId}\",\"{x.Success}\",\"{x.IpAddress}\",\"{x.ErrorMessage}\"");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\n", lines));
+
+            return File(bytes, "text/csv", $"audit_{DateTime.UtcNow:yyyyMMddHHmmss}.csv");
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> Packages(CancellationToken cancellationToken)
         {
@@ -386,6 +580,7 @@ namespace RetailCentral.Api.Controllers
             return View(vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public IActionResult CreatePackage()
         {
@@ -402,6 +597,7 @@ namespace RetailCentral.Api.Controllers
             return View(vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> EditPackage(int id, CancellationToken cancellationToken)
         {
@@ -434,6 +630,7 @@ namespace RetailCentral.Api.Controllers
             return View("CreatePackage", vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreatePackage(CreatePackageViewModel model, CancellationToken cancellationToken)
@@ -441,6 +638,7 @@ namespace RetailCentral.Api.Controllers
             return await SavePackageInternalAsync(model, null, cancellationToken);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> EditPackage(int id, CreatePackageViewModel model, CancellationToken cancellationToken)
@@ -448,6 +646,7 @@ namespace RetailCentral.Api.Controllers
             return await SavePackageInternalAsync(model, id, cancellationToken);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DisablePackage(int id, CancellationToken cancellationToken)
@@ -455,16 +654,19 @@ namespace RetailCentral.Api.Controllers
             try
             {
                 await _deploymentService.DisablePackageAsync(id, cancellationToken);
+                await AuditAsync("DisablePackage", "Package", id.ToString(), new { PackageId = id }, true, cancellationToken: cancellationToken);
                 TempData["PackageMessage"] = $"Package {id} disabled.";
             }
             catch (Exception ex)
             {
+                await AuditAsync("DisablePackage", "Package", id.ToString(), new { PackageId = id }, false, ex.Message, cancellationToken);
                 TempData["PackageMessage"] = $"Disable failed: {ex.Message}";
             }
 
             return RedirectToAction(nameof(Packages));
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeletePackage(int id, CancellationToken cancellationToken)
@@ -472,16 +674,19 @@ namespace RetailCentral.Api.Controllers
             try
             {
                 await _deploymentService.DeletePackageAsync(id, cancellationToken);
+                await AuditAsync("DeletePackage", "Package", id.ToString(), new { PackageId = id }, true, cancellationToken: cancellationToken);
                 TempData["PackageMessage"] = $"Package {id} deleted.";
             }
             catch (Exception ex)
             {
+                await AuditAsync("DeletePackage", "Package", id.ToString(), new { PackageId = id }, false, ex.Message, cancellationToken);
                 TempData["PackageMessage"] = $"Delete failed: {ex.Message}";
             }
 
             return RedirectToAction(nameof(Packages));
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> Deployments(CancellationToken cancellationToken)
         {
@@ -496,6 +701,7 @@ namespace RetailCentral.Api.Controllers
             return View(vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> DeploymentDetail(int id, CancellationToken cancellationToken)
         {
@@ -509,6 +715,7 @@ namespace RetailCentral.Api.Controllers
             return View(vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> EditDeployment(int id, CancellationToken cancellationToken)
         {
@@ -536,6 +743,7 @@ namespace RetailCentral.Api.Controllers
             return View("CreateDeployment", vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RetryFailedDeploymentDevices(int id, CancellationToken cancellationToken)
@@ -544,8 +752,10 @@ namespace RetailCentral.Api.Controllers
             {
                 var retried = await _deploymentService.RetryFailedDevicesAsync(
                     id,
-                    User?.Identity?.Name ?? "Dashboard",
+                    CurrentActor(),
                     cancellationToken);
+
+                await AuditAsync("RetryFailedDeploymentDevices", "Deployment", id.ToString(), new { DeploymentId = id, RetriedCount = retried }, true, cancellationToken: cancellationToken);
 
                 TempData["DeploymentMessage"] = retried > 0
                     ? $"Requeued {retried} failed deployment device(s)."
@@ -553,12 +763,14 @@ namespace RetailCentral.Api.Controllers
             }
             catch (Exception ex)
             {
+                await AuditAsync("RetryFailedDeploymentDevices", "Deployment", id.ToString(), new { DeploymentId = id }, false, ex.Message, cancellationToken);
                 TempData["DeploymentMessage"] = $"Retry failed: {ex.Message}";
             }
 
             return RedirectToAction(nameof(DeploymentDetail), new { id });
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CancelDeployment(int id, CancellationToken cancellationToken)
@@ -566,16 +778,19 @@ namespace RetailCentral.Api.Controllers
             try
             {
                 await _deploymentService.CancelDeploymentAsync(id, cancellationToken);
+                await AuditAsync("CancelDeployment", "Deployment", id.ToString(), new { DeploymentId = id }, true, cancellationToken: cancellationToken);
                 TempData["DeploymentMessage"] = $"Deployment {id} cancelled.";
             }
             catch (Exception ex)
             {
+                await AuditAsync("CancelDeployment", "Deployment", id.ToString(), new { DeploymentId = id }, false, ex.Message, cancellationToken);
                 TempData["DeploymentMessage"] = $"Cancel failed: {ex.Message}";
             }
 
             return RedirectToAction(nameof(DeploymentDetail), new { id });
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteDeployment(int id, CancellationToken cancellationToken)
@@ -583,10 +798,12 @@ namespace RetailCentral.Api.Controllers
             try
             {
                 await _deploymentService.DeleteDeploymentAsync(id, cancellationToken);
+                await AuditAsync("DeleteDeployment", "Deployment", id.ToString(), new { DeploymentId = id }, true, cancellationToken: cancellationToken);
                 TempData["DeploymentMessage"] = $"Deployment {id} deleted.";
             }
             catch (Exception ex)
             {
+                await AuditAsync("DeleteDeployment", "Deployment", id.ToString(), new { DeploymentId = id }, false, ex.Message, cancellationToken);
                 TempData["DeploymentMessage"] = $"Delete failed: {ex.Message}";
             }
 
@@ -605,7 +822,7 @@ namespace RetailCentral.Api.Controllers
             if (lastSeenUtc >= onlineCutoffUtc.AddMinutes(-15)) return "med";
             return "high";
         }
-                private static void ApplyFriendlyOsNames(List<RegisterInventoryRowViewModel> rows)
+        private static void ApplyFriendlyOsNames(List<RegisterInventoryRowViewModel> rows)
         {
             foreach (var row in rows)
             {
@@ -737,13 +954,35 @@ namespace RetailCentral.Api.Controllers
             return decimal.TryParse(numeric, out value);
         }
 
-        public async Task<IActionResult> Devices(string? search, string? storeNumber, string? groupName, string? status = "All")
+        public async Task<IActionResult> Devices(string? search, string? storeNumber, string? groupName, string? status = "Active")
         {
             var cutoff = OnlineCutoffUtc;
 
-            var baseQuery = _db.Devices
-                .Where(d => d.IsEnabled)
-                .AsQueryable();
+            var normalizedStatus = string.IsNullOrWhiteSpace(status)
+                ? "Active"
+                : status.Trim();
+
+            var baseQuery = _db.Devices.AsQueryable();
+
+            // Primary status filtering
+            if (string.Equals(normalizedStatus, "Retired", StringComparison.OrdinalIgnoreCase))
+            {
+                baseQuery = baseQuery.Where(d => !d.IsEnabled);
+            }
+            else if (string.Equals(normalizedStatus, "Online", StringComparison.OrdinalIgnoreCase))
+            {
+                baseQuery = baseQuery.Where(d => d.IsEnabled && d.LastSeenUtc >= cutoff);
+            }
+            else if (string.Equals(normalizedStatus, "Offline", StringComparison.OrdinalIgnoreCase))
+            {
+                baseQuery = baseQuery.Where(d => d.IsEnabled && d.LastSeenUtc < cutoff);
+            }
+            else
+            {
+                // Default = active devices only
+                normalizedStatus = "Active";
+                baseQuery = baseQuery.Where(d => d.IsEnabled);
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -768,15 +1007,6 @@ namespace RetailCentral.Api.Controllers
                         _db.DeviceGroups.Any(g => g.DeviceGroupId == m.DeviceGroupId && g.GroupName == groupName)));
             }
 
-            if (string.Equals(status, "Online", StringComparison.OrdinalIgnoreCase))
-            {
-                baseQuery = baseQuery.Where(d => d.LastSeenUtc >= cutoff);
-            }
-            else if (string.Equals(status, "Offline", StringComparison.OrdinalIgnoreCase))
-            {
-                baseQuery = baseQuery.Where(d => d.LastSeenUtc < cutoff);
-            }
-
             var devices = await baseQuery
                 .OrderBy(d => d.StoreNumber)
                 .ThenBy(d => d.Hostname)
@@ -787,7 +1017,7 @@ namespace RetailCentral.Api.Controllers
                     Hostname = d.Hostname,
                     AgentVersion = d.AgentVersion,
                     LastSeenUtc = d.LastSeenUtc,
-                    IsOnline = d.LastSeenUtc >= cutoff
+                    IsOnline = d.IsEnabled && d.LastSeenUtc >= cutoff
                 })
                 .ToListAsync();
 
@@ -808,7 +1038,7 @@ namespace RetailCentral.Api.Controllers
                 Search = search,
                 StoreNumber = storeNumber,
                 GroupName = groupName,
-                Status = status,
+                Status = normalizedStatus,
                 AvailableStores = stores,
                 AvailableGroups = groups,
                 Devices = devices
@@ -872,7 +1102,7 @@ namespace RetailCentral.Api.Controllers
 
             var inventory = await _db.RegisterInventories
                 .FirstOrDefaultAsync(r => r.DeviceId == id);
-            
+
             var installedSoftware = await _db.InstalledSoftwares
                 .Where(x => x.DeviceId == id)
                 .OrderBy(x => x.Name)
@@ -1142,6 +1372,7 @@ namespace RetailCentral.Api.Controllers
             return View(groups);
         }
 
+        [Authorize(Policy = "DashboardHelpdesk")]
         [HttpGet]
         public async Task<IActionResult> HelpdeskCommands(Guid? deviceId, string? storeNumber, string? groupName)
         {
@@ -1162,6 +1393,7 @@ namespace RetailCentral.Api.Controllers
             return View(model);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> CreateDeployment(int? packageId, int? targetType, string? targetValue, CancellationToken cancellationToken)
         {
@@ -1181,6 +1413,7 @@ namespace RetailCentral.Api.Controllers
             return View(vm);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreateDeployment(CreateDeploymentViewModel model, CancellationToken cancellationToken)
@@ -1188,6 +1421,7 @@ namespace RetailCentral.Api.Controllers
             return await SaveDeploymentInternalAsync(model, null, cancellationToken);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> EditDeployment(int id, CreateDeploymentViewModel model, CancellationToken cancellationToken)
@@ -1195,6 +1429,7 @@ namespace RetailCentral.Api.Controllers
             return await SaveDeploymentInternalAsync(model, id, cancellationToken);
         }
 
+        [Authorize(Policy = "DashboardHelpdesk")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RunHelpdeskCommand(HelpdeskCommandsViewModel model)
@@ -1232,6 +1467,12 @@ namespace RetailCentral.Api.Controllers
 
             if (!ModelState.IsValid)
             {
+                await AuditAsync("RunHelpdeskCommandValidationFailed",
+                    normalizedTargetType,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new { model.CommandKey, model.TargetType, model.DeviceId, model.StoreNumber, model.GroupName },
+                    false,
+                    "ModelState invalid");
                 await PopulateHelpdeskCommandLists(model, cutoff);
                 return View("HelpdeskCommands", model);
             }
@@ -1306,12 +1547,31 @@ namespace RetailCentral.Api.Controllers
 
             if (!ModelState.IsValid)
             {
+                await AuditAsync("RunHelpdeskCommandValidationFailed",
+                    normalizedTargetType,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new { model.CommandKey, model.TargetType, model.DeviceId, model.StoreNumber, model.GroupName },
+                    false,
+                    "Target validation failed");
                 await PopulateHelpdeskCommandLists(model, cutoff);
                 return View("HelpdeskCommands", model);
             }
 
             _db.Commands.AddRange(createdCommands);
             await _db.SaveChangesAsync();
+            await AuditAsync("RunHelpdeskCommand",
+                normalizedTargetType,
+                model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                new
+                {
+                    model.CommandKey,
+                    model.TargetType,
+                    model.DeviceId,
+                    model.StoreNumber,
+                    model.GroupName,
+                    CreatedCommandCount = createdCommands.Count,
+                    CommandIds = createdCommands.Select(c => c.CommandId).ToList()
+                });
 
             var commandName = selectedCommand?.Name ?? model.CommandKey;
             TempData["HelpdeskMessage"] = createdCommands.Count == 1
@@ -1332,6 +1592,7 @@ namespace RetailCentral.Api.Controllers
             return RedirectToAction(nameof(Commands));
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RetireDevice(Guid deviceId)
@@ -1344,6 +1605,7 @@ namespace RetailCentral.Api.Controllers
 
             if (device.LastSeenUtc >= cutoff)
             {
+                await AuditAsync("RetireDevice", "Device", deviceId.ToString(), new { DeviceId = deviceId, Hostname = device.Hostname, Reason = "Device online" }, false, "Device cannot be retired because it is currently online.");
                 TempData["DeviceMessage"] = "Device cannot be retired because it is currently online.";
                 return RedirectToAction(nameof(Device), new { id = deviceId });
             }
@@ -1360,11 +1622,13 @@ namespace RetailCentral.Api.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await AuditAsync("RetireDevice", "Device", deviceId.ToString(), new { DeviceId = deviceId, Hostname = device.Hostname, RemovedMembershipCount = memberships.Count });
 
             TempData["DeviceMessage"] = $"Device {device.Hostname} retired.";
             return RedirectToAction(nameof(Devices));
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreateGroup(string groupName, string? description)
@@ -1393,11 +1657,13 @@ namespace RetailCentral.Api.Controllers
 
             _db.DeviceGroups.Add(group);
             await _db.SaveChangesAsync();
+            await AuditAsync("CreateGroup", "Group", group.GroupName, new { group.DeviceGroupId, group.GroupName, group.Description });
 
             TempData["GroupMessage"] = $"Group '{group.GroupName}' created.";
             return RedirectToAction(nameof(Group), new { groupName = group.GroupName });
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ImportGroupCsv(string groupName, IFormFile? csvFile)
@@ -1567,6 +1833,17 @@ namespace RetailCentral.Api.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await AuditAsync("ImportGroupCsv", "Group", group.GroupName, new
+            {
+                group.DeviceGroupId,
+                group.GroupName,
+                FileName = csvFile.FileName,
+                Processed = processed,
+                Added = added,
+                AlreadyMembers = alreadyMembers,
+                NotFound = notFound,
+                Skipped = skipped
+            });
 
             TempData["GroupMessage"] =
                 $"CSV import complete for group '{group.GroupName}'. " +
@@ -1638,6 +1915,7 @@ namespace RetailCentral.Api.Controllers
             return View(model);
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> AddDeviceToGroup(string groupName, Guid deviceId)
@@ -1663,6 +1941,7 @@ namespace RetailCentral.Api.Controllers
                 });
 
                 await _db.SaveChangesAsync();
+                await AuditAsync("AddDeviceToGroup", "Group", group.GroupName, new { group.DeviceGroupId, group.GroupName, DeviceId = deviceId, device.Hostname });
                 TempData["GroupMessage"] = $"Added {device.Hostname} to {group.GroupName}.";
             }
             else
@@ -1673,6 +1952,7 @@ namespace RetailCentral.Api.Controllers
             return RedirectToAction(nameof(Group), new { groupName });
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RemoveDeviceFromGroup(string groupName, Guid deviceId)
@@ -1696,11 +1976,13 @@ namespace RetailCentral.Api.Controllers
 
             _db.DeviceGroupMembers.Remove(member);
             await _db.SaveChangesAsync();
+            await AuditAsync("RemoveDeviceFromGroup", "Group", group.GroupName, new { group.DeviceGroupId, group.GroupName, DeviceId = deviceId, device.Hostname });
 
             TempData["GroupMessage"] = $"Removed {device.Hostname} from {group.GroupName}.";
             return RedirectToAction(nameof(Group), new { groupName });
         }
 
+        [Authorize(Policy = "DashboardHelpdesk")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RequeueRecentFailedCommands(Guid deviceId)
@@ -1726,11 +2008,13 @@ namespace RetailCentral.Api.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await AuditAsync("RequeueRecentFailedCommands", "Device", deviceId.ToString(), new { DeviceId = deviceId, device.Hostname, RequeuedCount = failedCommands.Count, CommandIds = failedCommands.Select(c => c.CommandId).ToList() });
 
             TempData["DeviceMessage"] = $"Requeued {failedCommands.Count} failed command(s).";
             return RedirectToAction(nameof(Device), new { id = deviceId });
         }
 
+        [Authorize(Policy = "DashboardAdmin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteGroup(string groupName)
@@ -1748,11 +2032,13 @@ namespace RetailCentral.Api.Controllers
 
             _db.DeviceGroups.Remove(group);
             await _db.SaveChangesAsync();
+            await AuditAsync("DeleteGroup", "Group", group.GroupName, new { group.DeviceGroupId, group.GroupName });
 
             TempData["GroupMessage"] = $"Group '{group.GroupName}' deleted.";
             return RedirectToAction(nameof(Groups));
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> IssueCommand(Guid? deviceId, string? groupName, string? storeNumber)
         {
@@ -1806,6 +2092,7 @@ namespace RetailCentral.Api.Controllers
             return View(model);
         }
 
+        [Authorize(Policy = "DashboardEngineer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> IssueCommand(IssueCommandViewModel model)
@@ -1846,6 +2133,12 @@ namespace RetailCentral.Api.Controllers
 
             if (!ModelState.IsValid)
             {
+                await AuditAsync("IssueCommandValidationFailed",
+                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                    false,
+                    "ModelState invalid");
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
             }
@@ -1871,7 +2164,7 @@ namespace RetailCentral.Api.Controllers
                         model.Priority,
                         model.MaxAttempts,
                         model.ExpiresUtc,
-                        issuedBy: "Dashboard",
+                        issuedBy: CurrentActor(),
                         issuedUtc: now,
                         groupName: null));
                 }
@@ -1900,7 +2193,7 @@ namespace RetailCentral.Api.Controllers
                             model.Priority,
                             model.MaxAttempts,
                             model.ExpiresUtc,
-                            issuedBy: "Dashboard",
+                            issuedBy: CurrentActor(),
                             issuedUtc: now,
                             groupName: null));
                     }
@@ -1938,7 +2231,7 @@ namespace RetailCentral.Api.Controllers
                             model.Priority,
                             model.MaxAttempts,
                             model.ExpiresUtc,
-                            issuedBy: "Dashboard",
+                            issuedBy: CurrentActor(),
                             issuedUtc: now,
                             groupName: normalizedGroup));
                     }
@@ -1947,12 +2240,24 @@ namespace RetailCentral.Api.Controllers
 
             if (!ModelState.IsValid)
             {
+                await AuditAsync("IssueCommandValidationFailed",
+                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                    false,
+                    "Target validation failed");
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
             }
 
             if (createdCommands.Count == 0)
             {
+                await AuditAsync("IssueCommandValidationFailed",
+                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                    false,
+                    "No matching target devices were found.");
                 ModelState.AddModelError("", "No matching target devices were found.");
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
@@ -1960,6 +2265,21 @@ namespace RetailCentral.Api.Controllers
 
             _db.Commands.AddRange(createdCommands);
             await _db.SaveChangesAsync();
+            await AuditAsync("IssueCommand",
+                model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : "Group",
+                model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                new
+                {
+                    model.Type,
+                    model.DeviceId,
+                    model.StoreNumber,
+                    model.GroupName,
+                    model.Priority,
+                    model.MaxAttempts,
+                    model.ExpiresUtc,
+                    CreatedCommandCount = createdCommands.Count,
+                    CommandIds = createdCommands.Select(c => c.CommandId).ToList()
+                });
 
             if (createdCommands.Count == 1)
             {
@@ -2428,7 +2748,7 @@ namespace RetailCentral.Api.Controllers
             model.AvailableCommands = GetHelpdeskCommands();
         }
 
-        private static Command BuildHelpdeskCommandForDevice(Device device, string commandKey, DateTime issuedUtc, string? groupName = null)
+        private Command BuildHelpdeskCommandForDevice(Device device, string commandKey, DateTime issuedUtc, string? groupName = null)
         {
             var mapped = MapHelpdeskCommand(commandKey);
 
@@ -2447,7 +2767,7 @@ namespace RetailCentral.Api.Controllers
                 GroupName = groupName,
                 AttemptCount = 0,
                 MaxAttempts = 3,
-                IssuedBy = "Helpdesk",
+                IssuedBy = CurrentActor(),
                 IssuedUtc = issuedUtc
             };
         }
@@ -2689,18 +3009,20 @@ namespace RetailCentral.Api.Controllers
                     var updated = await _deploymentService.UpdatePackageAsync(
                         id.Value,
                         request,
-                        User?.Identity?.Name ?? "Dashboard",
+                        CurrentActor(),
                         cancellationToken);
 
+                    await AuditAsync("EditPackage", "Package", updated.Id.ToString(), new { updated.Id, updated.Name, updated.Version, request.FileName, request.StoragePath }, true, cancellationToken: cancellationToken);
                     TempData["PackageMessage"] = $"Package '{updated.Name}' updated successfully.";
                 }
                 else
                 {
                     var created = await _deploymentService.CreatePackageAsync(
                         request,
-                        User?.Identity?.Name ?? "Dashboard",
+                        CurrentActor(),
                         cancellationToken);
 
+                    await AuditAsync("CreatePackage", "Package", created.Id.ToString(), new { created.Id, created.Name, created.Version, request.FileName, request.StoragePath }, true, cancellationToken: cancellationToken);
                     TempData["PackageMessage"] = $"Package '{created.Name}' created successfully (Id {created.Id}).";
                 }
 
@@ -2708,6 +3030,7 @@ namespace RetailCentral.Api.Controllers
             }
             catch (Exception ex)
             {
+                await AuditAsync(id.HasValue ? "EditPackage" : "CreatePackage", "Package", id?.ToString(), new { model.Name, model.Version, model.FileName, model.StoragePath }, false, ex.Message, cancellationToken);
                 PopulateCreatePackageLists(model);
                 SetPackageFormViewData(
                     id.HasValue ? "Edit" : "Create",
@@ -2770,9 +3093,10 @@ namespace RetailCentral.Api.Controllers
                     var updated = await _deploymentService.UpdateDeploymentAsync(
                         id.Value,
                         request,
-                        User?.Identity?.Name ?? "Dashboard",
+                        CurrentActor(),
                         cancellationToken);
 
+                    await AuditAsync("EditDeployment", "Deployment", updated.Id.ToString(), new { updated.Id, request.PackageId, request.TargetType, request.TargetValue, request.ExecuteMode }, true, cancellationToken: cancellationToken);
                     TempData["DeploymentMessage"] = $"Deployment {updated.Id} updated successfully.";
                     return RedirectToAction(nameof(DeploymentDetail), new { id = updated.Id });
                 }
@@ -2780,15 +3104,17 @@ namespace RetailCentral.Api.Controllers
                 {
                     var created = await _deploymentService.CreateDeploymentAsync(
                         request,
-                        User?.Identity?.Name ?? "Dashboard",
+                        CurrentActor(),
                         cancellationToken);
 
+                    await AuditAsync("CreateDeployment", "Deployment", created.Id.ToString(), new { created.Id, request.PackageId, request.TargetType, request.TargetValue, request.ExecuteMode }, true, cancellationToken: cancellationToken);
                     TempData["DeploymentMessage"] = $"Deployment {created.Id} created successfully.";
                     return RedirectToAction(nameof(DeploymentDetail), new { id = created.Id });
                 }
             }
             catch (Exception ex)
             {
+                await AuditAsync(id.HasValue ? "EditDeployment" : "CreateDeployment", "Deployment", id?.ToString(), new { model.PackageId, model.TargetType, model.TargetValue, model.ExecuteMode }, false, ex.Message, cancellationToken);
                 await PopulateCreateDeploymentLists(model, cancellationToken);
                 SetDeploymentFormViewData(
                     id.HasValue ? "Edit" : "Create",
@@ -2820,8 +3146,9 @@ namespace RetailCentral.Api.Controllers
             ViewData["Title"] = title;
         }
 
+        [Authorize(Policy = "DashboardHelpdesk")]
         [HttpGet]
-        public IActionResult DownloadShadow(string target)
+        public async Task<IActionResult> DownloadShadow(string target)
         {
             if (string.IsNullOrWhiteSpace(target))
                 return BadRequest("An IP address or hostname is required.");
@@ -2841,6 +3168,8 @@ namespace RetailCentral.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(fileNameSafe))
                 fileNameSafe = "ShadowSession";
+
+            await AuditAsync("DownloadShadow", "DeviceTarget", safeTarget, new { Target = safeTarget });
 
             return File(
                 Encoding.UTF8.GetBytes(script.ToString()),

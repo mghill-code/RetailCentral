@@ -1,0 +1,29 @@
+﻿@{
+    ViewData["Title"] = "Access Denied";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Access Denied</h1>
+        <p>You do not have permission to access this feature.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body" style="text-align:center;">
+        <img src="~/images/access_denied.png"
+             alt="Access Denied"
+             style="max-width: 320px; width: 100%; margin-bottom: 20px;" />
+
+        <p><strong>User:</strong> @User.Identity?.Name</p>
+        <p><strong>Requested Page:</strong> @ViewData["Path"]</p>
+        <p style="margin-top:16px;">
+            Your account is authenticated but does not belong to the required Active Directory group for this feature.
+        </p>
+
+        <div class="page-actions" style="margin-top:20px;">
+            <a class="btn" href="/">Return to Dashboard</a>
+            <a class="btn btn-secondary" href="javascript:history.back()">Go Back</a>
+        </div>
+    </div>
+</div>

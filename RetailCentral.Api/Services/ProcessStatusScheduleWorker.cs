@@ -33,16 +33,16 @@ namespace RetailCentral.Api.Services
 
                     if (!enabled)
                     {
-                        _logger.LogInformation("Process status scheduler is disabled. Sleeping for 5 minutes.");
+                        _logger.LogDebug("Process status scheduler is disabled. Sleeping for 5 minutes.");
                         await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                         continue;
                     }
 
                     await QueueProcessStatusCommandsAsync(stoppingToken);
 
-                    _logger.LogInformation(
-                        "Process status scheduler sleeping for {Minutes} minute(s).",
-                        runEveryMinutes);
+                    _logger.LogDebug(
+                    "Process status scheduler sleeping for {Minutes} minute(s).",
+                    runEveryMinutes);
 
                     await Task.Delay(TimeSpan.FromMinutes(runEveryMinutes), stoppingToken);
                 }
@@ -82,7 +82,7 @@ namespace RetailCentral.Api.Services
 
             if (candidateDevices.Count == 0)
             {
-                _logger.LogInformation("No active devices eligible for process status scheduling.");
+                _logger.LogDebug("No active devices eligible for process status scheduling.");
                 return;
             }
 
@@ -149,7 +149,7 @@ namespace RetailCentral.Api.Services
 
             if (commandsToCreate.Count == 0)
             {
-                _logger.LogInformation("Process status scheduler found no devices requiring a new command.");
+                _logger.LogDebug("Process status scheduler found no devices requiring a new command.");
                 return;
             }
 
@@ -157,8 +157,8 @@ namespace RetailCentral.Api.Services
             await db.SaveChangesAsync(ct);
 
             _logger.LogInformation(
-                "Queued {Count} CollectProcessStatus command(s).",
-                commandsToCreate.Count);
+            "Queued {Count} CollectProcessStatus command(s).",
+            commandsToCreate.Count);
         }
 
         private int GetInt(string key, int defaultValue)

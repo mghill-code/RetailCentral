@@ -31,7 +31,7 @@ namespace RetailCentral.Api.Services
                     var runHourUtc = GetInt("SoftwareInventorySchedule:RunDailyAtHourUtc", 2);
                     var delay = GetDelayUntilNextRunUtc(runHourUtc);
 
-                    _logger.LogInformation(
+                    _logger.LogDebug(
                         "Next software inventory scheduling run in {Delay}.",
                         delay);
 
@@ -67,7 +67,7 @@ namespace RetailCentral.Api.Services
             var activeCutoffUtc = nowUtc.AddDays(-activeDeviceCutoffDays);
             var successCutoffUtc = nowUtc.AddHours(-successFreshHours);
 
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "Running software inventory scheduling. ActiveCutoffUtc={ActiveCutoffUtc}, SuccessCutoffUtc={SuccessCutoffUtc}",
                 activeCutoffUtc,
                 successCutoffUtc);
@@ -80,7 +80,7 @@ namespace RetailCentral.Api.Services
 
             if (candidateDevices.Count == 0)
             {
-                _logger.LogInformation("No active devices eligible for software inventory scheduling.");
+                _logger.LogDebug("No active devices eligible for software inventory scheduling.");
                 return;
             }
 
@@ -147,7 +147,7 @@ namespace RetailCentral.Api.Services
 
             if (commandsToCreate.Count == 0)
             {
-                _logger.LogInformation("Software inventory scheduler found no devices requiring a new command.");
+                _logger.LogDebug("Software inventory scheduler found no devices requiring a new command.");
                 return;
             }
 

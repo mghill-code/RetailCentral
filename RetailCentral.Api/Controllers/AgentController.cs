@@ -1,11 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data;
+using RetailCentral.Api.Data.Entities;
+using RetailCentral.Api.Data.Enums;
 using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
-using RetailCentral.Api.Data.Entities;
-using RetailCentral.Api.Data.Enums;
+using RetailCentral.Api.Services;
 using System.Linq;
 using System.Text.Json;
 
@@ -18,15 +19,18 @@ namespace RetailCentral.Api.Controllers
         private readonly RetailCentralDbContext _db;
         private readonly DeviceSecretProtection _secretProtection;
         private readonly IConfiguration _config;
+        private readonly AuditService _auditService;
 
         public AgentController(
-            RetailCentralDbContext db,
-            DeviceSecretProtection secretProtection,
-            IConfiguration config)
+         RetailCentralDbContext db,
+         DeviceSecretProtection secretProtection,
+         IConfiguration config,
+         AuditService auditService)
         {
             _db = db;
             _secretProtection = secretProtection;
             _config = config;
+            _auditService = auditService;
         }
 
         private async Task<Device?> GetDeviceFromHeader()
@@ -220,6 +224,13 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             var hadInventoryRow = await _db.RegisterInventories
                 .AnyAsync(x => x.DeviceId == device.DeviceId);
 
+            var wasDisabled = !device.IsEnabled;
+
+            if (wasDisabled)
+            {
+                device.IsEnabled = true;
+            }
+
             device.LastSeenUtc = now;
             device.AgentVersion = req.AgentVersion ?? device.AgentVersion;
             device.OsVersion = req.OsVersion ?? device.OsVersion;
@@ -247,6 +258,23 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             await _db.SaveChangesAsync();
 
             await UpsertRegisterInventoryFromHeartbeat(device, req, remoteIp);
+
+            if (wasDisabled)
+            {
+                await _auditService.LogAsync(
+                    action: "DeviceAutoReactivated",
+                    targetType: "Device",
+                    targetId: device.DeviceId.ToString(),
+                    details: new
+                    {
+                        device.DeviceId,
+                        device.Hostname,
+                        req.StoreNumber,
+                        remoteIp,
+                        Reason = "Heartbeat received from retired device"
+                    },
+                    success: true);
+            }
 
             if (!hadInventoryRow)
             {

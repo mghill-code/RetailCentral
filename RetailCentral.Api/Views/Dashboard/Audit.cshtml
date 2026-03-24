@@ -1,0 +1,220 @@
+﻿@model RetailCentral.Api.ViewModels.AuditViewModel
+
+@{
+    ViewData["Title"] = "Audit Logs";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Audit Logs</h1>
+        <p>Search, review, and export administrative and operational activity across RetailCentral.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Filters</h2>
+    </div>
+    <div class="card-body">
+        <form method="get" asp-action="Audit" asp-controller="Dashboard">
+            <div style="display:grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap:16px;">
+                <div>
+                    <label for="UserName"><strong>User</strong></label>
+                    <input id="UserName"
+                           name="UserName"
+                           type="text"
+                           value="@Model.UserName"
+                           placeholder="e.g. CORP\mhill"
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="ActionName"><strong>Action</strong></label>
+                    <input id="ActionName"
+                           name="ActionName"
+                           type="text"
+                           value="@Model.ActionName"
+                           placeholder="e.g. IssueCommand"
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="TargetType"><strong>Target Type</strong></label>
+                    <input id="TargetType"
+                           name="TargetType"
+                           type="text"
+                           value="@Model.TargetType"
+                           placeholder="Device, Group, Store..."
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="TargetId"><strong>Target Id</strong></label>
+                    <input id="TargetId"
+                           name="TargetId"
+                           type="text"
+                           value="@Model.TargetId"
+                           placeholder="Device ID, Store, Group..."
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="FromUtc"><strong>From</strong></label>
+                    <input id="FromUtc"
+                           name="FromUtc"
+                           type="datetime-local"
+                           value="@(Model.FromUtc.HasValue? Model.FromUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="ToUtc"><strong>To</strong></label>
+                    <input id="ToUtc"
+                           name="ToUtc"
+                           type="datetime-local"
+                           value="@(Model.ToUtc.HasValue? Model.ToUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
+                           style="width:100%;" />
+                </div>
+
+                <div>
+                    <label for="Success"><strong>Result</strong></label>
+                    <select id="Success" name="Success" style="width:100%;">
+                        <option value="">-- All --</option>
+                        @if (Model.Success == true)
+                        {
+                            <option value="true" selected>Success</option>
+                        }
+                        else
+                        {
+                            <option value="true">Success</option>
+                        }
+
+                        @if (Model.Success == false)
+                        {
+                            <option value="false" selected>Failed</option>
+                        }
+                        else
+                        {
+                            <option value="false">Failed</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
+                <button type="submit" class="btn">Filter</button>
+                <a class="btn btn-secondary" asp-action="Audit" asp-controller="Dashboard">Clear</a>
+                <a class="btn btn-secondary"
+                   asp-action="ExportAudit"
+                   asp-controller="Dashboard"
+                   asp-route-UserName="@Model.UserName"
+                   asp-route-ActionName="@Model.ActionName"
+                   asp-route-TargetType="@Model.TargetType"
+                   asp-route-TargetId="@Model.TargetId"
+                   asp-route-FromUtc="@(Model.FromUtc?.ToString("o"))"
+                   asp-route-ToUtc="@(Model.ToUtc?.ToString("o"))"
+                   asp-route-Success="@Model.Success">
+                    Export CSV
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="grid-3" style="margin-top:16px;">
+    <div class="card metric-card progress-card">
+        <div class="metric-label">Rows Returned</div>
+        <div class="metric-value">@Model.Results.Count</div>
+    </div>
+    <div class="card metric-card success-card">
+        <div class="metric-label">Successful</div>
+        <div class="metric-value">@Model.Results.Count(x => x.Success)</div>
+    </div>
+    <div class="card metric-card failed-card">
+        <div class="metric-label">Failed</div>
+        <div class="metric-value">@Model.Results.Count(x => !x.Success)</div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <h3>Audit Results</h3>
+    <div class="table-wrap">
+        <table class="table audit-table">
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Target</th>
+                    <th>Result</th>
+                    <th>IP Address</th>
+                    <th>Error</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!Model.Results.Any())
+                {
+                    <tr>
+                        <td colspan="8">No audit records found.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var row in Model.Results)
+                    {
+                        <tr>
+                            <td>@row.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@row.UserName</td>
+                            <td>@row.Action</td>
+                            <td>
+                                <div>@row.TargetType</div>
+                                <div class="subtle">@row.TargetId</div>
+                            </td>
+                            <td>
+                                @if (row.Success)
+                                {
+                                    <span class="badge badge-succeeded">Success</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-danger">Failed</span>
+                                }
+                            </td>
+                            <td>@row.IpAddress</td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(row.ErrorMessage))
+                                {
+                                    <span class="subtle">—</span>
+                                }
+                                else
+                                {
+                                    @row.ErrorMessage
+                                }
+                            </td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(row.Details))
+                                {
+                                    <span class="subtle">—</span>
+                                }
+                                else
+                                {
+                                    <details>
+                                        <summary>View</summary>
+                                        <pre style="white-space:pre-wrap;">@row.Details</pre>
+                                    </details>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.body.setAttribute("data-no-autorefresh", "true");
+    </script>
+}
