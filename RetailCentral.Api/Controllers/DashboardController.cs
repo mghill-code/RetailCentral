@@ -21,17 +21,20 @@ namespace RetailCentral.Api.Controllers
         private readonly IDeploymentService _deploymentService;
         private readonly IWebHostEnvironment _environment;
         private readonly AuditService _auditService;
+        private readonly IConfiguration _config;
 
         public DashboardController(
             RetailCentralDbContext db,
             IDeploymentService deploymentService,
             IWebHostEnvironment environment,
-            AuditService auditService)
+            AuditService auditService,
+            IConfiguration config)
         {
             _db = db;
             _deploymentService = deploymentService;
             _environment = environment;
             _auditService = auditService;
+            _config = config;
         }
 
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
@@ -401,6 +404,16 @@ namespace RetailCentral.Api.Controllers
                 CriticalDevices = criticalDevices
             };
 
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public IActionResult About()
+        {
+            var model = _config.GetSection("AboutPage").Get<AboutPageConfig>() ?? new AboutPageConfig();
+
+            ViewData["Title"] = "About";
             return View(model);
         }
 

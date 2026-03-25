@@ -1,13 +1,13 @@
 @model RetailCentral.Api.ViewModels.DashboardIndexViewModel
 
 @{
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = "Device Control Center";
 }
 
 <div class="page-header">
     <div>
-        <h1>Fleet Dashboard</h1>
-        <p>Operational visibility across devices, commands, health, version mix, and store-level exceptions.</p>
+        <h1>RetailCommand</h1>
+        <p>Device Control Center for operational visibility across device health, command activity, deployments, version mix, and store-level exceptions.</p>
     </div>
     <div class="page-actions">
         <a class="btn" href="/Dashboard/CreateDeployment">🚀 New Deployment</a>
@@ -251,29 +251,29 @@
 </div>
 
 @section Scripts {
-<script>
-    const deviceCtx = document.getElementById('deviceChart');
-    if (deviceCtx) {
-        new Chart(deviceCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Online', 'Offline'],
-                datasets: [{ data: [@Model.OnlineDevices, @Model.OfflineDevices] }]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-    }
+    <script>
+        const deviceCtx = document.getElementById('deviceChart');
+        if (deviceCtx) {
+            new Chart(deviceCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Online', 'Offline'],
+                    datasets: [{ data: [@Model.OnlineDevices, @Model.OfflineDevices] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
 
-    const versionCtx = document.getElementById('versionChart');
-    if (versionCtx) {
-        new Chart(versionCtx, {
-            type: 'bar',
-            data: {
-                labels: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => $"'{(v.AgentVersion ?? "Unknown").Replace("'", "\\'")}'")))],
-                datasets: [{ label: 'Devices', data: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => v.DeviceCount)))] }]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-    }
-</script>
+        const versionCtx = document.getElementById('versionChart');
+        if (versionCtx) {
+            new Chart(versionCtx, {
+                type: 'bar',
+                data: {
+                    labels: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => $"'{(v.AgentVersion ?? "Unknown").Replace("'", "\\'")}'")))],
+                    datasets: [{ label: 'Devices', data: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => v.DeviceCount)))] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+    </script>
 }

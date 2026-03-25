@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authentication.Negotiate;
+﻿using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,7 @@ if (string.IsNullOrWhiteSpace(logDir))
 
 Directory.CreateDirectory(logDir);
 
-Console.WriteLine($"RetailCentral API log directory: {logDir}");
+Console.WriteLine($"RetailCommand API log directory: {logDir}");
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -52,9 +53,9 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    Log.Information("RetailCentral API starting...");
-    Log.Information("RetailCentral API log directory resolved to {LogDir}", logDir);
-    Log.Information("RetailCentral API base directory is {BaseDir}", AppContext.BaseDirectory);
+    Log.Information("RetailCommand API starting...");
+    Log.Information("RetailCommand API log directory resolved to {LogDir}", logDir);
+    Log.Information("RetailCommand API base directory is {BaseDir}", AppContext.BaseDirectory);
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -64,7 +65,15 @@ try
     builder.Services.AddScoped<IDeploymentService, DeploymentService>();
     builder.Services.AddControllersWithViews();
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new OpenApiInfo
+        {
+            Title = "RetailCommand API - Device Control Center",
+            Version = "v1",
+            Description = "Centralized device control, monitoring, command execution, and deployment management for the retail fleet."
+        });
+    });
 
     builder.Services.AddHostedService<DataRetentionService>();
     builder.Services.AddHostedService<SoftwareInventoryScheduleWorker>();
@@ -170,7 +179,11 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();
-        app.UseSwaggerUI();
+        app.UseSwaggerUI(options =>
+        {
+            options.DocumentTitle = "RetailCommand API - Device Control Center";
+            options.SwaggerEndpoint("/swagger/v1/swagger.json", "RetailCommand API v1");
+        });
     }
 
     app.UseStaticFiles();
@@ -188,7 +201,7 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    
+
     app.MapControllers();
 
     app.MapControllerRoute(
@@ -201,7 +214,7 @@ try
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "RetailCentral API terminated unexpectedly.");
+    Log.Fatal(ex, "RetailCommand API terminated unexpectedly.");
     throw;
 }
 finally

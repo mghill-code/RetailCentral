@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>@(ViewData["Title"] as string ?? "RetailCentral Dashboard")</title>
+    <title>@(ViewData["Title"] as string ?? "RetailCommand - Device Control Center")</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/dashboard.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -32,10 +32,10 @@
     <div class="app-shell">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
-                <img src="/images/logo.png" class="sidebar-logo" alt="BNED RetailCentral" />
+                <img src="/images/logo.png" class="sidebar-logo" alt="RetailCommand" />
                 <div class="sidebar-brand-copy">
-                    <div class="sidebar-kicker">Operations Console</div>
-                    <div class="sidebar-title">RetailCentral</div>
+                    <div class="sidebar-kicker">Device Control Center</div>
+                    <div class="sidebar-title">RetailCommand</div>
                 </div>
             </div>
 
@@ -43,15 +43,17 @@
                 @if (canView)
                 {
                     <div class="sidebar-section-label">Fleet Overview</div>
-                    <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-emoji">🏠</span><span>Dashboard</span></a>
+                    <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-emoji">🏠</span><span>Control Center</span></a>
                     <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")"><span class="nav-emoji">🧾</span><span>Register Inventory</span></a>
-                    <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-emoji">💻</span><span>Devices</span></a>
+                    <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-emoji">💻</span><span>Managed Devices</span></a>
                     <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")"><span class="nav-emoji">👥</span><span>Groups</span></a>
                     <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")"><span class="nav-emoji">📊</span><span>Versions</span></a>
+                    <a href="/Dashboard/About" class="@NavClass("/Dashboard/About")"><span class="nav-emoji">ℹ️</span><span>About</span></a>
 
                     <div class="sidebar-section-label">Commands &amp; Support</div>
-                    <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-emoji">📜</span><span>Commands</span></a>
-                    <a href="/Dashboard/Failures" class="@NavClass("/Dashboard/Failures")"><span class="nav-emoji">⚠️</span><span>Failures</span></a>
+                    <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-emoji">📜</span><span>Command Center</span></a>
+                    <a href="/Dashboard/Failures" class="@NavClass("/Dashboard/Failures")"><span class="nav-emoji">⚠️</span><span>Command Failures</span></a>
+                    
                 }
 
                 @if (canHelpdesk)
@@ -65,8 +67,8 @@
 
                     <div class="sidebar-section-label">Deployments</div>
                     <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")"><span class="nav-emoji">🗂</span><span>Packages</span></a>
-                    <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-emoji">🧪</span><span>Create Deployment</span></a>
-                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-emoji">📦</span><span>Deployments</span></a>
+                    <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-emoji">🧪</span><span>New Deployment</span></a>
+                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-emoji">📦</span><span>Deployment Center</span></a>
                 }
 
                 @if (canAdmin)
@@ -78,7 +80,7 @@
                     </a>
                     <a href="/Dashboard/LogsDashboard" class="@NavClass("/Dashboard/LogsDashboard")">
                         <span class="nav-emoji">📚</span>
-                        <span>Logs Dashboard</span>
+                        <span>Reports &amp; Logs</span>
                     </a>
 
                 }
@@ -99,8 +101,8 @@
                         </button>
 
                         <div class="utility-title-block">
-                            <div class="page-kicker">Retail Device Operations</div>
-                            <div class="page-title-inline">@(ViewData["Title"] as string ?? "RetailCentral Dashboard")</div>
+                            <div class="page-kicker">RetailCommand</div>
+                            <div class="page-title-inline">@(ViewData["Title"] as string ?? "Device Control Center")</div>
                         </div>
                     </div>
 

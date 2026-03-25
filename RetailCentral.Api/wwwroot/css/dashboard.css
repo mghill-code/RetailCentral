@@ -83,14 +83,14 @@ img {
 .sidebar-brand {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
     padding: 6px 4px 18px 4px;
     margin-bottom: 10px;
 }
 
 .sidebar-logo {
-    width: 120px;
-    max-width: 120px;
+    width: 110px;
+    max-width: 110px;
     height: auto;
     flex: 0 0 auto;
 }
@@ -99,25 +99,42 @@ img {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
     padding-top: 2px;
+    flex: 1 1 auto;
 }
 
 .sidebar-kicker {
-    font-size: 10px;
+    font-size: 9px;
     text-transform: uppercase;
     letter-spacing: .08em;
     color: rgba(255, 255, 255, .72);
-    line-height: 1.2;
+    line-height: 1.15;
 }
 
 .sidebar-title {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 800;
     color: #fff;
     line-height: 1.05;
     white-space: nowrap;
+    letter-spacing: .01em;
+}
+}
+
+.brand-subtitle {
+    font-size: 12px;
+    color: rgba(255, 255, 255, .78);
+    line-height: 1.25;
+}
+
+.page-title-inline small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
 }
 
 .sidebar-nav {
@@ -215,7 +232,7 @@ img {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .08em;
-    text-transform: uppercase;
+    text-transform: none;
     color: var(--muted);
 }
 
@@ -1484,6 +1501,7 @@ textarea {
         grid-template-columns: 1fr;
     }
 }
+
 .rc-modal {
     position: fixed;
     inset: 0;
@@ -1493,7 +1511,7 @@ textarea {
 .rc-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: rgba(0, 0, 0, 0.45);
 }
 
 .rc-modal-dialog {
@@ -1504,7 +1522,7 @@ textarea {
     background: #fff;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
     display: flex;
     flex-direction: column;
 }
@@ -1522,6 +1540,7 @@ textarea {
     padding: 16px;
     overflow: auto;
 }
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(180px, 1fr));
