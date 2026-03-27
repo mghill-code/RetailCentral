@@ -47,6 +47,7 @@ namespace RetailCentral.Api.ViewModels
 
     public class DeviceHeatmapTileViewModel
     {
+        public Guid DeviceId { get; set; }
         public string StoreNumber { get; set; } = "";
         public string Hostname { get; set; } = "";
         public bool IsOnline { get; set; }

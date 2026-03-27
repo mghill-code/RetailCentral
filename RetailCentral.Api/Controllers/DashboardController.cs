@@ -326,18 +326,19 @@ namespace RetailCentral.Api.Controllers
                 .ToList();
 
             var heatmap = allDevices
-                .OrderBy(d => d.StoreNumber)
-                .ThenBy(d => d.Hostname)
-                .Take(60)
-                .Select(d => new DeviceHeatmapTileViewModel
-                {
-                    StoreNumber = d.StoreNumber ?? "",
-                    Hostname = d.Hostname ?? "",
-                    IsOnline = d.LastSeenUtc >= cutoff,
-                    LastSeenUtc = d.LastSeenUtc,
-                    Severity = GetHeatSeverity(d.LastSeenUtc, cutoff)
-                })
-                .ToList();
+                 .OrderBy(d => d.StoreNumber)
+                 .ThenBy(d => d.Hostname)
+                 .Take(60)
+                 .Select(d => new DeviceHeatmapTileViewModel
+                 {
+                     DeviceId = d.DeviceId, // <-- ADD THIS LINE
+                     StoreNumber = d.StoreNumber ?? "",
+                     Hostname = d.Hostname ?? "",
+                     IsOnline = d.LastSeenUtc >= cutoff,
+                     LastSeenUtc = d.LastSeenUtc,
+                     Severity = GetHeatSeverity(d.LastSeenUtc, cutoff)
+                 })
+                 .ToList();
 
             var pendingCount = await _db.Commands.CountAsync(c => c.Status == "Pending");
             var inProgressCount = await _db.Commands.CountAsync(c => c.Status == "InProgress");

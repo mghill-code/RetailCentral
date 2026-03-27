@@ -2038,3 +2038,37 @@ button,
         transform: translateY(-1px);
         box-shadow: var(--shadow);
     }
+.heatmap-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+    .heatmap-link:hover {
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .heatmap-link .heatmap-tile {
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+        cursor: pointer;
+    }
+
+    .heatmap-link:hover .heatmap-tile {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+    }
+    .heatmap-link .heatmap-tile {
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+
+    .heatmap-link:hover .heatmap-tile {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+    }
+.dashboard-stack {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
