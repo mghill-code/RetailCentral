@@ -22,6 +22,26 @@
         public List<InstalledSoftwareViewModel> InstalledSoftware { get; set; } = new();
         public List<InstalledWindowsUpdateViewModel> InstalledWindowsUpdates { get; set; } = new();
         public ProcessStatusInventoryViewModel? ProcessStatus { get; set; }
+        public UserActivityInventoryViewModel? UserActivity { get; set; }
+
+        public string UserActivityStatus =>
+            UserActivity == null
+                ? "Unknown"
+                : UserActivity.IsUserActive == true
+                    ? "Active"
+                    : UserActivity.IdleSeconds.HasValue && UserActivity.IdleSeconds.Value >= 900
+                        ? "Idle (15+ min)"
+                        : "Idle";
+
+        public string UserActivityCssClass =>
+            UserActivity == null
+                ? "badge bg-secondary"
+                : UserActivity.IsUserActive == true
+                    ? "badge bg-success"
+                    : UserActivity.IdleSeconds.HasValue && UserActivity.IdleSeconds.Value >= 900
+                        ? "badge bg-danger"
+                        : "badge bg-warning text-dark";
+
         public DateTime? LastSoftwareInventoryUtc =>
             InstalledSoftware
                 .Select(x => (DateTime?)x.UpdatedUtc)
@@ -69,5 +89,31 @@
                 : !string.IsNullOrWhiteSpace(Hostname)
                     ? "Hostname"
                     : "Unavailable";
+    }
+
+    public class UserActivityInventoryViewModel
+    {
+        public DateTime? CapturedUtc { get; set; }
+        public DateTime? LastInputUtc { get; set; }
+        public int? IdleSeconds { get; set; }
+        public string? SessionState { get; set; }
+        public string? ConsoleUserName { get; set; }
+        public bool? IsUserActive { get; set; }
+        public bool? IsPosForeground { get; set; }
+        public DateTime UpdatedUtc { get; set; }
+
+        public string IdleDisplay =>
+            !IdleSeconds.HasValue
+                ? "Unknown"
+                : TimeSpan.FromSeconds(IdleSeconds.Value).ToString(@"hh\:mm\:ss");
+
+        public string SessionStateDisplay =>
+            string.IsNullOrWhiteSpace(SessionState) ? "Unknown" : SessionState;
+
+        public string PosForegroundDisplay =>
+            IsPosForeground == true ? "Yes" : "No";
+
+        public string IsUserActiveDisplay =>
+            IsUserActive == true ? "Yes" : "No";
     }
 }

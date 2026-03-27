@@ -407,6 +407,32 @@ namespace RetailCentral.Api.Controllers
             return View(model);
         }
 
+        [HttpGet]
+        public async Task<IActionResult> DeviceActivityData(Guid id)
+        {
+            var userActivity = await _db.UserActivityInventories
+                .Where(x => x.DeviceId == id)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync();
+
+            if (userActivity == null)
+                return Json(null);
+
+            return Json(new
+            {
+                sessionState = userActivity.SessionState,
+                consoleUser = userActivity.ConsoleUserName,
+                idleSeconds = userActivity.IdleSeconds,
+                idleDisplay = userActivity.IdleSeconds.HasValue
+                    ? TimeSpan.FromSeconds(userActivity.IdleSeconds.Value).ToString(@"hh\:mm\:ss")
+                    : "Unknown",
+                isUserActive = userActivity.IsUserActive,
+                isPosForeground = userActivity.IsPosForeground,
+                lastInput = userActivity.LastInputUtc,
+                updatedUtc = userActivity.UpdatedUtc
+            });
+        }
+
         [Authorize(Policy = "DashboardViewer")]
         [HttpGet]
         public IActionResult About()
@@ -1170,6 +1196,22 @@ namespace RetailCentral.Api.Controllers
                 })
                 .FirstOrDefaultAsync();
 
+            var userActivity = await _db.UserActivityInventories
+                .Where(x => x.DeviceId == id)
+                .Select(x => new UserActivityInventoryViewModel
+                {
+                    CapturedUtc = x.CapturedUtc,
+                    LastInputUtc = x.LastInputUtc,
+                    IdleSeconds = x.IdleSeconds,
+                    SessionState = x.SessionState,
+                    ConsoleUserName = x.ConsoleUserName,
+                    IsUserActive = x.IsUserActive,
+                    IsPosForeground = x.IsPosForeground,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .FirstOrDefaultAsync();
+
+
             var hasRecentFailure = await _db.CommandResults
                 .AnyAsync(r => r.DeviceId == id && r.Status == "Failed" && r.FinishedUtc >= since24);
 
@@ -1201,34 +1243,170 @@ namespace RetailCentral.Api.Controllers
                 Health = health,
                 InstalledSoftware = installedSoftware,
                 InstalledWindowsUpdates = installedWindowsUpdates,
-                ProcessStatus = processStatus
+                ProcessStatus = processStatus,
+                UserActivity = userActivity
             };
 
             return View(model);
         }
 
-        public async Task<IActionResult> Commands()
-        {
-            var commands = await _db.Commands
-                .OrderByDescending(c => c.CreatedUtc)
-                .Take(100)
-                .Select(c => new CommandSummaryViewModel
-                {
-                    CommandId = c.CommandId,
-                    Type = c.Type,
-                    Scope = c.Scope,
-                    StoreNumber = c.StoreNumber,
-                    GroupName = c.GroupName,
-                    DeviceId = c.DeviceId,
-                    Status = c.Status,
-                    CreatedUtc = c.CreatedUtc
-                })
-                .ToListAsync();
 
-            return View(commands);
+[HttpGet]
+public async Task<IActionResult> Commands(string? status, string? search, bool expiredPendingOnly = false, int take = 200)
+{
+    take = Math.Clamp(take, 25, 500);
+
+    var nowUtc = DateTime.UtcNow;
+    var baseQuery = _db.Commands.AsNoTracking();
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        var normalizedStatus = status.Trim();
+        baseQuery = baseQuery.Where(c => c.Status == normalizedStatus);
+    }
+
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        var trimmedSearch = search.Trim();
+
+        baseQuery = baseQuery.Where(c =>
+            c.Type.Contains(trimmedSearch) ||
+            (c.StoreNumber != null && c.StoreNumber.Contains(trimmedSearch)) ||
+            (c.GroupName != null && c.GroupName.Contains(trimmedSearch)) ||
+            (c.IssuedBy != null && c.IssuedBy.Contains(trimmedSearch)) ||
+            (c.PayloadJson != null && c.PayloadJson.Contains(trimmedSearch)));
+    }
+
+    if (expiredPendingOnly)
+    {
+        baseQuery = baseQuery.Where(c =>
+            c.Status == "Pending" &&
+            c.ExpiresUtc != null &&
+            c.ExpiresUtc <= nowUtc);
+    }
+
+    var commands = await baseQuery
+        .OrderByDescending(c => c.CreatedUtc)
+        .Take(take)
+        .Select(c => new CommandCenterRowViewModel
+        {
+            CommandId = c.CommandId,
+            Type = c.Type,
+            Scope = c.Scope,
+            StoreNumber = c.StoreNumber,
+            GroupName = c.GroupName,
+            DeviceId = c.DeviceId,
+            Status = c.Status,
+            CreatedUtc = c.CreatedUtc,
+            ExpiresUtc = c.ExpiresUtc,
+            AttemptCount = c.AttemptCount,
+            MaxAttempts = c.MaxAttempts,
+            LastError = c.LastError,
+            IssuedBy = c.IssuedBy
+        })
+        .ToListAsync();
+
+    var allCommands = _db.Commands.AsNoTracking();
+
+    var model = new CommandCenterViewModel
+    {
+        Status = status,
+        Search = search,
+        ShowExpiredPendingOnly = expiredPendingOnly,
+        TotalCount = await allCommands.CountAsync(),
+        PendingCount = await allCommands.CountAsync(c => c.Status == "Pending"),
+        InProgressCount = await allCommands.CountAsync(c => c.Status == "InProgress"),
+        FailedCount = await allCommands.CountAsync(c => c.Status == "Failed"),
+        SucceededCount = await allCommands.CountAsync(c => c.Status == "Succeeded"),
+        ExpiredPendingCount = await allCommands.CountAsync(c =>
+            c.Status == "Pending" &&
+            c.ExpiresUtc != null &&
+            c.ExpiresUtc <= nowUtc),
+        Commands = commands
+    };
+
+    return View(model);
+}
+
+[Authorize(Policy = "DashboardHelpdesk")]
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> FailExpiredPendingCommands()
+{
+    var nowUtc = DateTime.UtcNow;
+
+    var expiredPending = await _db.Commands
+        .Where(c =>
+            c.Status == "Pending" &&
+            c.ExpiresUtc != null &&
+            c.ExpiresUtc <= nowUtc)
+        .ToListAsync();
+
+    foreach (var command in expiredPending)
+    {
+        command.Status = "Failed";
+        command.LastAttemptUtc = nowUtc;
+
+        if (string.IsNullOrWhiteSpace(command.LastError))
+        {
+            command.LastError = "Command expired before pickup by agent.";
+        }
+    }
+
+    await _db.SaveChangesAsync();
+
+    await AuditAsync(
+        "FailExpiredPendingCommands",
+        "Command",
+        null,
+        new
+        {
+            Count = expiredPending.Count,
+            CommandIds = expiredPending.Select(c => c.CommandId).ToList()
+        });
+
+    TempData["CommandMessage"] = $"Marked {expiredPending.Count} expired pending command(s) as Failed.";
+    return RedirectToAction(nameof(Commands), new { expiredPendingOnly = true });
+}
+
+[Authorize(Policy = "DashboardHelpdesk")]
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> FailExpiredPendingCommand(Guid id)
+{
+    var nowUtc = DateTime.UtcNow;
+
+    var command = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
+    if (command == null)
+    {
+        TempData["CommandMessage"] = "Command not found.";
+        return RedirectToAction(nameof(Commands));
+    }
+
+    if (command.Status == "Pending" && command.ExpiresUtc != null && command.ExpiresUtc <= nowUtc)
+    {
+        command.Status = "Failed";
+        command.LastAttemptUtc = nowUtc;
+
+        if (string.IsNullOrWhiteSpace(command.LastError))
+        {
+            command.LastError = "Command expired before pickup by agent.";
         }
 
-        public async Task<IActionResult> Command(Guid id)
+        await _db.SaveChangesAsync();
+        await AuditAsync("FailExpiredPendingCommand", "Command", command.CommandId.ToString(), new { command.CommandId });
+
+        TempData["CommandMessage"] = $"Command {command.CommandId} marked Failed.";
+    }
+    else
+    {
+        TempData["CommandMessage"] = "Command is not an expired pending command.";
+    }
+
+    return RedirectToAction(nameof(Commands));
+}
+
+public async Task<IActionResult> Command(Guid id)
         {
             var cmd = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
             if (cmd == null)
@@ -1272,29 +1450,21 @@ namespace RetailCentral.Api.Controllers
                 Result = result
             };
 
+            ViewBag.ExpiresUtc = cmd.ExpiresUtc;
+            ViewBag.IsExpiredPending = cmd.Status == "Pending" && cmd.ExpiresUtc != null && cmd.ExpiresUtc <= DateTime.UtcNow;
+            ViewBag.PendingReason = cmd.Status == "Pending"
+                ? (cmd.ExpiresUtc != null && cmd.ExpiresUtc <= DateTime.UtcNow
+                    ? "Expired before pickup by agent."
+                    : cmd.DeviceId != null
+                        ? "Waiting for the targeted device to poll and claim the command."
+                        : !string.IsNullOrWhiteSpace(cmd.StoreNumber)
+                            ? "Waiting for matching store device polling."
+                            : !string.IsNullOrWhiteSpace(cmd.GroupName)
+                                ? "Waiting for matching group device polling."
+                                : "Waiting to be picked up by an agent.")
+                : null;
+
             return View(model);
-        }
-
-        public async Task<IActionResult> Failures()
-        {
-            var failures = await _db.Commands
-                .Where(c => c.Status == "Failed")
-                .OrderByDescending(c => c.CreatedUtc)
-                .Take(100)
-                .Select(c => new CommandSummaryViewModel
-                {
-                    CommandId = c.CommandId,
-                    Type = c.Type,
-                    Scope = c.Scope,
-                    StoreNumber = c.StoreNumber,
-                    GroupName = c.GroupName,
-                    DeviceId = c.DeviceId,
-                    Status = c.Status,
-                    CreatedUtc = c.CreatedUtc
-                })
-                .ToListAsync();
-
-            return View(failures);
         }
 
         public async Task<IActionResult> Versions()
@@ -1363,6 +1533,20 @@ namespace RetailCentral.Api.Controllers
                 IssuedUtc = cmd.IssuedUtc,
                 Result = result
             };
+
+            ViewBag.ExpiresUtc = cmd.ExpiresUtc;
+            ViewBag.IsExpiredPending = cmd.Status == "Pending" && cmd.ExpiresUtc != null && cmd.ExpiresUtc <= DateTime.UtcNow;
+            ViewBag.PendingReason = cmd.Status == "Pending"
+                ? (cmd.ExpiresUtc != null && cmd.ExpiresUtc <= DateTime.UtcNow
+                    ? "Expired before pickup by agent."
+                    : cmd.DeviceId != null
+                        ? "Waiting for the targeted device to poll and claim the command."
+                        : !string.IsNullOrWhiteSpace(cmd.StoreNumber)
+                            ? "Waiting for matching store device polling."
+                            : !string.IsNullOrWhiteSpace(cmd.GroupName)
+                                ? "Waiting for matching group device polling."
+                                : "Waiting to be picked up by an agent.")
+                : null;
 
             return PartialView("_CommandDetailModal", model);
         }

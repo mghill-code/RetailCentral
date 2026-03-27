@@ -44,26 +44,41 @@ namespace RetailCentral.Api.Services
         private async Task SweepOnce(CancellationToken ct)
         {
             var opts = _options.Value;
-            var cutoff = DateTime.UtcNow.AddSeconds(-opts.InProgressTimeoutSeconds);
+            var nowUtc = DateTime.UtcNow;
+            var inProgressCutoff = nowUtc.AddSeconds(-opts.InProgressTimeoutSeconds);
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<RetailCentralDbContext>();
 
-            // Find stuck in-progress commands
-            var stuck = await db.Commands
-                .Where(c => c.Status == "InProgress"
-                            && c.LockedUtc != null
-                            && c.LockedUtc < cutoff)
+            var expiredPending = await db.Commands
+                .Where(c =>
+                    c.Status == "Pending" &&
+                    c.ExpiresUtc != null &&
+                    c.ExpiresUtc <= nowUtc)
+                .OrderBy(c => c.ExpiresUtc)
+                .Take(opts.MaxRowsPerSweep)
+                .ToListAsync(ct);
+
+            foreach (var c in expiredPending)
+            {
+                c.Status = "Failed";
+                c.LastError = "Command expired before pickup by agent.";
+                c.LastAttemptUtc = nowUtc;
+            }
+
+            var stuckInProgress = await db.Commands
+                .Where(c =>
+                    c.Status == "InProgress" &&
+                    c.LockedUtc != null &&
+                    c.LockedUtc < inProgressCutoff)
                 .OrderBy(c => c.LockedUtc)
                 .Take(opts.MaxRowsPerSweep)
                 .ToListAsync(ct);
 
-            if (stuck.Count == 0) return;
-
-            foreach (var c in stuck)
+            foreach (var c in stuckInProgress)
             {
                 c.AttemptCount += 1;
-                c.LastAttemptUtc = DateTime.UtcNow;
+                c.LastAttemptUtc = nowUtc;
 
                 if (c.AttemptCount >= c.MaxAttempts)
                 {
@@ -72,7 +87,6 @@ namespace RetailCentral.Api.Services
                 }
                 else
                 {
-                    // Requeue
                     c.Status = "Pending";
                     c.LastError = $"Timed out (timeout {opts.InProgressTimeoutSeconds}s). Requeued attempt {c.AttemptCount}/{c.MaxAttempts}.";
                 }
@@ -81,16 +95,29 @@ namespace RetailCentral.Api.Services
                 c.LockedByDeviceId = null;
             }
 
+            if (expiredPending.Count == 0 && stuckInProgress.Count == 0)
+            {
+                return;
+            }
+
             await db.SaveChangesAsync(ct);
 
-            _logger.LogWarning("Reaped {Count} stuck commands.", stuck.Count);
+            if (expiredPending.Count > 0)
+            {
+                _logger.LogWarning("Marked {Count} expired pending commands as Failed.", expiredPending.Count);
+            }
+
+            if (stuckInProgress.Count > 0)
+            {
+                _logger.LogWarning("Reaped {Count} stuck in-progress commands.", stuckInProgress.Count);
+            }
         }
     }
 
     public class CommandTimeoutOptions
     {
         public int InProgressTimeoutSeconds { get; set; } = 180; // 3 minutes
-        public int SweepSeconds { get; set; } = 60;             // run once per minute
+        public int SweepSeconds { get; set; } = 60;              // run once per minute
         public int MaxRowsPerSweep { get; set; } = 200;
     }
 }

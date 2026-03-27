@@ -45,8 +45,13 @@
                     <input type="text" name="groupName" placeholder="New or existing group name" />
                 </div>
                 <div class="col-md-6">
-                    <label>CSV File</label>
-                    <input type="file" name="csvFile" accept=".csv" />
+                    <label for="csvFile">CSV File</label>
+
+                    <div class="file-upload">
+                        <input type="file" id="csvFile" name="csvFile" accept=".csv" />
+                        <label for="csvFile" class="file-upload-button">Choose CSV</label>
+                        <span class="file-upload-name" id="csvFileName">No file chosen</span>
+                    </div>
                 </div>
             </div>
             <div class="action-row"><button type="submit">Import CSV</button></div>
@@ -109,3 +114,22 @@ BNC84420-003</pre>
         </table>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const input = document.getElementById("csvFile");
+            const fileName = document.getElementById("csvFileName");
+
+            if (!input || !fileName) return;
+
+            input.addEventListener("change", function () {
+                if (input.files && input.files.length > 0) {
+                    fileName.textContent = input.files[0].name;
+                } else {
+                    fileName.textContent = "No file chosen";
+                }
+            });
+        })();
+    </script>
+}

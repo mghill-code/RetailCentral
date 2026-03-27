@@ -15,6 +15,7 @@ namespace RetailCentral.Api.Dtos
         public JsonElement? Extra { get; set; }
 
         public HeartbeatInventoryDto? Inventory { get; set; }
+        public HeartbeatUserActivityDto? UserActivity { get; set; }
     }
 
     public class HeartbeatInventoryDto
@@ -38,5 +39,16 @@ namespace RetailCentral.Api.Dtos
         public string? VerifoneIP { get; set; }
         public string? ScannerName { get; set; }
         public string? ScannerSerialNumber { get; set; }
+    }
+
+    public class HeartbeatUserActivityDto
+    {
+        public DateTime? CapturedUtc { get; set; }
+        public DateTime? LastInputUtc { get; set; }
+        public int? IdleSeconds { get; set; }
+        public string? SessionState { get; set; }
+        public string? ConsoleUserName { get; set; }
+        public bool? IsUserActive { get; set; }
+        public bool? IsPosForeground { get; set; }
     }
 }

@@ -1,5 +1,32 @@
 ﻿@model RetailCentral.Api.ViewModels.DeviceDetailViewModel
 @using System.Text.Json
+@using Microsoft.AspNetCore.Html
+
+@functions {
+    public IHtmlContent SvgIcon(string key)
+    {
+        var svg = key switch
+        {
+            "deploy" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3l8 4.5v9l-8 4.5l-8 -4.5v-9z'/><path d='M12 12l8 -4.5'/><path d='M12 12v9'/><path d='M12 12l-8 -4.5'/></svg>",
+            "helpdesk" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 5h16v11h-6l-4 4v-4h-6z'/><path d='M9.5 9a2.5 2.5 0 1 1 3.8 2.1c-.75 .45 -1.3 .89 -1.3 1.9'/><path d='M12 15h.01'/></svg>",
+            "command" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 9l-3 3l3 3'/><path d='M13 15h6'/><path d='M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z'/></svg>",
+            "system" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 6v6l4 2'/><path d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18z'/></svg>",
+            "network" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 18a2 2 0 1 0 0 .01'/><path d='M8.5 15a5 5 0 0 1 7 0'/><path d='M5 11.5a10 10 0 0 1 14 0'/><path d='M1.5 8a15 15 0 0 1 21 0'/></svg>",
+            "process" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 4h6v6h-6z'/><path d='M14 4h6v6h-6z'/><path d='M4 14h6v6h-6z'/><path d='M17 14v6'/><path d='M14 17h6'/></svg>",
+            "software" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M9 3h6l1 2h4v6l-2 1v3l2 1v3h-4l-1 2h-6l-1 -2h-4v-3l2 -1v-3l-2 -1v-6h4z'/><path d='M9 12h6'/><path d='M12 9v6'/></svg>",
+            "restart" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4'/><path d='M12 7v5l3 3'/></svg>",
+            "reboot" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 2v10'/><path d='M18.36 6.64a9 9 0 1 1 -12.72 0'/></svg>",
+            "requeue" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 4v6h6'/><path d='M20 20v-6h-6'/><path d='M5.5 15a7 7 0 0 0 11.95 2'/><path d='M18.5 9a7 7 0 0 0 -11.95 -2'/></svg>",
+            "retire" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 7h16'/><path d='M10 11v6'/><path d='M14 11v6'/><path d='M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12'/><path d='M9 7v-3h6v3'/></svg>",
+            "shadow" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-4l-3 3l-3 -3h-4a2 2 0 0 1 -2 -2z'/><path d='M9 9h6'/><path d='M9 12h4'/></svg>",
+            "download" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3v12'/><path d='M8 11l4 4l4 -4'/><path d='M4 21h16'/></svg>",
+            "copy" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 8m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z'/><path d='M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2'/></svg>",
+            _ => "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='9'/></svg>"
+        };
+
+        return new HtmlString(svg);
+    }
+}
 
 @{
     ViewData["Title"] = "Device Detail";
@@ -7,6 +34,41 @@
     var protocolTargetEncoded = Uri.EscapeDataString(Model.RemoteAssistanceTarget ?? "");
     var protocolLaunchUrl = $"retailshadow://shadow?target={protocolTargetEncoded}";
 }
+
+
+<style>
+    .page-actions,
+    .helpdesk-quick-actions {
+        gap: 10px;
+    }
+
+        .page-actions .btn,
+        .helpdesk-quick-actions .btn,
+        .helpdesk-quick-actions button,
+        .helpdesk-quick-actions a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+    .icon-inline {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+        .icon-inline svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+</style>
 
 @if (TempData["DeviceMessage"] != null)
 {
@@ -19,9 +81,9 @@
         <p>Device detail, health posture, quick actions, and recent command activity.</p>
     </div>
     <div class="page-actions">
-        <a class="btn" href="/Dashboard/CreateDeployment?targetType=1&targetValue=@Model.DeviceId">Deploy to Device</a>
-        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId">Helpdesk</a>
-        <a class="btn btn-outline" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId">Advanced Command</a>
+        <a class="btn" href="/Dashboard/CreateDeployment?targetType=1&targetValue=@Model.DeviceId"><span class="icon-inline">@SvgIcon("deploy")</span><span>Deploy to Device</span></a>
+        <a class="btn btn-secondary" href="/Dashboard/HelpdeskCommands?deviceId=@Model.DeviceId"><span class="icon-inline">@SvgIcon("helpdesk")</span><span>Helpdesk</span></a>
+        <a class="btn btn-outline" href="/Dashboard/IssueCommand?deviceId=@Model.DeviceId"><span class="icon-inline">@SvgIcon("command")</span><span>Advanced Command</span></a>
     </div>
 </div>
 
@@ -128,7 +190,7 @@
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="CollectSystemInfo" />
-                <button type="submit">Collect System Info</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("system")</span><span>Collect System Info</span></button>
             </form>
 
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
@@ -136,7 +198,7 @@
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="NetworkInfo" />
-                <button type="submit">Network Info</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("network")</span><span>Network Info</span></button>
             </form>
 
             <form method="post" action="/Dashboard/IssueCommand" class="inline">
@@ -147,7 +209,7 @@
                 <input type="hidden" name="Priority" value="100" />
                 <input type="hidden" name="MaxAttempts" value="3" />
                 <input type="hidden" name="UseCustomJson" value="true" />
-                <button type="submit">Collect Process Status</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("process")</span><span>Collect Process Status</span></button>
             </form>
 
             <form method="post" action="/Dashboard/IssueCommand" class="inline">
@@ -158,7 +220,7 @@
                 <input type="hidden" name="Priority" value="100" />
                 <input type="hidden" name="MaxAttempts" value="3" />
                 <input type="hidden" name="UseCustomJson" value="true" />
-                <button type="submit">Collect Software Inventory</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("software")</span><span>Collect Software Inventory</span></button>
             </form>
 
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Restart POS on @Model.Hostname?');">
@@ -166,7 +228,7 @@
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RestartPOS" />
-                <button type="submit" class="btn btn-secondary">Restart POS</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("restart")</span><span>Restart POS</span></button>
             </form>
 
             <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline" onsubmit="return confirm('Reboot @Model.Hostname?');">
@@ -174,21 +236,47 @@
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="RebootDevice" />
-                <button type="submit" class="btn btn-danger">Reboot Device</button>
+                <button type="submit" class="btn btn-danger"><span class="icon-inline">@SvgIcon("reboot")</span><span>Reboot Device</span></button>
             </form>
 
             <form method="post" action="/Dashboard/RequeueRecentFailedCommands" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-                <button type="submit">Requeue Failed Commands</button>
+                <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("requeue")</span><span>Requeue Failed Commands</span></button>
             </form>
 
             <form method="post" action="/Dashboard/RetireDevice" class="inline" onsubmit="return confirm('Retire this device?');">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="deviceId" value="@Model.DeviceId" />
-                <button type="submit" class="btn btn-danger" @(Model.IsOnline ? "disabled" : null)>Retire Device</button>
+                <button type="submit" class="btn btn-danger" @(Model.IsOnline ? "disabled" : null)><span class="icon-inline">@SvgIcon("retire")</span><span>Retire Device</span></button>
             </form>
         </div>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+            <h3 style="margin:0;">User Activity</h3>
+            <span id="activity-status" class="@Model.UserActivityCssClass">@Model.UserActivityStatus</span>
+        </div>
+
+        @if (Model.UserActivity == null)
+        {
+            <div class="alert alert-warning">No user activity has been collected yet.</div>
+        }
+        else
+        {
+            <div class="kv-grid">
+                <div class="kv-item"><span class="kv-label">Session State</span><span id="activity-session-state" class="kv-value">@Model.UserActivity.SessionStateDisplay</span></div>
+                <div class="kv-item"><span class="kv-label">Console User</span><span id="activity-console-user" class="kv-value">@(Model.UserActivity.ConsoleUserName ?? "Unknown")</span></div>
+                <div class="kv-item"><span class="kv-label">Idle Time</span><span id="idle-time" class="kv-value">@Model.UserActivity.IdleDisplay</span></div>
+                <div class="kv-item"><span class="kv-label">User Active</span><span id="user-active" class="kv-value">@Model.UserActivity.IsUserActiveDisplay</span></div>
+                <div class="kv-item"><span class="kv-label">POS Foreground</span><span id="pos-foreground" class="kv-value">@Model.UserActivity.PosForegroundDisplay</span></div>
+                <div class="kv-item"><span class="kv-label">Idle Seconds</span><span id="idle-seconds" class="kv-value">@(Model.UserActivity.IdleSeconds?.ToString() ?? "Unknown")</span></div>
+                <div class="kv-item"><span class="kv-label">Last Input</span><span id="last-input" class="kv-value">@(Model.UserActivity.LastInputUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown")</span></div>
+                <div class="kv-item"><span class="kv-label">Captured</span><span id="activity-captured" class="kv-value">@(Model.UserActivity.CapturedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown")</span></div>
+                <div class="kv-item"><span class="kv-label">Last Updated</span><span id="activity-updated" class="kv-value">@Model.UserActivity.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            </div>
+        }
     </div>
 
     <div class="card">
@@ -274,17 +362,17 @@
 
             <div class="helpdesk-quick-actions">
                 <a class="btn btn-primary" href="@protocolLaunchUrl">
-                    Launch Shadow Session
+                    <span class="icon-inline">@SvgIcon("shadow")</span><span>Launch Shadow Session</span>
                 </a>
 
                 <a class="btn btn-secondary" href="/downloads/RetailShadowHelper.msi">
-                    Install Helper Agent
+                    <span class="icon-inline">@SvgIcon("download")</span><span>Install Helper Agent</span>
                 </a>
 
                 <button type="button"
                         class="btn btn-outline"
                         onclick='copyShadowCommand(@Html.Raw(remoteCommandJson))'>
-                    Copy Shadow Session Command
+                    <span class="icon-inline">@SvgIcon("copy")</span><span>Copy Shadow Session Command</span>
                 </button>
             </div>
 
@@ -664,90 +752,174 @@
 
 @section Scripts {
     <script>
-        async function copyShadowCommand(cmd) {
-            if (!cmd) {
-                alert('No shadow session command is available for this device.');
-                return;
-            }
+                async function copyShadowCommand(cmd) {
+                    if (!cmd) {
+                        alert('No shadow session command is available for this device.');
+                        return;
+                    }
 
-            try {
-                await navigator.clipboard.writeText(cmd);
-                alert('Shadow session command copied:\n\n' + cmd);
-            } catch {
-                alert('Unable to copy shadow session command.\n\n' + cmd);
-            }
-        }
+                    try {
+                        await navigator.clipboard.writeText(cmd);
+                        alert('Shadow session command copied:
 
-        async function copyText(text, successMessage) {
-            if (!text) {
-                alert('No value is available to copy for this device.');
-                return;
-            }
+        ' + cmd);
+                    } catch {
+                        alert('Unable to copy shadow session command.
 
-            try {
-                await navigator.clipboard.writeText(text);
-                alert(successMessage || ('Copied: ' + text));
-            } catch {
-                alert('Unable to copy: ' + text);
-            }
-        }
-
-        async function openCommandDetailModal(commandId) {
-            const modal = document.getElementById('commandDetailModal');
-            const body = document.getElementById('commandDetailModalBody');
-
-            if (!modal || !body || !commandId) return;
-
-            body.innerHTML = '<div>Loading...</div>';
-            modal.style.display = 'block';
-
-            try {
-                const response = await fetch(`/Dashboard/CommandModal/${commandId}`);
-
-                if (!response.ok) {
-                    body.innerHTML = '<div class="alert alert-warning">Unable to load command detail.</div>';
-                    return;
+        ' + cmd);
+                    }
                 }
 
-                const html = await response.text();
-                body.innerHTML = html;
-            } catch {
-                body.innerHTML = '<div class="alert alert-warning">Unable to load command detail.</div>';
-            }
-        }
+                async function copyText(text, successMessage) {
+                    if (!text) {
+                        alert('No value is available to copy for this device.');
+                        return;
+                    }
 
-        function closeCommandDetailModal() {
-            const modal = document.getElementById('commandDetailModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
-
-        document.addEventListener('click', function (e) {
-            const link = e.target.closest('.command-detail-link');
-            if (!link) return;
-
-            e.preventDefault();
-
-            const commandId = link.getAttribute('data-command-id');
-            if (!commandId) return;
-
-            openCommandDetailModal(commandId);
-        });
-
-        document.addEventListener('DOMContentLoaded', function () {
-            const closeBtn = document.getElementById('closeCommandDetailModal');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', closeCommandDetailModal);
-            }
-
-            const modal = document.getElementById('commandDetailModal');
-            if (modal) {
-                const backdrop = modal.querySelector('.rc-modal-backdrop');
-                if (backdrop) {
-                    backdrop.addEventListener('click', closeCommandDetailModal);
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        alert(successMessage || ('Copied: ' + text));
+                    } catch {
+                        alert('Unable to copy: ' + text);
+                    }
                 }
-            }
-        });
+
+                async function openCommandDetailModal(commandId) {
+                    const modal = document.getElementById('commandDetailModal');
+                    const body = document.getElementById('commandDetailModalBody');
+
+                    if (!modal || !body || !commandId) return;
+
+                    body.innerHTML = '<div>Loading...</div>';
+                    modal.style.display = 'block';
+
+                    try {
+                        const response = await fetch(`/Dashboard/CommandModal/${commandId}`);
+
+                        if (!response.ok) {
+                            body.innerHTML = '<div class="alert alert-warning">Unable to load command detail.</div>';
+                            return;
+                        }
+
+                        const html = await response.text();
+                        body.innerHTML = html;
+                    } catch {
+                        body.innerHTML = '<div class="alert alert-warning">Unable to load command detail.</div>';
+                    }
+                }
+
+                function closeCommandDetailModal() {
+                    const modal = document.getElementById('commandDetailModal');
+                    if (modal) {
+                        modal.style.display = 'none';
+                    }
+                }
+
+                document.addEventListener('click', function (e) {
+                    const link = e.target.closest('.command-detail-link');
+                    if (!link) return;
+
+                    e.preventDefault();
+
+                    const commandId = link.getAttribute('data-command-id');
+                    if (!commandId) return;
+
+                    openCommandDetailModal(commandId);
+                });
+
+                function formatLocalDateTime(value) {
+                    if (!value) return 'Unknown';
+
+                    const date = new Date(value);
+                    if (isNaN(date.getTime())) return 'Unknown';
+
+                    const yyyy = date.getFullYear();
+                    const mm = String(date.getMonth() + 1).padStart(2, '0');
+                    const dd = String(date.getDate()).padStart(2, '0');
+                    const hh = String(date.getHours()).padStart(2, '0');
+                    const mi = String(date.getMinutes()).padStart(2, '0');
+                    const ss = String(date.getSeconds()).padStart(2, '0');
+
+                    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+                }
+
+                function setText(id, value) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.innerText = value ?? 'Unknown';
+                    }
+                }
+
+                async function refreshActivity() {
+                    try {
+                        const response = await fetch(`/Dashboard/DeviceActivityData?id=@Model.DeviceId`, {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+
+                        if (!response.ok) {
+                            console.error('Activity refresh failed with status', response.status);
+                            return;
+                        }
+
+                        const data = await response.json();
+
+                        if (!data) {
+                            return;
+                        }
+
+                        setText('activity-session-state', data.sessionState || 'Unknown');
+                        setText('activity-console-user', data.consoleUser || 'Unknown');
+                        setText('idle-time', data.idleDisplay || 'Unknown');
+                        setText('user-active', data.isUserActive ? 'Yes' : 'No');
+                        setText('pos-foreground', data.isPosForeground ? 'Yes' : 'No');
+                        setText('idle-seconds', data.idleSeconds ?? 'Unknown');
+                        setText('last-input', formatLocalDateTime(data.lastInput));
+                        setText('activity-captured', formatLocalDateTime(data.capturedUtc));
+                        setText('activity-updated', formatLocalDateTime(data.updatedUtc));
+
+                        const statusEl = document.getElementById('activity-status');
+                        if (statusEl) {
+                            if (data.isUserActive) {
+                                statusEl.innerText = 'Active';
+                                statusEl.className = 'badge bg-success';
+                            } else if (typeof data.idleSeconds === 'number' && data.idleSeconds >= 900) {
+                                statusEl.innerText = 'Idle (15+ min)';
+                                statusEl.className = 'badge bg-danger';
+                            } else {
+                                statusEl.innerText = 'Idle';
+                                statusEl.className = 'badge bg-warning text-dark';
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Activity refresh failed', err);
+                    }
+                }
+
+                document.addEventListener('DOMContentLoaded', function () {
+                    const closeBtn = document.getElementById('closeCommandDetailModal');
+                    if (closeBtn) {
+                        closeBtn.addEventListener('click', closeCommandDetailModal);
+                    }
+
+                    const modal = document.getElementById('commandDetailModal');
+                    if (modal) {
+                        const backdrop = modal.querySelector('.rc-modal-backdrop');
+                        if (backdrop) {
+                            backdrop.addEventListener('click', closeCommandDetailModal);
+                        }
+                    }
+
+                    window.dashboardRefreshManager = {
+                        refresh: async function () {
+                            await refreshActivity();
+                        },
+                        isBusy: function () {
+                            const modal = document.getElementById('commandDetailModal');
+                            return !!(modal && modal.style.display === 'block');
+                        }
+                    };
+
+                    refreshActivity();
+                });
     </script>
 }

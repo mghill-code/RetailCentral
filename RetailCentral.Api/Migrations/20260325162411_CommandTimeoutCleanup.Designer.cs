@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RetailCentral.Api.Data;
 
@@ -11,9 +12,11 @@ using RetailCentral.Api.Data;
 namespace RetailCentral.Api.Migrations
 {
     [DbContext(typeof(RetailCentralDbContext))]
-    partial class RetailCentralDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260325162411_CommandTimeoutCleanup")]
+    partial class CommandTimeoutCleanup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -596,7 +599,7 @@ namespace RetailCentral.Api.Migrations
 
                     b.HasKey("HeartbeatId");
 
-                    b.HasIndex("DeviceId", "TimestampUtc");
+                    b.HasIndex("DeviceId");
 
                     b.ToTable("Heartbeats");
                 });
@@ -817,91 +820,6 @@ namespace RetailCentral.Api.Migrations
                     b.ToTable("RegisterInventories");
                 });
 
-            modelBuilder.Entity("RetailCentral.Api.Models.UserActivityHistory", b =>
-                {
-                    b.Property<long>("UserActivityHistoryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("UserActivityHistoryId"));
-
-                    b.Property<DateTime>("CapturedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("IdleSeconds")
-                        .HasColumnType("int");
-
-                    b.Property<bool?>("IsPosForeground")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("IsUserActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastInputUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SessionState")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("UserActivityHistoryId");
-
-                    b.HasIndex("DeviceId", "CapturedUtc");
-
-                    b.ToTable("UserActivityHistories");
-                });
-
-            modelBuilder.Entity("RetailCentral.Api.Models.UserActivityInventory", b =>
-                {
-                    b.Property<long>("UserActivityInventoryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("UserActivityInventoryId"));
-
-                    b.Property<DateTime?>("CapturedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ConsoleUserName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("IdleSeconds")
-                        .HasColumnType("int");
-
-                    b.Property<bool?>("IsPosForeground")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("IsUserActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastInputUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SessionState")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("UserActivityInventoryId");
-
-                    b.HasIndex("DeviceId")
-                        .IsUnique();
-
-                    b.ToTable("UserActivityInventories");
-                });
-
             modelBuilder.Entity("RetailCentral.Api.Data.Entities.Deployment", b =>
                 {
                     b.HasOne("RetailCentral.Api.Data.Entities.Package", "Package")
@@ -964,24 +882,6 @@ namespace RetailCentral.Api.Migrations
                 });
 
             modelBuilder.Entity("RetailCentral.Api.Models.RegisterInventory", b =>
-                {
-                    b.HasOne("RetailCentral.Api.Models.Device", null)
-                        .WithMany()
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("RetailCentral.Api.Models.UserActivityHistory", b =>
-                {
-                    b.HasOne("RetailCentral.Api.Models.Device", null)
-                        .WithMany()
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("RetailCentral.Api.Models.UserActivityInventory", b =>
                 {
                     b.HasOne("RetailCentral.Api.Models.Device", null)
                         .WithMany()

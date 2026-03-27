@@ -22,6 +22,8 @@ namespace RetailCentral.Api.Data
         public DbSet<InstalledSoftware> InstalledSoftwares => Set<InstalledSoftware>();
         public DbSet<InstalledWindowsUpdate> InstalledWindowsUpdates => Set<InstalledWindowsUpdate>();
         public DbSet<ProcessStatusInventory> ProcessStatusInventories => Set<ProcessStatusInventory>();
+        public DbSet<UserActivityInventory> UserActivityInventories => Set<UserActivityInventory>();
+        public DbSet<UserActivityHistory> UserActivityHistories => Set<UserActivityHistory>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -39,6 +41,44 @@ namespace RetailCentral.Api.Data
                 .HasOne(h => h.Device)
                 .WithMany()
                 .HasForeignKey(h => h.DeviceId);
+
+            modelBuilder.Entity<Heartbeat>()
+                .HasIndex(h => new { h.DeviceId, h.TimestampUtc });
+
+            modelBuilder.Entity<Command>(entity =>
+            {
+                entity.HasKey(c => c.CommandId);
+
+                entity.HasIndex(c => c.Status);
+                entity.HasIndex(c => c.DeviceId);
+                entity.HasIndex(c => c.StoreNumber);
+                entity.HasIndex(c => c.ExpiresUtc);
+                entity.HasIndex(c => c.LockedUtc);
+
+                entity.Property(c => c.Scope)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(c => c.Type)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(c => c.StoreNumber)
+                    .HasMaxLength(50);
+
+                entity.Property(c => c.GroupName)
+                    .HasMaxLength(200);
+
+                entity.Property(c => c.Status)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(c => c.LastError)
+                    .HasMaxLength(2000);
+
+                entity.Property(c => c.IssuedBy)
+                    .HasMaxLength(200);
+            });
 
             modelBuilder.Entity<CommandResult>()
                 .HasKey(r => r.CommandResultId);
@@ -199,6 +239,36 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.PosWorkingSetMb).HasPrecision(10, 2);
                 entity.Property(x => x.RetailShellWorkingSetMb).HasPrecision(10, 2);
                 entity.Property(x => x.AgentWorkingSetMb).HasPrecision(10, 2);
+            });
+
+            modelBuilder.Entity<UserActivityInventory>(entity =>
+            {
+                entity.HasKey(x => x.UserActivityInventoryId);
+
+                entity.HasIndex(x => x.DeviceId)
+                    .IsUnique();
+
+                entity.HasOne<Device>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeviceId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(x => x.SessionState).HasMaxLength(50);
+                entity.Property(x => x.ConsoleUserName).HasMaxLength(200);
+            });
+
+            modelBuilder.Entity<UserActivityHistory>(entity =>
+            {
+                entity.HasKey(x => x.UserActivityHistoryId);
+
+                entity.HasIndex(x => new { x.DeviceId, x.CapturedUtc });
+
+                entity.HasOne<Device>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DeviceId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(x => x.SessionState).HasMaxLength(50);
             });
 
             modelBuilder.Entity<DeploymentDevice>(entity =>

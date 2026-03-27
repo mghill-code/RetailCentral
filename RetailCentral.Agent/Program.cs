@@ -92,6 +92,11 @@ builder.Services.AddSingleton(sp =>
     cfg.PosProcessName = builder.Configuration["ProcessMonitoring:PosProcessName"] ?? "bncpos";
     cfg.RetailShellProcessName = builder.Configuration["ProcessMonitoring:RetailShellProcessName"] ?? "RetailShell";
     cfg.AgentProcessName = builder.Configuration["ProcessMonitoring:AgentProcessName"] ?? "RetailCentral.Agent";
+
+    cfg.UserActivityEnabled = builder.Configuration.GetValue<bool>("UserActivity:Enabled");
+    cfg.UserActivitySnapshotPath = builder.Configuration["UserActivity:SnapshotPath"]
+        ?? @"C:\ProgramData\RetailCentral\Shared\UserActivity.json";
+
     return cfg;
 });
 
@@ -142,6 +147,9 @@ public sealed class AgentConfig
     public string RetailShellProcessName { get; set; } = "RetailShell";
     public string AgentProcessName { get; set; } = "RetailCentral.Agent";
     public HashSet<string> AllowedCommands { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public bool UserActivityEnabled { get; set; } = true;
+    public string UserActivitySnapshotPath { get; set; } =
+        @"C:\ProgramData\RetailCentral\Shared\UserActivity.json";
 }
 
 public static class RemoteDesktopShadowPolicy

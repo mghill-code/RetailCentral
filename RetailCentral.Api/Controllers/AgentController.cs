@@ -245,6 +245,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 req.OsVersion,
                 req.Metrics,
                 req.Inventory,
+                req.UserActivity,
                 req.Extra
             });
 
@@ -258,6 +259,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             await _db.SaveChangesAsync();
 
             await UpsertRegisterInventoryFromHeartbeat(device, req, remoteIp);
+            await UpsertUserActivityFromHeartbeat(device.DeviceId, req.UserActivity);
 
             if (wasDisabled)
             {
@@ -652,7 +654,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 ?? device.StoreNumber
                 ?? row.Store;
 
-            // ===== ðŸ”¥ THIS IS YOUR MAIN FIX =====
+            // ===== í ½í´¥ THIS IS YOUR MAIN FIX =====
             if (!string.IsNullOrWhiteSpace(req.Inventory?.RegisterNumber))
                 row.RegisterNumber = req.Inventory.RegisterNumber;
 
@@ -858,7 +860,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             using var doc = JsonDocument.Parse(stdOut);
             var root = doc.RootElement;
 
-            // ðŸ”¥ DELETE EXISTING (Option A behavior)
+            // í ½í´¥ DELETE EXISTING (Option A behavior)
             var existingSoftware = _db.Set<InstalledSoftware>()
                 .Where(x => x.DeviceId == deviceId);
 
@@ -905,6 +907,82 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             await _db.SaveChangesAsync();
         }
+        private async Task UpsertUserActivityFromHeartbeat(Guid deviceId, HeartbeatUserActivityDto? dto)
+        {
+            if (dto == null)
+                return;
+
+            var nowUtc = DateTime.UtcNow;
+
+            var row = await _db.UserActivityInventories
+                .FirstOrDefaultAsync(x => x.DeviceId == deviceId);
+
+            if (row == null)
+            {
+                row = new UserActivityInventory
+                {
+                    DeviceId = deviceId
+                };
+                _db.UserActivityInventories.Add(row);
+            }
+
+            row.CapturedUtc = dto.CapturedUtc;
+            row.LastInputUtc = dto.LastInputUtc;
+            row.IdleSeconds = dto.IdleSeconds;
+            row.SessionState = dto.SessionState;
+            row.ConsoleUserName = dto.ConsoleUserName;
+            row.IsUserActive = dto.IsUserActive;
+            row.IsPosForeground = dto.IsPosForeground;
+            row.UpdatedUtc = nowUtc;
+
+            var historyCutoffUtc = nowUtc.AddMinutes(-5);
+            var lastHistory = await _db.UserActivityHistories
+                .Where(x => x.DeviceId == deviceId)
+                .OrderByDescending(x => x.CapturedUtc)
+                .FirstOrDefaultAsync();
+
+            var shouldWriteHistory = lastHistory == null
+                || lastHistory.SessionState != dto.SessionState
+                || lastHistory.IsUserActive != dto.IsUserActive
+                || lastHistory.IsPosForeground != dto.IsPosForeground
+                || GetIdleBucket(lastHistory.IdleSeconds) != GetIdleBucket(dto.IdleSeconds)
+                || lastHistory.CapturedUtc <= historyCutoffUtc;
+
+            if (shouldWriteHistory)
+            {
+                _db.UserActivityHistories.Add(new UserActivityHistory
+                {
+                    DeviceId = deviceId,
+                    CapturedUtc = dto.CapturedUtc ?? nowUtc,
+                    LastInputUtc = dto.LastInputUtc,
+                    IdleSeconds = dto.IdleSeconds,
+                    SessionState = dto.SessionState,
+                    IsUserActive = dto.IsUserActive,
+                    IsPosForeground = dto.IsPosForeground,
+                    CreatedUtc = nowUtc
+                });
+            }
+
+            await _db.SaveChangesAsync();
+        }
+
+        private static string GetIdleBucket(int? idleSeconds)
+        {
+            if (!idleSeconds.HasValue)
+                return "Unknown";
+
+            if (idleSeconds.Value < 60)
+                return "Active";
+
+            if (idleSeconds.Value < 300)
+                return "Warm";
+
+            if (idleSeconds.Value < 1800)
+                return "Idle";
+
+            return "LongIdle";
+        }
+
         private static bool? TryGetBool(JsonElement element, string propertyName)
         {
             if (element.ValueKind == JsonValueKind.Object &&

@@ -12,7 +12,7 @@ public sealed class Worker : BackgroundService
     private readonly AgentApiClient _api;
     private readonly CommandExecutor _exec;
     private readonly ILogger<Worker> _logger;
-
+    private readonly UserActivitySnapshotReader _userActivityReader;
     private DateTime _nextHeartbeatUtc = DateTime.MinValue;
 
     private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions
@@ -27,6 +27,19 @@ public sealed class Worker : BackgroundService
         _api = api;
         _exec = exec;
         _logger = logger;
+
+        // Prefer configured path if available; otherwise fall back to a safe default.
+        var snapshotPath = !string.IsNullOrWhiteSpace(_cfg.UserActivitySnapshotPath)
+            ? _cfg.UserActivitySnapshotPath
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "RetailCentral",
+                "Shared",
+                "UserActivity.json");
+
+        _logger.LogInformation("User activity snapshot path resolved to: {SnapshotPath}", snapshotPath);
+
+        _userActivityReader = new UserActivitySnapshotReader(snapshotPath, _logger);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -85,6 +98,16 @@ public sealed class Worker : BackgroundService
                 {
                     RefreshRegisterMetadataWithDetectedValues();
 
+                    var userActivity = _cfg.UserActivityEnabled
+                        ? _userActivityReader.Read()
+                        : null;
+                    //Temp to check logging.
+                    _logger.LogInformation("User activity snapshot read: {@UserActivity}", userActivity);
+                    if (userActivity == null && _cfg.UserActivityEnabled)
+                    {
+                        _logger.LogDebug("User activity snapshot not available for this heartbeat.");
+                    }
+
                     var hb = new
                     {
                         timestampUtc = DateTime.UtcNow,
@@ -100,6 +123,7 @@ public sealed class Worker : BackgroundService
                             is64Bit = Environment.Is64BitOperatingSystem
                         },
                         inventory = BuildHeartbeatInventory(),
+                        userActivity = userActivity,
                         extra = new { note = "Agent heartbeat" }
                     };
 

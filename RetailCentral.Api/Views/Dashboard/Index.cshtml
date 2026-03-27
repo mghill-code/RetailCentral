@@ -5,52 +5,69 @@
 }
 
 <div class="page-header">
-    <div>
+    <div class="page-heading-copy">
         <h1>RetailCommand</h1>
         <p>Device Control Center for operational visibility across device health, command activity, deployments, version mix, and store-level exceptions.</p>
     </div>
     <div class="page-actions">
-        <a class="btn" href="/Dashboard/CreateDeployment">🚀 New Deployment</a>
-        <a class="btn btn-secondary" href="/Dashboard/IssueCommand">🛠 Issue Command</a>
+        <a class="btn has-icon" href="/Dashboard/CreateDeployment">
+            <span class="action-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14" /><path d="M5 12h14" /><path d="M5 5h14v14H5z" /></svg>
+            </span>
+            <span class="btn-label">New Deployment</span>
+        </a>
+        <a class="btn btn-secondary has-icon" href="/Dashboard/IssueCommand">
+            <span class="action-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 19l7 -7l-3 -3l-7 7l-1 4z" /><path d="M16 5l3 3" /></svg>
+            </span>
+            <span class="btn-label">Issue Command</span>
+        </a>
     </div>
 </div>
 
 <div class="grid">
-    <div class="card metric-card online-card">
-        <div class="metric-label">Total Devices</div>
-        <div class="metric-value">@Model.TotalDevices</div>
-        <div class="metric-footnote">Registered active devices in inventory</div>
-    </div>
-    <div class="card metric-card success-card">
-        <div class="metric-label">Online</div>
-        <div class="metric-value online">@Model.OnlineDevices</div>
-        <div class="metric-footnote">Heartbeat within the last 5 minutes</div>
-    </div>
-    <div class="card metric-card failed-card">
-        <div class="metric-label">Offline</div>
-        <div class="metric-value offline">@Model.OfflineDevices</div>
-        <div class="metric-footnote">Requires follow-up or store outreach</div>
-    </div>
-    <div class="card metric-card pending-card">
+    <a href="/Dashboard/Devices?status=Active" class="metric-card-link">
+        <div class="card metric-card online-card">
+            <div class="metric-label">Total Devices</div>
+            <div class="metric-value">@Model.TotalDevices</div>
+            <div class="metric-footnote">Registered active devices in inventory</div>
+        </div>
+    </a>
+    <a href="/Dashboard/Devices?status=Online" class="metric-card-link">
+        <div class="card metric-card success-card">
+            <div class="metric-label">Online</div>
+            <div class="metric-value online">@Model.OnlineDevices</div>
+            <div class="metric-footnote">Heartbeat within the last 5 minutes</div>
+        </div>
+    </a>
+    <a href="/Dashboard/Devices?status=Offline" class="metric-card-link">
+        <div class="card metric-card failed-card">
+            <div class="metric-label">Offline</div>
+            <div class="metric-value offline">@Model.OfflineDevices</div>
+            <div class="metric-footnote">Requires follow-up or store outreach</div>
+        </div>
+    </a>
+
+    <a asp-action="Commands" asp-controller="Dashboard" asp-route-status="Pending" class="card metric-card pending-card metric-card-link">
         <div class="metric-label">Pending Commands</div>
         <div class="metric-value pending">@Model.CommandsPending</div>
         <div class="metric-footnote">Queued and waiting for agent pickup</div>
-    </div>
-    <div class="card metric-card progress-card">
+    </a>
+    <a asp-action="Commands" asp-controller="Dashboard" asp-route-status="InProgress" class="card metric-card progress-card metric-card-link">
         <div class="metric-label">Commands In Progress</div>
         <div class="metric-value inprogress">@Model.CommandsInProgress</div>
         <div class="metric-footnote">Currently locked by active agents</div>
-    </div>
-    <div class="card metric-card failed-card">
+    </a>
+    <a asp-action="Commands" asp-controller="Dashboard" asp-route-status="Failed" class="card metric-card failed-card metric-card-link">
         <div class="metric-label">Commands Failed (24h)</div>
         <div class="metric-value offline">@Model.CommandsFailedLast24Hours</div>
         <div class="metric-footnote">Recent failures requiring review</div>
-    </div>
-    <div class="card metric-card success-card">
+    </a>
+    <a asp-action="Commands" asp-controller="Dashboard" asp-route-status="Succeeded" class="card metric-card success-card metric-card-link">
         <div class="metric-label">Commands Succeeded (24h)</div>
         <div class="metric-value online">@Model.CommandsSucceededLast24Hours</div>
         <div class="metric-footnote">Successful work completed today</div>
-    </div>
+    </a>
     <div class="card metric-card warning-card">
         <div class="metric-label">Critical Health</div>
         <div class="metric-value">@Model.CriticalDevices</div>
@@ -249,31 +266,3 @@
         }
     </div>
 </div>
-
-@section Scripts {
-    <script>
-        const deviceCtx = document.getElementById('deviceChart');
-        if (deviceCtx) {
-            new Chart(deviceCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Online', 'Offline'],
-                    datasets: [{ data: [@Model.OnlineDevices, @Model.OfflineDevices] }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-
-        const versionCtx = document.getElementById('versionChart');
-        if (versionCtx) {
-            new Chart(versionCtx, {
-                type: 'bar',
-                data: {
-                    labels: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => $"'{(v.AgentVersion ?? "Unknown").Replace("'", "\\'")}'")))],
-                    datasets: [{ label: 'Devices', data: [@Html.Raw(string.Join(",", Model.VersionSummary.Take(8).Select(v => v.DeviceCount)))] }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-    </script>
-}

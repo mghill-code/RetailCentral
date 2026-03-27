@@ -16,13 +16,41 @@
 }
 
 <div class="page-header">
-    <div>
+    <div class="page-heading-copy">
         <h1>Devices</h1>
         <p>Browse devices, inspect health, and take recovery actions.</p>
     </div>
     <div class="page-actions">
-        <a class="btn" href="/Dashboard/HelpdeskCommands">🛠 Helpdesk Commands</a>
-        <a class="btn btn-secondary" href="/Dashboard/IssueCommand">🚀 Issue Command</a>
+        <a class="btn has-icon" href="/Dashboard/HelpdeskCommands">
+            <span class="action-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 5h16v11h-6l-4 4v-4h-6z" />
+                    <path d="M9.5 9a2.5 2.5 0 1 1 3.8 2.1c-.75 .45 -1.3 .89 -1.3 1.9" />
+                    <path d="M12 15h.01" />
+                </svg>
+            </span>
+            <span class="btn-label">Helpdesk Commands</span>
+        </a>
+
+        <a class="btn btn-secondary has-icon" href="/Dashboard/IssueCommand">
+            <span class="action-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 19l7 -7l-3 -3l-7 7l-1 4z" />
+                    <path d="M16 5l3 3" />
+                </svg>
+            </span>
+            <span class="btn-label">Issue Command</span>
+        </a>
+
+        <button type="button" id="refreshNowBtn" class="btn btn-secondary has-icon">
+            <span class="action-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                    <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                </svg>
+            </span>
+            <span class="btn-label">Refresh</span>
+        </button>
     </div>
 </div>
 
@@ -35,7 +63,7 @@
 
         <form method="get" action="/Dashboard/Devices" style="display:inline-flex; gap:8px; align-items:center;">
             <input type="hidden" name="status" value="@Model.Status" />
-            <select name="groupName" onchange="this.form.submit()" class="compact-select">
+            <select name="groupName" onchange="this.form.submit()" class="compact-select" aria-label="Filter by group">
                 <option value="">More Filters</option>
                 @foreach (var g in Model.AvailableGroups)
                 {
@@ -49,6 +77,7 @@
                     }
                 }
             </select>
+
             @if (!string.IsNullOrWhiteSpace(Model.GroupName))
             {
                 <a class="btn btn-secondary" href="/Dashboard/Devices?status=@Model.Status">Clear Group</a>
@@ -76,7 +105,7 @@
 
 <div class="card">
     <div class="table-wrap">
-        <table>
+        <table class="devices-table">
             <thead>
                 <tr>
                     <th style="width:10%;">Store</th>
@@ -118,7 +147,9 @@
 
                                 @if (!isRetired)
                                 {
-                                    <form method="post" action="/Dashboard/RetireDevice" class="inline"
+                                    <form method="post"
+                                          action="/Dashboard/RetireDevice"
+                                          class="inline"
                                           onsubmit="return confirm('Retire device @d.Hostname? History will be kept.');">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="deviceId" value="@d.DeviceId" />
@@ -133,3 +164,45 @@
         </table>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const storageKey = "devices-scroll-y";
+
+            function saveScrollPosition() {
+                try {
+                    sessionStorage.setItem(storageKey, String(window.scrollY || window.pageYOffset || 0));
+                } catch { }
+            }
+
+            function restoreScrollPosition() {
+                try {
+                    const raw = sessionStorage.getItem(storageKey);
+                    if (raw !== null) {
+                        const y = parseInt(raw, 10);
+                        if (!Number.isNaN(y)) {
+                            window.scrollTo(0, y);
+                        }
+                    }
+                } catch { }
+            }
+
+            function refreshPage() {
+                saveScrollPosition();
+                window.location.reload();
+            }
+
+            restoreScrollPosition();
+
+            window.addEventListener("beforeunload", saveScrollPosition);
+
+            const refreshBtn = document.getElementById("refreshNowBtn");
+            if (refreshBtn) {
+                refreshBtn.addEventListener("click", refreshPage);
+            }
+
+            window.setInterval(refreshPage, 30000);
+        })();
+    </script>
+}
