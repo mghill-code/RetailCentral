@@ -15,5 +15,8 @@ namespace RetailCentral.Api.ViewModels
         public DateTime? ToUtc { get; set; }
 
         public bool? Success { get; set; }
+        public int TotalRowsReturnedCount { get; set; }
+        public int SuccessfulCount { get; set; }
+        public int FailedCount { get; set; }
     }
 }

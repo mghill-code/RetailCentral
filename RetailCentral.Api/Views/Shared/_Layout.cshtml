@@ -5,9 +5,6 @@
     <title>@(ViewData["Title"] as string ?? "RetailCommand - Device Control Center")</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/dashboard.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-
 </head>
 <body>
     @using Microsoft.AspNetCore.Authorization
@@ -52,8 +49,8 @@
                 return string.Empty;
 
             return currentPath.StartsWith(pathPrefix, StringComparison.OrdinalIgnoreCase)
-                ? "nav-active"
-                : string.Empty;
+            ? "nav-active"
+            : string.Empty;
         }
 
         var canView = (await AuthorizationService.AuthorizeAsync(User, "DashboardViewer")).Succeeded;
@@ -76,37 +73,79 @@
                 @if (canView)
                 {
                     <div class="sidebar-section-label">Fleet Overview</div>
-                    <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)"><span class="nav-icon">@SvgIcon("control-center")</span><span class="nav-label">Control Center</span></a>
-                    <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")"><span class="nav-icon">@SvgIcon("inventory")</span><span class="nav-label">Register Inventory</span></a>
-                    <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")"><span class="nav-icon">@SvgIcon("devices")</span><span class="nav-label">Managed Devices</span></a>
-                    <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")"><span class="nav-icon">@SvgIcon("groups")</span><span class="nav-label">Groups</span></a>
-                    <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")"><span class="nav-icon">@SvgIcon("versions")</span><span class="nav-label">Versions</span></a>
-                    <a href="/Dashboard/About" class="@NavClass("/Dashboard/About")"><span class="nav-icon">@SvgIcon("about")</span><span class="nav-label">About</span></a>
+                    <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)">
+                        <span class="nav-icon">@SvgIcon("control-center")</span>
+                        <span class="nav-label">Control Center</span>
+                    </a>
+                    <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")">
+                        <span class="nav-icon">@SvgIcon("inventory")</span>
+                        <span class="nav-label">Register Inventory</span>
+                    </a>
+                    <a href="/Dashboard/Devices" class="@NavClass("/Dashboard/Devices")">
+                        <span class="nav-icon">@SvgIcon("devices")</span>
+                        <span class="nav-label">Managed Devices</span>
+                    </a>
+                    <a href="/Dashboard/Groups" class="@NavClass("/Dashboard/Groups")">
+                        <span class="nav-icon">@SvgIcon("groups")</span>
+                        <span class="nav-label">Groups</span>
+                    </a>
+                    <a href="/Dashboard/Versions" class="@NavClass("/Dashboard/Versions")">
+                        <span class="nav-icon">@SvgIcon("versions")</span>
+                        <span class="nav-label">Versions</span>
+                    </a>
+                    <a href="/Dashboard/About" class="@NavClass("/Dashboard/About")">
+                        <span class="nav-icon">@SvgIcon("about")</span>
+                        <span class="nav-label">About</span>
+                    </a>
 
                     <div class="sidebar-section-label">Commands &amp; Support</div>
-                    <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")"><span class="nav-icon">@SvgIcon("commands")</span><span class="nav-label">Command Center</span></a>
+                    <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")">
+                        <span class="nav-icon">@SvgIcon("commands")</span>
+                        <span class="nav-label">Command Center</span>
+                    </a>
                 }
 
                 @if (canHelpdesk)
                 {
-                    <a href="/Dashboard/HelpdeskCommands" class="@NavClass("/Dashboard/HelpdeskCommands")"><span class="nav-icon">@SvgIcon("helpdesk")</span><span class="nav-label">Helpdesk Commands</span></a>
+                    <a href="/Dashboard/HelpdeskCommands" class="@NavClass("/Dashboard/HelpdeskCommands")">
+                        <span class="nav-icon">@SvgIcon("helpdesk")</span>
+                        <span class="nav-label">Helpdesk Commands</span>
+                    </a>
                 }
 
                 @if (canEngineer)
                 {
-                    <a href="/Dashboard/IssueCommand" class="@NavClass("/Dashboard/IssueCommand")"><span class="nav-icon">@SvgIcon("issue")</span><span class="nav-label">Issue Command</span></a>
+                    <a href="/Dashboard/IssueCommand" class="@NavClass("/Dashboard/IssueCommand")">
+                        <span class="nav-icon">@SvgIcon("issue")</span>
+                        <span class="nav-label">Issue Command</span>
+                    </a>
 
                     <div class="sidebar-section-label">Deployments</div>
-                    <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")"><span class="nav-icon">@SvgIcon("packages")</span><span class="nav-label">Packages</span></a>
-                    <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")"><span class="nav-icon">@SvgIcon("new-deployment")</span><span class="nav-label">New Deployment</span></a>
-                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")"><span class="nav-icon">@SvgIcon("deployment-center")</span><span class="nav-label">Deployment Center</span></a>
+                    <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")">
+                        <span class="nav-icon">@SvgIcon("packages")</span>
+                        <span class="nav-label">Packages</span>
+                    </a>
+                    <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")">
+                        <span class="nav-icon">@SvgIcon("new-deployment")</span>
+                        <span class="nav-label">New Deployment</span>
+                    </a>
+                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")">
+                        <span class="nav-icon">@SvgIcon("deployment-center")</span>
+                        <span class="nav-label">Deployment Center</span>
+                    </a>
                 }
 
                 @if (canAdmin)
                 {
                     <div class="sidebar-section-label">Administration</div>
-                    <a href="/Dashboard/Audit" class="@NavClass("/Dashboard/Audit")"><span class="nav-icon">@SvgIcon("audit")</span><span class="nav-label">Audit Logs</span></a>
-                    <a href="/Dashboard/LogsDashboard" class="@NavClass("/Dashboard/LogsDashboard")"><span class="nav-icon">@SvgIcon("reports")</span><span class="nav-label">Reports &amp; Logs</span></a>
+                    <a href="/Dashboard/Audit" class="@NavClass("/Dashboard/Audit")">
+                        <span class="nav-icon">@SvgIcon("audit")</span>
+                        <span class="nav-label">Audit Logs</span>
+                    </a>
+                    <a href="/Dashboard/LogsDashboard" class="@NavClass("/Dashboard/LogsDashboard")">
+                        <span class="nav-icon">@SvgIcon("reports")</span>
+                        <span class="nav-label">Reports &amp; Logs</span>
+                    </a>
                 }
             </nav>
         </aside>
@@ -140,11 +179,18 @@
                                 <option value="120">2 min</option>
                                 <option value="300">5 min</option>
                             </select>
-                            <button type="button" class="btn btn-secondary has-icon" id="refreshNowBtn"><span class="action-icon">@SvgIcon("refresh")</span><span class="btn-label">Refresh Now</span></button>
+                            <button type="button" class="btn btn-secondary has-icon" id="refreshNowBtn">
+                                <span class="action-icon">@SvgIcon("refresh")</span>
+                                <span class="btn-label">Refresh Now</span>
+                            </button>
                         </div>
 
                         <div class="toolbar-group toolbar-meta" id="refreshStamp"></div>
-                        <button id="darkToggle" type="button" class="sidebar-icon has-icon" title="Toggle dark mode"><span class="toolbar-icon" id="darkToggleIcon">@SvgIcon("theme-dark")</span><span id="darkToggleLabel">Dark</span></button>
+
+                        <button id="darkToggle" type="button" class="sidebar-icon has-icon" title="Toggle dark mode">
+                            <span class="toolbar-icon" id="darkToggleIcon">@SvgIcon("theme-dark")</span>
+                            <span id="darkToggleLabel">Dark</span>
+                        </button>
                     </div>
                 </div>
             </header>
@@ -180,14 +226,17 @@
             if (toggle) {
                 const toggleLabel = document.getElementById("darkToggleLabel");
                 const toggleIcon = document.getElementById("darkToggleIcon");
+
                 if (toggleLabel) {
                     toggleLabel.textContent = theme === "dark" ? "Light" : "Dark";
                 }
+
                 if (toggleIcon) {
                     toggleIcon.innerHTML = theme === "dark"
                         ? `<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3v2'/><path d='M12 19v2'/><path d='M3 12h2'/><path d='M19 12h2'/><path d='M5.6 5.6l1.4 1.4'/><path d='M17 17l1.4 1.4'/><path d='M5.6 18.4l1.4 -1.4'/><path d='M17 7l1.4 -1.4'/><path d='M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0 -8z'/></svg>`
                         : `<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z'/></svg>`;
                 }
+
                 toggle.setAttribute("title", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
             }
         }
@@ -228,7 +277,7 @@
                     x: window.scrollX || 0,
                     y: window.scrollY || 0
                 }));
-            } catch {}
+            } catch { }
         }
 
         function restoreScrollPositionAfterReload() {
@@ -244,7 +293,7 @@
                 }
 
                 sessionStorage.removeItem(refreshScrollKey);
-            } catch {}
+            } catch { }
         }
 
         async function safeRefresh() {
@@ -252,6 +301,7 @@
 
             if (mgr && typeof mgr.refresh === "function") {
                 await mgr.refresh();
+                updateRefreshStamp();
                 return;
             }
 
@@ -356,7 +406,9 @@
 
         function toggleSidebar() {
             if (isMobileLayout()) {
-                document.body.classList.contains("sidebar-open") ? closeMobileSidebar() : openMobileSidebar();
+                document.body.classList.contains("sidebar-open")
+                    ? closeMobileSidebar()
+                    : openMobileSidebar();
                 return;
             }
 
@@ -372,6 +424,7 @@
             if (!isMobileLayout()) {
                 closeMobileSidebar();
             }
+
             applyDesktopSidebarState();
             updateRefreshUiState();
         });

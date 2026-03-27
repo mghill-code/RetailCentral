@@ -9,7 +9,7 @@
 }
 
 <div class="page-header">
-    <div class="page-heading-copy">
+    <div>
         <h1>@(ViewData["Title"] ?? "Create Deployment")</h1>
         <p>Create or update a deployment for a package and target a single device, store, group, or the full fleet.</p>
     </div>
@@ -54,10 +54,10 @@
                 </div>
                 <div class="col-md-8">
                     <label asp-for="TargetValue" class="form-label fw-semibold">Target Value</label>
-                    <input asp-for="TargetValue" class="form-control" placeholder="DeviceId GUID, StoreNumber, GroupName, or FLEET" />
+                    <select asp-for="TargetValue" class="form-select dashboard-select" id="deploymentTargetValue"></select>
                     <span asp-validation-for="TargetValue" class="text-danger"></span>
-                    <div class="form-text">
-                        Device = DeviceId GUID • Store = StoreNumber • Group = exact GroupName • Fleet = a placeholder like <code>FLEET</code>
+                    <div class="form-text" id="deploymentTargetValueHelp">
+                        Choose a target from the list for the selected target type.
                     </div>
                 </div>
             </div>
@@ -132,23 +132,102 @@
         </div>
     </div>
 
-    <div class="card-footer bg-white actions">
-        <div class="card-footer-actions-left">
-            <button type="submit" class="btn btn-primary">@submitText</button>
-            <a href="/Dashboard/Deployments" class="btn btn-secondary">Cancel</a>
-        </div>
+    <div class="card-footer bg-white d-flex gap-2">
+        <button type="submit" class="btn btn-primary">@submitText</button>
+        <a href="/Dashboard/Deployments" class="btn btn-secondary">Cancel</a>
         @if (isEdit && !string.IsNullOrWhiteSpace(deploymentId))
         {
-            <div class="card-footer-actions-right">
-                <form method="post" action="/Dashboard/DeleteDeployment/@deploymentId" class="inline" onsubmit="return confirm('Hard delete this deployment?');">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-danger">Delete Deployment</button>
-                </form>
-            </div>
+            <form method="post" action="/Dashboard/DeleteDeployment/@deploymentId" class="inline" onsubmit="return confirm('Hard delete this deployment?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-danger">Delete Deployment</button>
+            </form>
         }
     </div>
 </form>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            const targetType = document.getElementById("TargetType");
+            const targetValue = document.getElementById("deploymentTargetValue");
+            const helpText = document.getElementById("deploymentTargetValueHelp");
+            const selectedValue = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.TargetValue ?? ""));
+
+            const optionSets = {
+                "1": @Html.Raw(ViewData["DeploymentDeviceOptionsJson"] as string ?? "[]"),
+                "2": @Html.Raw(ViewData["DeploymentStoreOptionsJson"] as string ?? "[]"),
+                "3": @Html.Raw(ViewData["DeploymentGroupOptionsJson"] as string ?? "[]"),
+                "4": @Html.Raw(ViewData["DeploymentFleetOptionsJson"] as string ?? "[]")
+            };
+
+            const helpByType = {
+                "1": "Device deployment targets a single device.",
+                "2": "Store deployment targets all matching devices in the selected store.",
+                "3": "Group deployment targets all devices in the selected group.",
+                "4": "Fleet deployment targets the entire managed fleet."
+            };
+
+            function placeholderForType(type) {
+                switch (type) {
+                    case "1": return "-- Select Device --";
+                    case "2": return "-- Select Store --";
+                    case "3": return "-- Select Group --";
+                    case "4": return "-- Entire Fleet --";
+                    default: return "-- Select Target --";
+                }
+            }
+
+            function populateTargetValue() {
+                if (!targetType || !targetValue) return;
+
+                const type = targetType.value || "1";
+                const options = optionSets[type] || [];
+                const currentValue = targetValue.dataset.currentValue || selectedValue || "";
+
+                targetValue.innerHTML = "";
+
+                if (type !== "4") {
+                    const placeholder = document.createElement("option");
+                    placeholder.value = "";
+                    placeholder.textContent = placeholderForType(type);
+                    targetValue.appendChild(placeholder);
+                }
+
+                for (const item of options) {
+                    const option = document.createElement("option");
+                    option.value = item.value;
+                    option.textContent = item.text;
+                    if (currentValue && currentValue === item.value) {
+                        option.selected = true;
+                    }
+                    targetValue.appendChild(option);
+                }
+
+                if (type === "4" && options.length > 0) {
+                    targetValue.value = options[0].value;
+                }
+
+                if (helpText) {
+                    helpText.textContent = helpByType[type] || "Choose a target from the list for the selected target type.";
+                }
+            }
+
+            if (targetType) {
+                targetType.addEventListener("change", function () {
+                    if (targetValue) {
+                        targetValue.dataset.currentValue = "";
+                    }
+                    populateTargetValue();
+                });
+            }
+
+            if (targetValue) {
+                targetValue.dataset.currentValue = selectedValue;
+            }
+
+            populateTargetValue();
+        })();
+    </script>
 }
+

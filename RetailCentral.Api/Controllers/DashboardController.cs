@@ -528,7 +528,14 @@ namespace RetailCentral.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> Audit(AuditViewModel model, CancellationToken ct)
         {
-            var query = _db.AuditLogs.AsQueryable();
+            var baseQuery = _db.AuditLogs.AsQueryable();
+
+            // Global totals for the cards (Command Center style)
+            model.TotalRowsReturnedCount = await baseQuery.CountAsync(ct);
+            model.SuccessfulCount = await baseQuery.CountAsync(x => x.Success, ct);
+            model.FailedCount = await baseQuery.CountAsync(x => !x.Success, ct);
+
+            var query = baseQuery;
 
             if (!string.IsNullOrWhiteSpace(model.UserName))
                 query = query.Where(x => x.UserName.Contains(model.UserName));
@@ -3082,6 +3089,7 @@ public async Task<IActionResult> Command(Guid id)
         private async Task PopulateCreateDeploymentLists(CreateDeploymentViewModel model, CancellationToken cancellationToken)
         {
             var packages = await _deploymentService.GetPackagesAsync(cancellationToken);
+            var cutoff = OnlineCutoffUtc;
 
             model.Packages = packages
                 .OrderBy(p => p.Name)
@@ -3108,6 +3116,48 @@ public async Task<IActionResult> Command(Guid id)
                 new SelectListItem { Value = "2", Text = "Windowed" },
                 new SelectListItem { Value = "3", Text = "Staged Only" }
             };
+
+            var deviceOptions = await _db.Devices
+                .Where(d => d.IsEnabled)
+                .OrderBy(d => d.StoreNumber)
+                .ThenBy(d => d.Hostname)
+                .Select(d => new
+                {
+                    value = d.DeviceId.ToString(),
+                    text = (d.StoreNumber ?? "") + " - " + (d.Hostname ?? "") + (d.LastSeenUtc >= cutoff ? " (Online)" : " (Offline)")
+                })
+                .ToListAsync(cancellationToken);
+
+            var storeOptions = await _db.Devices
+                .Where(d => d.IsEnabled && d.StoreNumber != null && d.StoreNumber != "")
+                .Select(d => d.StoreNumber!)
+                .Distinct()
+                .OrderBy(s => s)
+                .Select(s => new
+                {
+                    value = s,
+                    text = s
+                })
+                .ToListAsync(cancellationToken);
+
+            var groupOptions = await _db.DeviceGroups
+                .OrderBy(g => g.GroupName)
+                .Select(g => new
+                {
+                    value = g.GroupName,
+                    text = g.GroupName
+                })
+                .ToListAsync(cancellationToken);
+
+            var fleetOptions = new[]
+            {
+                new { value = "FLEET", text = "Entire Fleet" }
+            };
+
+            ViewData["DeploymentDeviceOptionsJson"] = System.Text.Json.JsonSerializer.Serialize(deviceOptions);
+            ViewData["DeploymentStoreOptionsJson"] = System.Text.Json.JsonSerializer.Serialize(storeOptions);
+            ViewData["DeploymentGroupOptionsJson"] = System.Text.Json.JsonSerializer.Serialize(groupOptions);
+            ViewData["DeploymentFleetOptionsJson"] = System.Text.Json.JsonSerializer.Serialize(fleetOptions);
         }
 
         private async Task<IActionResult> SavePackageInternalAsync(CreatePackageViewModel model, int? id, CancellationToken cancellationToken)

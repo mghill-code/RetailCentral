@@ -19,94 +19,52 @@
         <form method="get" asp-action="Audit" asp-controller="Dashboard">
             <div style="display:grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap:16px;">
                 <div>
-                    <label for="UserName"><strong>User</strong></label>
-                    <input id="UserName"
-                           name="UserName"
-                           type="text"
-                           value="@Model.UserName"
-                           placeholder="e.g. CORP\mhill"
-                           style="width:100%;" />
+                    <label><strong>User</strong></label>
+                    <input name="UserName" type="text" value="@Model.UserName" />
                 </div>
 
                 <div>
-                    <label for="ActionName"><strong>Action</strong></label>
-                    <input id="ActionName"
-                           name="ActionName"
-                           type="text"
-                           value="@Model.ActionName"
-                           placeholder="e.g. IssueCommand"
-                           style="width:100%;" />
+                    <label><strong>Action</strong></label>
+                    <input name="ActionName" type="text" value="@Model.ActionName" />
                 </div>
 
                 <div>
-                    <label for="TargetType"><strong>Target Type</strong></label>
-                    <input id="TargetType"
-                           name="TargetType"
-                           type="text"
-                           value="@Model.TargetType"
-                           placeholder="Device, Group, Store..."
-                           style="width:100%;" />
+                    <label><strong>Target Type</strong></label>
+                    <input name="TargetType" type="text" value="@Model.TargetType" />
                 </div>
 
                 <div>
-                    <label for="TargetId"><strong>Target Id</strong></label>
-                    <input id="TargetId"
-                           name="TargetId"
-                           type="text"
-                           value="@Model.TargetId"
-                           placeholder="Device ID, Store, Group..."
-                           style="width:100%;" />
+                    <label><strong>Target Id</strong></label>
+                    <input name="TargetId" type="text" value="@Model.TargetId" />
                 </div>
 
                 <div>
-                    <label for="FromUtc"><strong>From</strong></label>
-                    <input id="FromUtc"
-                           name="FromUtc"
-                           type="datetime-local"
-                           value="@(Model.FromUtc.HasValue? Model.FromUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
-                           style="width:100%;" />
+                    <label><strong>From</strong></label>
+                    <input name="FromUtc" type="datetime-local"
+                           value="@(Model.FromUtc?.ToString("yyyy-MM-ddTHH:mm"))" />
                 </div>
 
                 <div>
-                    <label for="ToUtc"><strong>To</strong></label>
-                    <input id="ToUtc"
-                           name="ToUtc"
-                           type="datetime-local"
-                           value="@(Model.ToUtc.HasValue? Model.ToUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")"
-                           style="width:100%;" />
+                    <label><strong>To</strong></label>
+                    <input name="ToUtc" type="datetime-local"
+                           value="@(Model.ToUtc?.ToString("yyyy-MM-ddTHH:mm"))" />
                 </div>
 
                 <div>
-                    <label for="Success"><strong>Result</strong></label>
-                    <select id="Success" name="Success" style="width:100%;">
+                    <label><strong>Result</strong></label>
+                    <select name="Success">
                         <option value="">-- All --</option>
-                        @if (Model.Success == true)
-                        {
-                            <option value="true" selected>Success</option>
-                        }
-                        else
-                        {
-                            <option value="true">Success</option>
-                        }
-
-                        @if (Model.Success == false)
-                        {
-                            <option value="false" selected>Failed</option>
-                        }
-                        else
-                        {
-                            <option value="false">Failed</option>
-                        }
+                        <option value="true" selected="@(Model.Success == true)">Success</option>
+                        <option value="false" selected="@(Model.Success == false)">Failed</option>
                     </select>
                 </div>
             </div>
 
             <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
                 <button type="submit" class="btn">Filter</button>
-                <a class="btn btn-secondary" asp-action="Audit" asp-controller="Dashboard">Clear</a>
+                <a class="btn btn-secondary" asp-action="Audit">Clear</a>
                 <a class="btn btn-secondary"
                    asp-action="ExportAudit"
-                   asp-controller="Dashboard"
                    asp-route-UserName="@Model.UserName"
                    asp-route-ActionName="@Model.ActionName"
                    asp-route-TargetType="@Model.TargetType"
@@ -121,19 +79,33 @@
     </div>
 </div>
 
+<!-- 🔥 CLICKABLE METRIC CARDS -->
 <div class="grid-3" style="margin-top:16px;">
-    <div class="card metric-card progress-card">
-        <div class="metric-label">Rows Returned</div>
-        <div class="metric-value">@Model.Results.Count</div>
-    </div>
-    <div class="card metric-card success-card">
-        <div class="metric-label">Successful</div>
-        <div class="metric-value">@Model.Results.Count(x => x.Success)</div>
-    </div>
-    <div class="card metric-card failed-card">
-        <div class="metric-label">Failed</div>
-        <div class="metric-value">@Model.Results.Count(x => !x.Success)</div>
-    </div>
+    <a asp-action="Audit"
+       class="metric-card-link @(Model.Success == null ? "active" : "")">
+        <div class="card metric-card progress-card">
+            <div class="metric-label">Total Rows Returned</div>
+            <div class="metric-value">@Model.TotalRowsReturnedCount</div>
+        </div>
+    </a>
+
+    <a asp-action="Audit"
+       asp-route-Success="true"
+       class="metric-card-link @(Model.Success == true ? "active" : "")">
+        <div class="card metric-card success-card">
+            <div class="metric-label">Successful</div>
+            <div class="metric-value">@Model.SuccessfulCount</div>
+        </div>
+    </a>
+
+    <a asp-action="Audit"
+       asp-route-Success="false"
+       class="metric-card-link @(Model.Success == false ? "active" : "")">
+        <div class="card metric-card failed-card">
+            <div class="metric-label">Failed</div>
+            <div class="metric-value">@Model.FailedCount</div>
+        </div>
+    </a>
 </div>
 
 <div class="card" style="margin-top:16px;">
@@ -183,14 +155,7 @@
                             </td>
                             <td>@row.IpAddress</td>
                             <td>
-                                @if (string.IsNullOrWhiteSpace(row.ErrorMessage))
-                                {
-                                    <span class="subtle">—</span>
-                                }
-                                else
-                                {
-                                    @row.ErrorMessage
-                                }
+                                @(string.IsNullOrWhiteSpace(row.ErrorMessage) ? "—" : row.ErrorMessage)
                             </td>
                             <td>
                                 @if (string.IsNullOrWhiteSpace(row.Details))
@@ -201,7 +166,7 @@
                                 {
                                     <details>
                                         <summary>View</summary>
-                                        <pre style="white-space:pre-wrap;">@row.Details</pre>
+                                        <pre>@row.Details</pre>
                                     </details>
                                 }
                             </td>
