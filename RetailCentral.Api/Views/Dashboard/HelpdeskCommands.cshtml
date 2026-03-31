@@ -1,8 +1,36 @@
-@model RetailCentral.Api.ViewModels.HelpdeskCommandsViewModel
+﻿@model RetailCentral.Api.ViewModels.HelpdeskCommandsViewModel
 
 @{
     ViewData["Title"] = "Helpdesk Commands";
-    var groupedCommands = Model.AvailableCommands.GroupBy(x => x.Category).OrderBy(g => g.Key).ToList();
+
+    var groupedCommands = Model.AvailableCommands
+        .GroupBy(x => x.Category)
+        .OrderBy(g => g.Key)
+        .ToList();
+
+    string GetRisk(string key, bool destructive)
+    {
+        return key switch
+        {
+            "RebootDevice" => "Critical",
+            "RestartPOS" => "High",
+            "RestartRetailShell" => "Medium",
+            "RestartAgent" => "Medium",
+            _ => destructive ? "Impact" : "Safe"
+        };
+    }
+
+    string GetRiskCss(string key, bool destructive)
+    {
+        return key switch
+        {
+            "RebootDevice" => "badge-failed",
+            "RestartPOS" => "badge-failed",
+            "RestartRetailShell" => "badge-warning",
+            "RestartAgent" => "badge-warning",
+            _ => destructive ? "badge-failed" : "badge-succeeded"
+        };
+    }
 }
 
 <div class="page-header">
@@ -11,7 +39,9 @@
         <p>Use guarded, prebuilt support actions without editing payload JSON.</p>
     </div>
     <div class="page-actions">
-        <a class="btn btn-secondary has-icon" href="/Dashboard/IssueCommand"><span class="action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19l7 -7l-3 -3l-7 7l-1 4z" /><path d="M16 5l3 3" /></svg></span><span class="btn-label">Advanced Command</span></a>
+        <a class="btn btn-secondary has-icon" href="/Dashboard/IssueCommand">
+            <span class="btn-label">Advanced Command</span>
+        </a>
     </div>
 </div>
 
@@ -22,76 +52,111 @@
 
 <div class="card">
     <h3>How this page works</h3>
-    <p class="subtle">These commands use server-side presets. Restart actions currently point to placeholder scripts like <code>POSRestart.cmd</code>, <code>RetailShellRestart.cmd</code>, and <code>AgentRestart.cmd</code>.</p>
+    <p class="subtle">
+        These commands use server-side presets and enforced command policies.
+        All actions are validated and executed through the RetailCommand agent.
+    </p>
 </div>
 
-<form method="post" action="/Dashboard/RunHelpdeskCommand" class="section-stack">
+<form id="helpdeskForm" method="post" action="/Dashboard/RunHelpdeskCommand" class="section-stack">
     @Html.AntiForgeryToken()
 
+    <!-- TARGET -->
     <div class="card">
         <h3>Target</h3>
         <div class="row g-3">
             <div class="col-md-4">
-                <label for="helpdeskTargetType">Target Type</label>
-                <select id="helpdeskTargetType" name="TargetType">
+                <label>Target Type</label>
+                <select id="targetType" name="TargetType">
                     <option value="Device" selected="@(Model.TargetType == "Device")">Device</option>
                     <option value="Store" selected="@(Model.TargetType == "Store")">Store</option>
                     <option value="Group" selected="@(Model.TargetType == "Group")">Group</option>
                 </select>
             </div>
-            <div class="col-md-4" id="targetDeviceWrap">
+
+            <div class="col-md-4" id="deviceWrap">
                 <label>Device</label>
                 <select name="DeviceId">
                     <option value="">-- Select Device --</option>
                     @foreach (var d in Model.AvailableDevices)
                     {
-                        <option value="@d.DeviceId" selected="@(Model.DeviceId == d.DeviceId)">@d.StoreNumber - @d.Hostname (@(d.IsOnline ? "Online" : "Offline"))</option>
+                        <option value="@d.DeviceId">
+                            @d.StoreNumber - @d.Hostname (@(d.IsOnline ? "Online" : "Offline"))
+                        </option>
                     }
                 </select>
             </div>
-            <div class="col-md-4" id="targetStoreWrap">
+
+            <div class="col-md-4" id="storeWrap">
                 <label>Store</label>
                 <select name="StoreNumber">
                     <option value="">-- Select Store --</option>
                     @foreach (var s in Model.AvailableStores)
                     {
-                        <option value="@s" selected="@(Model.StoreNumber == s)">@s</option>
+                        <option value="@s">@s</option>
                     }
                 </select>
             </div>
-            <div class="col-md-4" id="targetGroupWrap">
+
+            <div class="col-md-4" id="groupWrap">
                 <label>Group</label>
                 <select name="GroupName">
                     <option value="">-- Select Group --</option>
                     @foreach (var g in Model.AvailableGroups)
                     {
-                        <option value="@g" selected="@(Model.GroupName == g)">@g</option>
+                        <option value="@g">@g</option>
                     }
                 </select>
             </div>
         </div>
     </div>
 
+    <!-- PREVIEW -->
+    <div class="card">
+        <h3>Selected Command</h3>
+        <div id="commandPreview" class="subtle">
+            Select a command to preview details.
+        </div>
+    </div>
+
+    <!-- COMMANDS -->
     @foreach (var category in groupedCommands)
     {
         <div class="card">
             <h3>@category.Key</h3>
             <div class="helpdesk-command-grid">
+
                 @foreach (var cmd in category.OrderBy(x => x.Name))
                 {
                     var isSelected = Model.CommandKey == cmd.Key;
-                    <label class="helpdesk-command-card @(isSelected ? "selected" : "")">
+
+                    <label class="helpdesk-command-card @(isSelected ? "selected" : "")"
+                           data-name="@cmd.Name"
+                           data-key="@cmd.Key"
+                           data-risk="@GetRisk(cmd.Key, cmd.Destructive)">
+
                         <input type="radio" name="CommandKey" value="@cmd.Key" checked="@(isSelected)" />
+
                         <div class="helpdesk-command-title-row">
                             <strong>@cmd.Name</strong>
-                            <span class="badge @(cmd.Destructive ? "badge-failed" : "badge-succeeded")">@(cmd.Destructive ? "Impact" : "Safe")</span>
+                            <span class="badge @GetRiskCss(cmd.Key, cmd.Destructive)">
+                                @GetRisk(cmd.Key, cmd.Destructive)
+                            </span>
                         </div>
-                        <div class="subtle" style="margin-top:8px;">@cmd.Description</div>
-                        <div class="helpdesk-command-targets subtle" style="margin-top:10px;">
-                            Targets: @(cmd.DeviceSupported ? "Device " : "")@(cmd.StoreSupported ? "Store " : "")@(cmd.GroupSupported ? "Group" : "")
+
+                        <div class="subtle" style="margin-top:8px;">
+                            @cmd.Description
+                        </div>
+
+                        <div class="subtle" style="margin-top:10px;">
+                            Targets:
+                            @(cmd.DeviceSupported ? "Device " : "")
+                            @(cmd.StoreSupported ? "Store " : "")
+                            @(cmd.GroupSupported ? "Group" : "")
                         </div>
                     </label>
                 }
+
             </div>
         </div>
     }
@@ -103,17 +168,70 @@
 </form>
 
 @section Scripts {
-<script>
-    function updateHelpdeskTargetVisibility() {
-        const targetType = document.getElementById("helpdeskTargetType")?.value || "Device";
-        const deviceWrap = document.getElementById("targetDeviceWrap");
-        const storeWrap = document.getElementById("targetStoreWrap");
-        const groupWrap = document.getElementById("targetGroupWrap");
-        if (deviceWrap) deviceWrap.style.display = targetType === "Device" ? "block" : "none";
-        if (storeWrap) storeWrap.style.display = targetType === "Store" ? "block" : "none";
-        if (groupWrap) groupWrap.style.display = targetType === "Group" ? "block" : "none";
-    }
-    document.getElementById("helpdeskTargetType")?.addEventListener("change", updateHelpdeskTargetVisibility);
-    updateHelpdeskTargetVisibility();
-</script>
+    <script>
+        function updateTargets() {
+            const type = document.getElementById("targetType").value;
+
+            document.getElementById("deviceWrap").style.display = type === "Device" ? "block" : "none";
+            document.getElementById("storeWrap").style.display = type === "Store" ? "block" : "none";
+            document.getElementById("groupWrap").style.display = type === "Group" ? "block" : "none";
+        }
+
+        function updatePreview() {
+            const selected = document.querySelector("input[name='CommandKey']:checked");
+            if (!selected) return;
+
+            const card = selected.closest(".helpdesk-command-card");
+            const name = card.dataset.name;
+            const key = card.dataset.key;
+            const risk = card.dataset.risk;
+
+            document.getElementById("commandPreview").innerHTML =
+                "<strong>Command:</strong> " + name +
+                " | <strong>Type:</strong> " + key +
+                " | <strong>Risk:</strong> " + risk;
+        }
+
+        function highlightSelection() {
+            document.querySelectorAll(".helpdesk-command-card").forEach(c => {
+                c.classList.remove("selected");
+            });
+
+            const selected = document.querySelector("input[name='CommandKey']:checked");
+            if (selected) {
+                selected.closest(".helpdesk-command-card").classList.add("selected");
+            }
+        }
+
+        function confirmDanger() {
+            const form = document.getElementById("helpdeskForm");
+
+            form.addEventListener("submit", function(e) {
+                const selected = document.querySelector("input[name='CommandKey']:checked");
+                if (!selected) return;
+
+                const risky = ["RebootDevice", "RestartPOS", "RestartRetailShell"];
+
+                if (risky.includes(selected.value)) {
+                    if (!confirm("⚠ This may disrupt store operations. Continue?")) {
+                        e.preventDefault();
+                    }
+                }
+            });
+        }
+
+        document.getElementById("targetType").addEventListener("change", updateTargets);
+
+        document.querySelectorAll("input[name='CommandKey']").forEach(r => {
+            r.addEventListener("change", () => {
+                highlightSelection();
+                updatePreview();
+            });
+        });
+
+        updateTargets();
+        highlightSelection();
+        updatePreview();
+        confirmDanger();
+    </script>
 }

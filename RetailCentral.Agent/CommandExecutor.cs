@@ -1,11 +1,14 @@
-﻿using System.Diagnostics;
+﻿using Microsoft.Extensions.Options;
+using RetailCentral.Agent.Configuration;
+using RetailCentral.Agent.Services;
+using RetailCentral.ShellContracts;
+using System.Diagnostics;
 using System.Management;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Text;
-using System.IO;
+using System.Text.Json;
 
 public sealed class CommandExecutor
 {
@@ -13,17 +16,29 @@ public sealed class CommandExecutor
     private readonly FileDownloadService _downloader;
     private readonly DeploymentWindowService _windowService;
     private readonly PackageExecutionService _packageExecution;
+    private readonly ExecutionPolicyService _policy;
+    private readonly ExecutionOptions _executionOptions;
+    private readonly DownloadsOptions _downloadsOptions;
+    private readonly ShellCommandClient _shellClient;
 
     public CommandExecutor(
-        AgentConfig cfg,
-        FileDownloadService downloader,
-        DeploymentWindowService windowService,
-        PackageExecutionService packageExecution)
+     AgentConfig cfg,
+     FileDownloadService downloader,
+     DeploymentWindowService windowService,
+     PackageExecutionService packageExecution,
+     ExecutionPolicyService policy,
+     ShellCommandClient shellClient,
+     IOptions<ExecutionOptions> executionOptions,
+     IOptions<DownloadsOptions> downloadsOptions)
     {
         _cfg = cfg;
         _downloader = downloader;
         _windowService = windowService;
         _packageExecution = packageExecution;
+        _policy = policy;
+        _shellClient = shellClient;
+        _executionOptions = executionOptions.Value;
+        _downloadsOptions = downloadsOptions.Value;
     }
 
     public async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> ExecuteAsync(
@@ -33,9 +48,9 @@ public sealed class CommandExecutor
     {
         var started = DateTime.UtcNow;
 
-        if (!_cfg.AllowedCommands.Contains(type))
+        if (!_policy.IsCommandAllowed(type))
         {
-            var finished = DateTime.UtcNow;
+            var finishedNotAllowed = DateTime.UtcNow;
             return
             (
                 "Failed",
@@ -43,7 +58,7 @@ public sealed class CommandExecutor
                 "",
                 $"Command type '{type}' is not allowed by policy.",
                 started,
-                finished
+                finishedNotAllowed
             );
         }
 
@@ -54,12 +69,26 @@ public sealed class CommandExecutor
                 case "Echo":
                     {
                         var msg = payloadJson ?? "";
-                        var finished = DateTime.UtcNow;
-                        return ("Succeeded", 0, $"Echo: {msg}", "", started, finished);
+                        var finishedEcho = DateTime.UtcNow;
+                        return ("Succeeded", 0, $"Echo: {msg}", "", started, finishedEcho);
                     }
 
                 case "RunProcess":
                     {
+                        if (!_executionOptions.AllowRunProcess)
+                        {
+                            var finishedRunProcessDisabled = DateTime.UtcNow;
+                            return
+                            (
+                                "Failed",
+                                904,
+                                "",
+                                "RunProcess is disabled by policy.",
+                                started,
+                                finishedRunProcessDisabled
+                            );
+                        }
+
                         var doc = JsonDocument.Parse(payloadJson ?? "{}");
                         var root = doc.RootElement;
 
@@ -76,56 +105,104 @@ public sealed class CommandExecutor
 
                         var timeoutSec = root.TryGetProperty("timeoutSeconds", out var t)
                             ? t.GetInt32()
-                            : _cfg.DefaultTimeoutSeconds;
+                            : _executionOptions.DefaultTimeoutSeconds;
 
-                        var psi = new ProcessStartInfo(fileName, args)
-                        {
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
+                        if (timeoutSec <= 0)
+                            timeoutSec = _executionOptions.DefaultTimeoutSeconds;
+
+                        if (timeoutSec > _executionOptions.MaxTimeoutSeconds)
+                            timeoutSec = _executionOptions.MaxTimeoutSeconds;
+
+                        _policy.ValidateExecutablePath(fileName);
 
                         if (!string.IsNullOrWhiteSpace(wd))
-                            psi.WorkingDirectory = wd;
+                        {
+                            ValidateWorkingDirectory(wd);
+                        }
 
-                        using var p = Process.Start(psi) ?? throw new Exception("Failed to start process");
+                        var result = await ExecuteProcessAsync(
+                            fileName,
+                            args,
+                            wd,
+                            timeoutSec,
+                            ct);
 
-                        var stdoutTask = p.StandardOutput.ReadToEndAsync();
-                        var stderrTask = p.StandardError.ReadToEndAsync();
+                        var finishedRunProcess = DateTime.UtcNow;
+                        return
+                        (
+                            result.ExitCode == 0 ? "Succeeded" : "Failed",
+                            result.ExitCode,
+                            result.StdOut,
+                            result.StdErr,
+                            started,
+                            finishedRunProcess
+                        );
+                    }
 
-                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
-
+                // Native-style named application recovery commands.
+                // These no longer rely on cmd.exe wrappers.
+                case "RestartPOS":
+                    {
                         try
                         {
-                            await p.WaitForExitAsync(timeoutCts.Token);
+                            var request = new ShellCommandRequest
+                            {
+                                RequestId = Guid.NewGuid(),
+                                Action = ShellCommandActions.RestartPOS,
+                                RequestedUtc = DateTime.UtcNow
+                            };
+
+                            var response = await _shellClient.SendAsync(request, ct);
+                            var finished = DateTime.UtcNow;
+
+                            return
+                            (
+                                response.Success ? "Succeeded" : "Failed",
+                                response.ExitCode,
+                                Trunc(response.StdOut ?? "", _executionOptions.MaxStdoutChars),
+                                Trunc(response.StdErr ?? "", _executionOptions.MaxStderrChars),
+                                started,
+                                finished
+                            );
                         }
-                        catch (OperationCanceledException)
+                        catch (Exception ex)
                         {
-                            try
-                            {
-                                if (!p.HasExited)
-                                    p.Kill(true);
-                            }
-                            catch
-                            {
-                            }
-
-                            var finishedTimeout = DateTime.UtcNow;
-                            return ("Failed", 124, "", $"Timed out after {timeoutSec}s", started, finishedTimeout);
+                            var finished = DateTime.UtcNow;
+                            return
+                            (
+                                "Failed",
+                                910,
+                                "",
+                                Trunc($"RetailShell broker unavailable or failed: {ex.Message}", _executionOptions.MaxStderrChars),
+                                started,
+                                finished
+                            );
                         }
+                    }
 
-                        var stdout = await stdoutTask;
-                        var stderr = await stderrTask;
+                case "RestartRetailShell":
+                    {
+                        return await RestartApplicationByProfileAsync(
+                            commandType: "RestartRetailShell",
+                            profileName: "RetailShellRestart",
+                            processName: _cfg.RetailShellProcessName,
+                            started: started,
+                            ct: ct);
+                    }
 
-                        stdout = Trunc(stdout, _cfg.MaxStdoutChars);
-                        stderr = Trunc(stderr, _cfg.MaxStderrChars);
+                case "RestartAgent":
+                    {
+                        // Launch the restart helper in detached mode so it can continue running
+                        // after this service instance begins shutting down.
+                        return await LaunchDetachedRestartHelperAsync(
+                            profileName: "AgentRestart",
+                            helperArguments: "RetailCentral.Agent 10",
+                            started: started);
+                    }
 
-                        var exit = p.ExitCode;
-                        var finished = DateTime.UtcNow;
-
-                        return (exit == 0 ? "Succeeded" : "Failed", exit, stdout, stderr, started, finished);
+                case "RebootDevice":
+                    {
+                        return await RequestRebootAsync(started, ct);
                     }
 
                 case "CollectSystemInfo":
@@ -165,9 +242,10 @@ public sealed class CommandExecutor
                             WriteIndented = true
                         });
 
-                        var finished = DateTime.UtcNow;
-                        return ("Succeeded", 0, Trunc(json, _cfg.MaxStdoutChars), "", started, finished);
+                        var finishedSystemInfo = DateTime.UtcNow;
+                        return ("Succeeded", 0, Trunc(json, _executionOptions.MaxStdoutChars), "", started, finishedSystemInfo);
                     }
+
                 case "CollectSoftwareInventory":
                     {
                         var software = GetInstalledSoftware();
@@ -184,8 +262,8 @@ public sealed class CommandExecutor
                             WriteIndented = true
                         });
 
-                        var finished = DateTime.UtcNow;
-                        return ("Succeeded", 0, json, "", started, finished);
+                        var finishedSoftwareInventory = DateTime.UtcNow;
+                        return ("Succeeded", 0, Trunc(json, _executionOptions.MaxStdoutChars), "", started, finishedSoftwareInventory);
                     }
 
                 case "DownloadFile":
@@ -196,13 +274,18 @@ public sealed class CommandExecutor
                         var url = root.GetProperty("url").GetString()
                                   ?? throw new Exception("url required");
 
+                        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                            throw new Exception("url is invalid");
+
+                        _policy.ValidateDownload(uri);
+
                         var destinationFileName = root.TryGetProperty("destinationFileName", out var dest)
                             ? dest.GetString()
                             : null;
 
                         if (string.IsNullOrWhiteSpace(destinationFileName))
                         {
-                            destinationFileName = Path.GetFileName(new Uri(url).AbsolutePath);
+                            destinationFileName = Path.GetFileName(uri.AbsolutePath);
                         }
 
                         if (string.IsNullOrWhiteSpace(destinationFileName))
@@ -220,7 +303,7 @@ public sealed class CommandExecutor
 
                         var downloadedPath = await _downloader.DownloadAsync(url, destinationFileName, ct);
 
-                        string actualSha256 = FileDownloadService.ComputeSha256Hex(downloadedPath);
+                        var actualSha256 = FileDownloadService.ComputeSha256Hex(downloadedPath);
 
                         if (!string.IsNullOrWhiteSpace(expectedSha256) &&
                             !string.Equals(expectedSha256.Trim(), actualSha256, StringComparison.OrdinalIgnoreCase))
@@ -251,69 +334,31 @@ public sealed class CommandExecutor
                             );
                         }
 
-                        var psi = new ProcessStartInfo(downloadedPath, arguments)
-                        {
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true,
-                            WorkingDirectory = Path.GetDirectoryName(downloadedPath) ?? _cfg.DownloadRootFolder
-                        };
+                        _policy.ValidateExecutionFromPath(downloadedPath);
 
-                        using var p = Process.Start(psi) ?? throw new Exception("Failed to start downloaded file");
+                        var workingDirectory = Path.GetDirectoryName(downloadedPath) ?? _downloadsOptions.RootFolder;
+                        ValidateWorkingDirectory(workingDirectory);
 
-                        var stdoutTask = p.StandardOutput.ReadToEndAsync();
-                        var stderrTask = p.StandardError.ReadToEndAsync();
+                        var execResult = await ExecuteProcessAsync(
+                            downloadedPath,
+                            arguments,
+                            workingDirectory,
+                            _executionOptions.DefaultTimeoutSeconds,
+                            ct);
 
-                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_cfg.DefaultTimeoutSeconds));
-
-                        try
-                        {
-                            await p.WaitForExitAsync(timeoutCts.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            try
-                            {
-                                if (!p.HasExited)
-                                    p.Kill(true);
-                            }
-                            catch
-                            {
-                            }
-
-                            var finishedTimeout = DateTime.UtcNow;
-                            return
-                            (
-                                "Failed",
-                                124,
-                                "",
-                                $"Downloaded file execution timed out after {_cfg.DefaultTimeoutSeconds}s",
-                                started,
-                                finishedTimeout
-                            );
-                        }
-
-                        var stdout = await stdoutTask;
-                        var stderr = await stderrTask;
-
-                        stdout = Trunc(stdout, _cfg.MaxStdoutChars);
-                        stderr = Trunc(stderr, _cfg.MaxStderrChars);
-
-                        var exit = p.ExitCode;
-                        var finishedExec = DateTime.UtcNow;
+                        var finishedDownloadExec = DateTime.UtcNow;
 
                         return
                         (
-                            exit == 0 ? "Succeeded" : "Failed",
-                            exit,
-                            $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}\n{stdout}",
-                            stderr,
+                            execResult.ExitCode == 0 ? "Succeeded" : "Failed",
+                            execResult.ExitCode,
+                            Trunc($"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}\n{execResult.StdOut}", _executionOptions.MaxStdoutChars),
+                            execResult.StdErr,
                             started,
-                            finishedExec
+                            finishedDownloadExec
                         );
                     }
+
                 case "CollectProcessStatus":
                     {
                         var status = GetProcessStatus();
@@ -322,9 +367,10 @@ public sealed class CommandExecutor
                             WriteIndented = true
                         });
 
-                        var finished = DateTime.UtcNow;
-                        return ("Succeeded", 0, json, "", started, finished);
+                        var finishedProcessStatus = DateTime.UtcNow;
+                        return ("Succeeded", 0, json, "", started, finishedProcessStatus);
                     }
+
                 case "InstallPackage":
                     {
                         var payload = JsonSerializer.Deserialize<PackageDeploymentCommand>(
@@ -335,13 +381,22 @@ public sealed class CommandExecutor
                         if (string.IsNullOrWhiteSpace(payload.DownloadUrl))
                             throw new Exception("downloadUrl required");
 
+                        if (!Uri.TryCreate(payload.DownloadUrl, UriKind.Absolute, out var packageUri))
+                            throw new Exception("downloadUrl is invalid");
+
+                        _policy.ValidateDownload(packageUri, payload.FileName);
+
                         if (string.IsNullOrWhiteSpace(payload.FileName))
                             throw new Exception("fileName required");
 
                         if (string.IsNullOrWhiteSpace(payload.InstallCommand))
                             throw new Exception("installCommand required");
 
-                        var stagingFolder = Path.Combine(_cfg.StagingRootFolder, payload.PackageId.ToString());
+                        var packageIdSegment = payload.PackageId == 0
+                            ? "adhoc"
+                            : payload.PackageId.ToString();
+
+                        var stagingFolder = Path.Combine(_downloadsOptions.StagingRootFolder, packageIdSegment);
                         Directory.CreateDirectory(stagingFolder);
 
                         var downloadedPath = await _downloader.DownloadAsync(
@@ -410,19 +465,30 @@ public sealed class CommandExecutor
                             ? Path.GetDirectoryName(downloadedPath)
                             : payload.WorkingDirectory;
 
+                        if (string.IsNullOrWhiteSpace(workingDirectory))
+                            throw new Exception("workingDirectory could not be determined.");
+
+                        ValidateWorkingDirectory(workingDirectory);
+
                         var installArguments = (payload.InstallArguments ?? "")
                             .Replace("{file}", $"\"{downloadedPath}\"");
 
+                        var resolvedInstallCommand = ResolveInstallCommand(payload.InstallCommand, installArguments);
+
+                        var timeoutSeconds = payload.TimeoutSeconds > 0
+                            ? Math.Min(payload.TimeoutSeconds, _executionOptions.MaxTimeoutSeconds)
+                            : _executionOptions.DefaultTimeoutSeconds;
+
                         var execResult = await _packageExecution.ExecuteAsync(
-                            payload.InstallCommand,
-                            installArguments,
-                            workingDirectory,
-                            payload.TimeoutSeconds,
-                            _cfg.MaxStdoutChars,
-                            _cfg.MaxStderrChars,
+                            resolvedInstallCommand.FileName,
+                            resolvedInstallCommand.Arguments,
+                            resolvedInstallCommand.WorkingDirectory,
+                            timeoutSeconds,
+                            _executionOptions.MaxStdoutChars,
+                            _executionOptions.MaxStderrChars,
                             ct);
 
-                        var finishedExec = DateTime.UtcNow;
+                        var finishedInstallExec = DateTime.UtcNow;
 
                         if (execResult.TimedOut)
                         {
@@ -431,9 +497,9 @@ public sealed class CommandExecutor
                                 "Failed",
                                 124,
                                 $"Downloaded to: {downloadedPath}\nSHA256: {actualSha256}",
-                                execResult.StdErr,
+                                Trunc(execResult.StdErr ?? "", _executionOptions.MaxStderrChars),
                                 started,
-                                finishedExec
+                                finishedInstallExec
                             );
                         }
 
@@ -469,25 +535,359 @@ public sealed class CommandExecutor
                         (
                             succeeded ? "Succeeded" : "Failed",
                             exitCode,
-                            Trunc(stdoutBuilder.ToString(), _cfg.MaxStdoutChars),
-                            Trunc(execResult.StdErr ?? "", _cfg.MaxStderrChars),
+                            Trunc(stdoutBuilder.ToString(), _executionOptions.MaxStdoutChars),
+                            Trunc(execResult.StdErr ?? "", _executionOptions.MaxStderrChars),
                             started,
-                            finishedExec
+                            finishedInstallExec
                         );
                     }
 
                 default:
                     {
-                        var finished = DateTime.UtcNow;
-                        return ("Failed", 2, "", $"Unknown command type '{type}'", started, finished);
+                        var finishedUnknown = DateTime.UtcNow;
+                        return ("Failed", 2, "", $"Unknown command type '{type}'", started, finishedUnknown);
                     }
             }
         }
         catch (Exception ex)
         {
-            var finished = DateTime.UtcNow;
-            return ("Failed", 1, "", Trunc(ex.ToString(), _cfg.MaxStderrChars), started, finished);
+            var finishedException = DateTime.UtcNow;
+            return ("Failed", 1, "", Trunc(ex.ToString(), _executionOptions.MaxStderrChars), started, finishedException);
         }
+    }
+
+    /// <summary>
+    /// Restart an application by:
+    /// 1. Looking up an approved executable profile by name
+    /// 2. Stopping existing processes by configured process name
+    /// 3. Starting the executable from the approved path
+    ///
+    /// Long term this is better than cmd.exe wrappers because it is easier to
+    /// validate, audit, and troubleshoot.
+    /// </summary>
+    private async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> RestartApplicationByProfileAsync(
+        string commandType,
+        string profileName,
+        string? processName,
+        DateTime started,
+        CancellationToken ct)
+    {
+        var profile = _executionOptions.AllowedExecutables
+            .FirstOrDefault(x => string.Equals(x.Name, profileName, StringComparison.OrdinalIgnoreCase));
+
+        if (profile is null)
+            throw new Exception($"Execution profile '{profileName}' is not configured.");
+
+        _policy.ValidateExecutablePath(profile.Path);
+
+        if (string.IsNullOrWhiteSpace(processName))
+            throw new Exception($"{commandType} requires a configured process name.");
+
+        var normalizedProcessName = NormalizeProcessName(processName);
+        var running = Process.GetProcessesByName(normalizedProcessName);
+
+        var stdout = new StringBuilder();
+        stdout.AppendLine($"Command: {commandType}");
+        stdout.AppendLine($"Profile: {profile.Name}");
+        stdout.AppendLine($"Executable: {profile.Path}");
+        stdout.AppendLine($"ProcessName: {normalizedProcessName}");
+        stdout.AppendLine($"ExistingInstances: {running.Length}");
+
+        foreach (var proc in running)
+        {
+            try
+            {
+                stdout.AppendLine($"Stopping PID {proc.Id} ({proc.ProcessName})...");
+                proc.Kill(entireProcessTree: true);
+                await proc.WaitForExitAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                var finishedKillFail = DateTime.UtcNow;
+                return
+                (
+                    "Failed",
+                    905,
+                    Trunc(stdout.ToString(), _executionOptions.MaxStdoutChars),
+                    Trunc($"Failed to stop existing process '{normalizedProcessName}': {ex.Message}", _executionOptions.MaxStderrChars),
+                    started,
+                    finishedKillFail
+                );
+            }
+        }
+
+        ValidateWorkingDirectory(profile.WorkingDirectory);
+
+        var psi = new ProcessStartInfo(profile.Path)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory)
+                ? Path.GetDirectoryName(profile.Path) ?? AppContext.BaseDirectory
+                : profile.WorkingDirectory
+        };
+
+        using var launched = Process.Start(psi) ?? throw new Exception($"Failed to start '{profile.Path}'.");
+
+        stdout.AppendLine($"Started PID {launched.Id}.");
+        var finished = DateTime.UtcNow;
+
+        return
+        (
+            "Succeeded",
+            0,
+            Trunc(stdout.ToString(), _executionOptions.MaxStdoutChars),
+            "",
+            started,
+            finished
+        );
+    }
+
+    /// <summary>
+    /// Launches the restart helper in detached mode so it can survive
+    /// the current agent service shutting down.
+    /// </summary>
+    private Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> LaunchDetachedRestartHelperAsync(
+        string profileName,
+        string helperArguments,
+        DateTime started)
+    {
+        var profile = _executionOptions.AllowedExecutables
+            .FirstOrDefault(x => string.Equals(x.Name, profileName, StringComparison.OrdinalIgnoreCase));
+
+        if (profile is null)
+            throw new Exception($"Execution profile '{profileName}' is not configured.");
+
+        _policy.ValidateExecutablePath(profile.Path);
+        _policy.ValidateArguments(profile, helperArguments);
+        ValidateWorkingDirectory(profile.WorkingDirectory);
+
+        var workingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory)
+            ? Path.GetDirectoryName(profile.Path) ?? AppContext.BaseDirectory
+            : profile.WorkingDirectory;
+
+        var psi = new ProcessStartInfo(profile.Path, helperArguments)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = workingDirectory
+        };
+
+        var proc = Process.Start(psi) ?? throw new Exception($"Failed to start restart helper '{profile.Path}'.");
+
+        var stdout = new StringBuilder();
+        stdout.AppendLine("Agent restart helper launched successfully.");
+        stdout.AppendLine($"Profile: {profile.Name}");
+        stdout.AppendLine($"Executable: {profile.Path}");
+        stdout.AppendLine($"Arguments: {helperArguments}");
+        stdout.AppendLine($"Helper PID: {proc.Id}");
+
+        var finished = DateTime.UtcNow;
+
+        return Task.FromResult((
+            "Succeeded",
+            0,
+            Trunc(stdout.ToString(), _executionOptions.MaxStdoutChars),
+            "",
+            started,
+            finished
+        ));
+    }
+
+    /// <summary>
+    /// Execute an approved named profile directly.
+    /// This is used for helper-style operations like RestartAgent where a detached
+    /// helper process is often safer than trying to restart the current process inline.
+    /// </summary>
+    private async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> ExecuteNamedProfileAsync(
+        string commandType,
+        string profileName,
+        string arguments,
+        DateTime started,
+        CancellationToken ct)
+    {
+        var profile = _executionOptions.AllowedExecutables
+            .FirstOrDefault(x => string.Equals(x.Name, profileName, StringComparison.OrdinalIgnoreCase));
+
+        if (profile is null)
+            throw new Exception($"Execution profile '{profileName}' is not configured.");
+
+        _policy.ValidateExecutablePath(profile.Path);
+        _policy.ValidateArguments(profile, arguments);
+
+        ValidateWorkingDirectory(profile.WorkingDirectory);
+
+        var timeout = profile.TimeoutSeconds > 0
+            ? Math.Min(profile.TimeoutSeconds, _executionOptions.MaxTimeoutSeconds)
+            : _executionOptions.DefaultTimeoutSeconds;
+
+        var result = await ExecuteProcessAsync(
+            profile.Path,
+            arguments,
+            string.IsNullOrWhiteSpace(profile.WorkingDirectory)
+                ? Path.GetDirectoryName(profile.Path)
+                : profile.WorkingDirectory,
+            timeout,
+            ct);
+
+        var finished = DateTime.UtcNow;
+
+        var stdout = new StringBuilder();
+        stdout.AppendLine($"Command: {commandType}");
+        stdout.AppendLine($"Profile: {profile.Name}");
+        stdout.AppendLine($"Executable: {profile.Path}");
+        stdout.AppendLine(result.StdOut);
+
+        return
+        (
+            result.ExitCode == 0 ? "Succeeded" : "Failed",
+            result.ExitCode,
+            Trunc(stdout.ToString(), _executionOptions.MaxStdoutChars),
+            result.StdErr,
+            started,
+            finished
+        );
+    }
+
+    /// <summary>
+    /// Request a machine reboot through the trusted system shutdown executable.
+    /// </summary>
+    private async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> RequestRebootAsync(
+        DateTime started,
+        CancellationToken ct)
+    {
+        var shutdownPath = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+
+        var result = await ExecuteProcessAsync(
+            shutdownPath,
+            "/r /t 5 /f",
+            Environment.SystemDirectory,
+            15,
+            ct);
+
+        var finished = DateTime.UtcNow;
+
+        return
+        (
+            result.ExitCode == 0 ? "Succeeded" : "Failed",
+            result.ExitCode,
+            result.ExitCode == 0
+                ? "System reboot requested successfully. Device will reboot in approximately 5 seconds."
+                : result.StdOut,
+            result.StdErr,
+            started,
+            finished
+        );
+    }
+
+    private (string FileName, string Arguments, string WorkingDirectory) ResolveInstallCommand(string installCommand, string installArguments)
+    {
+        if (Path.IsPathRooted(installCommand))
+        {
+            _policy.ValidateExecutablePath(installCommand);
+            return (installCommand, installArguments, Path.GetDirectoryName(installCommand) ?? _downloadsOptions.StagingRootFolder);
+        }
+
+        var profile = _executionOptions.AllowedExecutables
+            .FirstOrDefault(x => string.Equals(x.Name, installCommand, StringComparison.OrdinalIgnoreCase));
+
+        if (profile is null)
+            throw new Exception($"Install command '{installCommand}' is not an absolute path or allowed execution profile.");
+
+        _policy.ValidateExecutablePath(profile.Path);
+        _policy.ValidateArguments(profile, installArguments);
+
+        return
+        (
+            profile.Path,
+            installArguments,
+            string.IsNullOrWhiteSpace(profile.WorkingDirectory)
+                ? _downloadsOptions.StagingRootFolder
+                : profile.WorkingDirectory
+        );
+    }
+
+    private void ValidateWorkingDirectory(string? workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+            return;
+
+        if (_executionOptions.RequireAbsolutePath && !Path.IsPathRooted(workingDirectory))
+            throw new Exception($"Working directory must be an absolute path: '{workingDirectory}'");
+
+        if (_executionOptions.DisallowUNCPaths &&
+            workingDirectory.StartsWith(@"\\", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Exception($"UNC working directory is not allowed: '{workingDirectory}'");
+        }
+
+        var normalized = Path.GetFullPath(workingDirectory);
+
+        foreach (var blocked in _executionOptions.BlockedPathPrefixes.Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            var blockedNormalized = Path.GetFullPath(blocked);
+            if (normalized.StartsWith(blockedNormalized, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Exception($"Working directory is under a blocked prefix: '{workingDirectory}'");
+            }
+        }
+    }
+
+    private async Task<(int ExitCode, string StdOut, string StdErr)> ExecuteProcessAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(fileName, arguments ?? "")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            psi.WorkingDirectory = workingDirectory;
+        }
+
+        using var process = Process.Start(psi) ?? throw new Exception($"Failed to start process '{fileName}'.");
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(true);
+            }
+            catch
+            {
+            }
+
+            return (124, "", $"Timed out after {timeoutSeconds}s");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+
+        return
+        (
+            process.ExitCode,
+            Trunc(stdout, _executionOptions.MaxStdoutChars),
+            Trunc(stderr, _executionOptions.MaxStderrChars)
+        );
     }
 
     private static object GetCpuInfo()
@@ -801,15 +1201,16 @@ public sealed class CommandExecutor
 
         return string.Join("-", bytes.Select(b => b.ToString("X2")));
     }
+
     private static List<object> GetInstalledSoftware()
     {
         var results = new List<object>();
 
         string[] registryPaths =
         {
-        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-        @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-    };
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+        };
 
         foreach (var path in registryPaths)
         {
@@ -836,6 +1237,7 @@ public sealed class CommandExecutor
 
         return results;
     }
+
     private object GetProcessStatus()
     {
         return new
@@ -956,6 +1358,7 @@ public sealed class CommandExecutor
             return 0;
         }
     }
+
     private static List<object> GetWindowsUpdates()
     {
         var updates = new List<object>();
@@ -982,6 +1385,7 @@ public sealed class CommandExecutor
 
         return updates;
     }
+
     private static string Trunc(string s, int max)
     {
         if (string.IsNullOrEmpty(s))

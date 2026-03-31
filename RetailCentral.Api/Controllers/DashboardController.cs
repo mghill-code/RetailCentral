@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using RetailCentral.Api.Configuration;
+using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Models.Deployments;
@@ -17,24 +20,44 @@ namespace RetailCentral.Api.Controllers
     [Authorize(Policy = "DashboardViewer")]
     public class DashboardController : Controller
     {
+        // Core data access for dashboard queries and command creation.
         private readonly RetailCentralDbContext _db;
+
+        // Deployment subsystem service.
         private readonly IDeploymentService _deploymentService;
+
+        // Used for package/distro file handling.
         private readonly IWebHostEnvironment _environment;
+
+        // Central audit logger for dashboard actions.
         private readonly AuditService _auditService;
+
+        // General configuration for About page and other simple reads.
         private readonly IConfiguration _config;
 
+        // Shared server-side command validation service.
+        // This keeps dashboard command creation aligned with Admin API rules.
+        private readonly CommandValidationService _commandValidationService;
+
+        // Bound command policy options used to shape dropdowns and helpdesk offerings.
+        private readonly CommandPolicyOptions _commandPolicy;
+
         public DashboardController(
-            RetailCentralDbContext db,
-            IDeploymentService deploymentService,
-            IWebHostEnvironment environment,
-            AuditService auditService,
-            IConfiguration config)
+             RetailCentralDbContext db,
+             IDeploymentService deploymentService,
+             IWebHostEnvironment environment,
+             AuditService auditService,
+             IConfiguration config,
+             CommandValidationService commandValidationService,
+             IOptions<CommandPolicyOptions> commandPolicy)
         {
             _db = db;
             _deploymentService = deploymentService;
             _environment = environment;
             _auditService = auditService;
             _config = config;
+            _commandValidationService = commandValidationService;
+            _commandPolicy = commandPolicy.Value;
         }
 
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
@@ -63,150 +86,265 @@ namespace RetailCentral.Api.Controllers
                 cancellationToken: cancellationToken);
         }
 
-        private static List<string> GetAvailableCommandTypes()
+        /// <summary>
+        /// Returns the command types allowed for the engineer-facing Issue Command page.
+        /// This is driven by server policy, not hardcoded shell-oriented behavior.
+        /// </summary>
+        private List<string> GetAvailableCommandTypes()
         {
-            return new List<string>
+            return _commandPolicy.AllowedCommandTypes
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Returns safer canned templates for the engineer-facing Issue Command page.
+        /// These templates are filtered by the configured command policy.
+        /// </summary>
+        private List<CommandTemplateOptionViewModel> GetCommandTemplates()
+        {
+            var templates = new List<CommandTemplateOptionViewModel>
+                {
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Echo - Hello",
+                        CommandType = "Echo",
+                        PayloadJson = """
+            {
+              "message": "Hello from dashboard"
+            }
+            """,
+                        Description = "Simple test message"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Collect System Info",
+                        CommandType = "CollectSystemInfo",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Collect machine details"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Collect Process Status",
+                        CommandType = "CollectProcessStatus",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Collect POS / shell / agent process state"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Collect Software Inventory",
+                        CommandType = "CollectSoftwareInventory",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Collect installed software and Windows updates"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Restart POS",
+                        CommandType = "RestartPOS",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Restart the POS application using the approved named command"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Restart RetailShell",
+                        CommandType = "RestartRetailShell",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Restart RetailShell using the approved named command"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Restart Agent",
+                        CommandType = "RestartAgent",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Restart the agent using the approved named command"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Reboot Device",
+                        CommandType = "RebootDevice",
+                        PayloadJson = """
+            {}
+            """,
+                        Description = "Reboot the endpoint using the approved named command"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "DownloadFile - download only",
+                        CommandType = "DownloadFile",
+                        PayloadJson = """
+            {
+              "url": "https://artifacts.company.com/example/hello.txt",
+              "destinationFileName": "hello.txt",
+              "execute": false
+            }
+            """,
+                        Description = "Download a file without executing it"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "DownloadFile - download and execute",
+                        CommandType = "DownloadFile",
+                        PayloadJson = """
+            {
+              "url": "https://artifacts.company.com/example/runme.cmd",
+              "destinationFileName": "runme.cmd",
+              "execute": true,
+              "sha256": "REPLACE_WITH_SHA256",
+              "arguments": ""
+            }
+            """,
+                        Description = "Download and execute a file with hash validation"
+                    },
+                    new CommandTemplateOptionViewModel
+                    {
+                        Name = "Install Package - MSI profile",
+                        CommandType = "InstallPackage",
+                        PayloadJson = """
+            {
+              "packageId": 0,
+              "downloadUrl": "https://artifacts.company.com/example/app.msi",
+              "fileName": "app.msi",
+              "sha256": "REPLACE_WITH_SHA256",
+              "installCommand": "MsiexecInstall",
+              "installArguments": "/i {file} /qn /norestart",
+              "timeoutSeconds": 600,
+              "executeMode": "Immediate"
+            }
+            """,
+                        Description = "Install a package using an approved install profile"
+                    }
+                };
+
+                        if (_commandPolicy.AllowRunProcess)
+                        {
+                            templates.Add(new CommandTemplateOptionViewModel
+                            {
+                                Name = "RunProcess - Advanced (policy enabled)",
+                                CommandType = "RunProcess",
+                                PayloadJson = """
+            {
+              "fileName": "C:\\Approved\\Tool.exe",
+              "arguments": "",
+              "timeoutSeconds": 30
+            }
+            """,
+                                Description = "Advanced process execution template. Use carefully."
+                            });
+                        }
+
+                        var allowedSet = _commandPolicy.AllowedCommandTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                        return templates
+                            .Where(t => allowedSet.Contains(t.CommandType))
+                            .ToList();
+                    }
+
+        /// <summary>
+        /// Returns the safe helpdesk command catalog.
+        /// These entries represent business-friendly actions, but they now map to
+        /// named commands rather than raw shell/process payloads.
+        /// </summary>
+        private List<HelpdeskCommandOptionViewModel> GetHelpdeskCommands()
+        {
+            var commands = new List<HelpdeskCommandOptionViewModel>
     {
-        "Echo",
-        "CollectSystemInfo",
-        "CollectProcessStatus",
-        "CollectSoftwareInventory",
-        "RunProcess",
-        "DownloadFile"
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "CollectSystemInfo",
+            Name = "Collect System Info",
+            Description = "Collect the latest hardware, OS, memory, disk, network, and inventory details.",
+            Category = "Diagnostics",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = false
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "CollectProcessStatus",
+            Name = "Collect Process Status",
+            Description = "Collect POS, RetailShell, and Agent process health and runtime data.",
+            Category = "Diagnostics",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = false
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartPOS",
+            Name = "Restart POS",
+            Description = "Restart the POS application using the approved named command.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartRetailShell",
+            Name = "Restart RetailShell",
+            Description = "Restart RetailShell using the approved named command.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RestartAgent",
+            Name = "Restart Agent",
+            Description = "Restart the agent service using the approved named command.",
+            Category = "Application Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RebootDevice",
+            Name = "Reboot Device",
+            Description = "Reboot the endpoint using the approved named command.",
+            Category = "Device Recovery",
+            DeviceSupported = true,
+            StoreSupported = true,
+            GroupSupported = true,
+            Destructive = true
+        },
+        new HelpdeskCommandOptionViewModel
+        {
+            Key = "RequeueFailed",
+            Name = "Requeue Failed Commands",
+            Description = "Requeues recent failed commands for a single device only.",
+            Category = "Recovery",
+            DeviceSupported = true,
+            StoreSupported = false,
+            GroupSupported = false,
+            Destructive = false
+        }
     };
-        }
 
-        private static List<CommandTemplateOptionViewModel> GetCommandTemplates()
-        {
-            return new List<CommandTemplateOptionViewModel>
-            {
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "Echo - Hello",
-                    CommandType = "Echo",
-                    PayloadJson = "{\n  \"message\": \"Hello from dashboard\"\n}",
-                    Description = "Simple test message"
-                },
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "Collect System Info",
-                    CommandType = "CollectSystemInfo",
-                    PayloadJson = "{}",
-                    Description = "Collect machine details"
-                },
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "RunProcess - cmd echo hi",
-                    CommandType = "RunProcess",
-                    PayloadJson = "{\n  \"fileName\": \"cmd.exe\",\n  \"arguments\": \"/c echo hi\",\n  \"timeoutSeconds\": 10\n}",
-                    Description = "Basic command test"
-                },
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "RunProcess - ipconfig",
-                    CommandType = "RunProcess",
-                    PayloadJson = "{\n  \"fileName\": \"cmd.exe\",\n  \"arguments\": \"/c ipconfig\",\n  \"timeoutSeconds\": 20\n}",
-                    Description = "Network info"
-                },
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "DownloadFile - download only",
-                    CommandType = "DownloadFile",
-                    PayloadJson = "{\n  \"url\": \"http://localhost:8088/hello.txt\",\n  \"destinationFileName\": \"hello.txt\",\n  \"execute\": false\n}",
-                    Description = "Download a file without executing"
-                },
-                new CommandTemplateOptionViewModel
-                {
-                    Name = "DownloadFile - download and execute",
-                    CommandType = "DownloadFile",
-                    PayloadJson = "{\n  \"url\": \"http://localhost:8088/runme.cmd\",\n  \"destinationFileName\": \"runme.cmd\",\n  \"execute\": true,\n  \"arguments\": \"\"\n}",
-                    Description = "Download and execute a command file"
-                }
-            };
-        }
+            var allowedSet = _commandPolicy.HelpdeskAllowedCommandTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        private static List<HelpdeskCommandOptionViewModel> GetHelpdeskCommands()
-        {
-            return new List<HelpdeskCommandOptionViewModel>
-            {
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "CollectSystemInfo",
-                    Name = "Collect System Info",
-                    Description = "Collect the latest hardware, OS, memory, disk, network, and inventory details.",
-                    Category = "Diagnostics",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = false
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "NetworkInfo",
-                    Name = "Network Info",
-                    Description = "Runs ipconfig /all and returns detailed network information.",
-                    Category = "Diagnostics",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = false
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "RestartPOS",
-                    Name = "Restart POS",
-                    Description = "Placeholder command that calls POSRestart.cmd on the device.",
-                    Category = "Application Recovery",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = true
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "RestartRetailShell",
-                    Name = "Restart RetailShell",
-                    Description = "Placeholder command that calls RetailShellRestart.cmd on the device.",
-                    Category = "Application Recovery",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = true
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "RestartAgent",
-                    Name = "Restart Agent",
-                    Description = "Placeholder command that calls AgentRestart.cmd on the device.",
-                    Category = "Application Recovery",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = true
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "RebootDevice",
-                    Name = "Reboot Device",
-                    Description = "Performs a forced reboot after a short delay.",
-                    Category = "Device Recovery",
-                    DeviceSupported = true,
-                    StoreSupported = true,
-                    GroupSupported = true,
-                    Destructive = true
-                },
-                new HelpdeskCommandOptionViewModel
-                {
-                    Key = "RequeueFailed",
-                    Name = "Requeue Failed Commands",
-                    Description = "Requeues recent failed commands for a single device only.",
-                    Category = "Recovery",
-                    DeviceSupported = true,
-                    StoreSupported = false,
-                    GroupSupported = false,
-                    Destructive = false
-                }
-            };
+            return commands
+                .Where(c => c.Key == "RequeueFailed" || allowedSet.Contains(c.Key))
+                .ToList();
         }
 
         public async Task<IActionResult> Index()
@@ -1259,162 +1397,162 @@ namespace RetailCentral.Api.Controllers
         }
 
 
-[HttpGet]
-public async Task<IActionResult> Commands(string? status, string? search, bool expiredPendingOnly = false, int take = 200)
-{
-    take = Math.Clamp(take, 25, 500);
-
-    var nowUtc = DateTime.UtcNow;
-    var baseQuery = _db.Commands.AsNoTracking();
-
-    if (!string.IsNullOrWhiteSpace(status))
-    {
-        var normalizedStatus = status.Trim();
-        baseQuery = baseQuery.Where(c => c.Status == normalizedStatus);
-    }
-
-    if (!string.IsNullOrWhiteSpace(search))
-    {
-        var trimmedSearch = search.Trim();
-
-        baseQuery = baseQuery.Where(c =>
-            c.Type.Contains(trimmedSearch) ||
-            (c.StoreNumber != null && c.StoreNumber.Contains(trimmedSearch)) ||
-            (c.GroupName != null && c.GroupName.Contains(trimmedSearch)) ||
-            (c.IssuedBy != null && c.IssuedBy.Contains(trimmedSearch)) ||
-            (c.PayloadJson != null && c.PayloadJson.Contains(trimmedSearch)));
-    }
-
-    if (expiredPendingOnly)
-    {
-        baseQuery = baseQuery.Where(c =>
-            c.Status == "Pending" &&
-            c.ExpiresUtc != null &&
-            c.ExpiresUtc <= nowUtc);
-    }
-
-    var commands = await baseQuery
-        .OrderByDescending(c => c.CreatedUtc)
-        .Take(take)
-        .Select(c => new CommandCenterRowViewModel
+        [HttpGet]
+        public async Task<IActionResult> Commands(string? status, string? search, bool expiredPendingOnly = false, int take = 200)
         {
-            CommandId = c.CommandId,
-            Type = c.Type,
-            Scope = c.Scope,
-            StoreNumber = c.StoreNumber,
-            GroupName = c.GroupName,
-            DeviceId = c.DeviceId,
-            Status = c.Status,
-            CreatedUtc = c.CreatedUtc,
-            ExpiresUtc = c.ExpiresUtc,
-            AttemptCount = c.AttemptCount,
-            MaxAttempts = c.MaxAttempts,
-            LastError = c.LastError,
-            IssuedBy = c.IssuedBy
-        })
-        .ToListAsync();
+            take = Math.Clamp(take, 25, 500);
 
-    var allCommands = _db.Commands.AsNoTracking();
+            var nowUtc = DateTime.UtcNow;
+            var baseQuery = _db.Commands.AsNoTracking();
 
-    var model = new CommandCenterViewModel
-    {
-        Status = status,
-        Search = search,
-        ShowExpiredPendingOnly = expiredPendingOnly,
-        TotalCount = await allCommands.CountAsync(),
-        PendingCount = await allCommands.CountAsync(c => c.Status == "Pending"),
-        InProgressCount = await allCommands.CountAsync(c => c.Status == "InProgress"),
-        FailedCount = await allCommands.CountAsync(c => c.Status == "Failed"),
-        SucceededCount = await allCommands.CountAsync(c => c.Status == "Succeeded"),
-        ExpiredPendingCount = await allCommands.CountAsync(c =>
-            c.Status == "Pending" &&
-            c.ExpiresUtc != null &&
-            c.ExpiresUtc <= nowUtc),
-        Commands = commands
-    };
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var normalizedStatus = status.Trim();
+                baseQuery = baseQuery.Where(c => c.Status == normalizedStatus);
+            }
 
-    return View(model);
-}
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var trimmedSearch = search.Trim();
 
-[Authorize(Policy = "DashboardHelpdesk")]
-[HttpPost]
-[ValidateAntiForgeryToken]
-public async Task<IActionResult> FailExpiredPendingCommands()
-{
-    var nowUtc = DateTime.UtcNow;
+                baseQuery = baseQuery.Where(c =>
+                    c.Type.Contains(trimmedSearch) ||
+                    (c.StoreNumber != null && c.StoreNumber.Contains(trimmedSearch)) ||
+                    (c.GroupName != null && c.GroupName.Contains(trimmedSearch)) ||
+                    (c.IssuedBy != null && c.IssuedBy.Contains(trimmedSearch)) ||
+                    (c.PayloadJson != null && c.PayloadJson.Contains(trimmedSearch)));
+            }
 
-    var expiredPending = await _db.Commands
-        .Where(c =>
-            c.Status == "Pending" &&
-            c.ExpiresUtc != null &&
-            c.ExpiresUtc <= nowUtc)
-        .ToListAsync();
+            if (expiredPendingOnly)
+            {
+                baseQuery = baseQuery.Where(c =>
+                    c.Status == "Pending" &&
+                    c.ExpiresUtc != null &&
+                    c.ExpiresUtc <= nowUtc);
+            }
 
-    foreach (var command in expiredPending)
-    {
-        command.Status = "Failed";
-        command.LastAttemptUtc = nowUtc;
+            var commands = await baseQuery
+                .OrderByDescending(c => c.CreatedUtc)
+                .Take(take)
+                .Select(c => new CommandCenterRowViewModel
+                {
+                    CommandId = c.CommandId,
+                    Type = c.Type,
+                    Scope = c.Scope,
+                    StoreNumber = c.StoreNumber,
+                    GroupName = c.GroupName,
+                    DeviceId = c.DeviceId,
+                    Status = c.Status,
+                    CreatedUtc = c.CreatedUtc,
+                    ExpiresUtc = c.ExpiresUtc,
+                    AttemptCount = c.AttemptCount,
+                    MaxAttempts = c.MaxAttempts,
+                    LastError = c.LastError,
+                    IssuedBy = c.IssuedBy
+                })
+                .ToListAsync();
 
-        if (string.IsNullOrWhiteSpace(command.LastError))
-        {
-            command.LastError = "Command expired before pickup by agent.";
-        }
-    }
+            var allCommands = _db.Commands.AsNoTracking();
 
-    await _db.SaveChangesAsync();
+            var model = new CommandCenterViewModel
+            {
+                Status = status,
+                Search = search,
+                ShowExpiredPendingOnly = expiredPendingOnly,
+                TotalCount = await allCommands.CountAsync(),
+                PendingCount = await allCommands.CountAsync(c => c.Status == "Pending"),
+                InProgressCount = await allCommands.CountAsync(c => c.Status == "InProgress"),
+                FailedCount = await allCommands.CountAsync(c => c.Status == "Failed"),
+                SucceededCount = await allCommands.CountAsync(c => c.Status == "Succeeded"),
+                ExpiredPendingCount = await allCommands.CountAsync(c =>
+                    c.Status == "Pending" &&
+                    c.ExpiresUtc != null &&
+                    c.ExpiresUtc <= nowUtc),
+                Commands = commands
+            };
 
-    await AuditAsync(
-        "FailExpiredPendingCommands",
-        "Command",
-        null,
-        new
-        {
-            Count = expiredPending.Count,
-            CommandIds = expiredPending.Select(c => c.CommandId).ToList()
-        });
-
-    TempData["CommandMessage"] = $"Marked {expiredPending.Count} expired pending command(s) as Failed.";
-    return RedirectToAction(nameof(Commands), new { expiredPendingOnly = true });
-}
-
-[Authorize(Policy = "DashboardHelpdesk")]
-[HttpPost]
-[ValidateAntiForgeryToken]
-public async Task<IActionResult> FailExpiredPendingCommand(Guid id)
-{
-    var nowUtc = DateTime.UtcNow;
-
-    var command = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
-    if (command == null)
-    {
-        TempData["CommandMessage"] = "Command not found.";
-        return RedirectToAction(nameof(Commands));
-    }
-
-    if (command.Status == "Pending" && command.ExpiresUtc != null && command.ExpiresUtc <= nowUtc)
-    {
-        command.Status = "Failed";
-        command.LastAttemptUtc = nowUtc;
-
-        if (string.IsNullOrWhiteSpace(command.LastError))
-        {
-            command.LastError = "Command expired before pickup by agent.";
+            return View(model);
         }
 
-        await _db.SaveChangesAsync();
-        await AuditAsync("FailExpiredPendingCommand", "Command", command.CommandId.ToString(), new { command.CommandId });
+        [Authorize(Policy = "DashboardHelpdesk")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> FailExpiredPendingCommands()
+        {
+            var nowUtc = DateTime.UtcNow;
 
-        TempData["CommandMessage"] = $"Command {command.CommandId} marked Failed.";
-    }
-    else
-    {
-        TempData["CommandMessage"] = "Command is not an expired pending command.";
-    }
+            var expiredPending = await _db.Commands
+                .Where(c =>
+                    c.Status == "Pending" &&
+                    c.ExpiresUtc != null &&
+                    c.ExpiresUtc <= nowUtc)
+                .ToListAsync();
 
-    return RedirectToAction(nameof(Commands));
-}
+            foreach (var command in expiredPending)
+            {
+                command.Status = "Failed";
+                command.LastAttemptUtc = nowUtc;
 
-public async Task<IActionResult> Command(Guid id)
+                if (string.IsNullOrWhiteSpace(command.LastError))
+                {
+                    command.LastError = "Command expired before pickup by agent.";
+                }
+            }
+
+            await _db.SaveChangesAsync();
+
+            await AuditAsync(
+                "FailExpiredPendingCommands",
+                "Command",
+                null,
+                new
+                {
+                    Count = expiredPending.Count,
+                    CommandIds = expiredPending.Select(c => c.CommandId).ToList()
+                });
+
+            TempData["CommandMessage"] = $"Marked {expiredPending.Count} expired pending command(s) as Failed.";
+            return RedirectToAction(nameof(Commands), new { expiredPendingOnly = true });
+        }
+
+        [Authorize(Policy = "DashboardHelpdesk")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> FailExpiredPendingCommand(Guid id)
+        {
+            var nowUtc = DateTime.UtcNow;
+
+            var command = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
+            if (command == null)
+            {
+                TempData["CommandMessage"] = "Command not found.";
+                return RedirectToAction(nameof(Commands));
+            }
+
+            if (command.Status == "Pending" && command.ExpiresUtc != null && command.ExpiresUtc <= nowUtc)
+            {
+                command.Status = "Failed";
+                command.LastAttemptUtc = nowUtc;
+
+                if (string.IsNullOrWhiteSpace(command.LastError))
+                {
+                    command.LastError = "Command expired before pickup by agent.";
+                }
+
+                await _db.SaveChangesAsync();
+                await AuditAsync("FailExpiredPendingCommand", "Command", command.CommandId.ToString(), new { command.CommandId });
+
+                TempData["CommandMessage"] = $"Command {command.CommandId} marked Failed.";
+            }
+            else
+            {
+                TempData["CommandMessage"] = "Command is not an expired pending command.";
+            }
+
+            return RedirectToAction(nameof(Commands));
+        }
+
+        public async Task<IActionResult> Command(Guid id)
         {
             var cmd = await _db.Commands.FirstOrDefaultAsync(c => c.CommandId == id);
             if (cmd == null)
@@ -1672,16 +1810,19 @@ public async Task<IActionResult> Command(Guid id)
 
             if (!ModelState.IsValid)
             {
-                await AuditAsync("RunHelpdeskCommandValidationFailed",
+                await AuditAsync(
+                    "RunHelpdeskCommandValidationFailed",
                     normalizedTargetType,
                     model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
                     new { model.CommandKey, model.TargetType, model.DeviceId, model.StoreNumber, model.GroupName },
                     false,
                     "ModelState invalid");
+
                 await PopulateHelpdeskCommandLists(model, cutoff);
                 return View("HelpdeskCommands", model);
             }
 
+            // Dashboard-only helper path.
             if (string.Equals(model.CommandKey, "RequeueFailed", StringComparison.OrdinalIgnoreCase))
             {
                 if (model.DeviceId == null)
@@ -1694,27 +1835,78 @@ public async Task<IActionResult> Command(Guid id)
                 return await RequeueRecentFailedCommands(model.DeviceId.Value);
             }
 
+            // Build a shared DTO so helpdesk issuance follows the same validation rules
+            // as the Admin API and Issue Command flow.
+            var mapped = MapHelpdeskCommand(model.CommandKey);
+
+            var request = new CreateCommandRequest
+            {
+                DeviceId = normalizedTargetType.Equals("Device", StringComparison.OrdinalIgnoreCase) ? model.DeviceId : null,
+                StoreNumber = normalizedTargetType.Equals("Store", StringComparison.OrdinalIgnoreCase) ? model.StoreNumber?.Trim() : null,
+                GroupName = normalizedTargetType.Equals("Group", StringComparison.OrdinalIgnoreCase) ? model.GroupName?.Trim() : null,
+                Type = mapped.Type,
+                PayloadJson = mapped.PayloadJson,
+                Priority = 100,
+                MaxAttempts = 3,
+                ExpiresUtc = null
+            };
+
+            var validation = _commandValidationService.Validate(request, helpdeskMode: true);
+            if (!validation.IsValid)
+            {
+                foreach (var error in validation.Errors)
+                {
+                    ModelState.AddModelError("", error);
+                }
+
+                await AuditAsync(
+                    "RunHelpdeskCommandRejected",
+                    normalizedTargetType,
+                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+                    new
+                    {
+                        model.CommandKey,
+                        RequestType = request.Type,
+                        request.DeviceId,
+                        request.StoreNumber,
+                        request.GroupName,
+                        validation.Errors
+                    },
+                    false,
+                    string.Join(" | ", validation.Errors));
+
+                await PopulateHelpdeskCommandLists(model, cutoff);
+                return View("HelpdeskCommands", model);
+            }
+
             var now = DateTime.UtcNow;
             var createdCommands = new List<Command>();
 
-            if (normalizedTargetType.Equals("Device", StringComparison.OrdinalIgnoreCase) && model.DeviceId != null)
+            if (request.DeviceId != null)
             {
-                var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value && d.IsEnabled);
+                var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == request.DeviceId.Value && d.IsEnabled);
                 if (device == null)
                 {
                     ModelState.AddModelError("", "Selected device was not found.");
                 }
                 else
                 {
-                    createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now));
+                    createdCommands.Add(BuildDeviceCommand(
+                        device,
+                        validation.NormalizedType,
+                        request.PayloadJson,
+                        request.Priority,
+                        request.MaxAttempts,
+                        request.ExpiresUtc,
+                        issuedBy: CurrentActor(),
+                        issuedUtc: now,
+                        groupName: null));
                 }
             }
-            else if (normalizedTargetType.Equals("Store", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(model.StoreNumber))
+            else if (!string.IsNullOrWhiteSpace(request.StoreNumber))
             {
-                var normalizedStore = model.StoreNumber.Trim();
-
                 var storeDevices = await _db.Devices
-                    .Where(d => d.IsEnabled && d.StoreNumber == normalizedStore)
+                    .Where(d => d.IsEnabled && d.StoreNumber == request.StoreNumber)
                     .OrderBy(d => d.Hostname)
                     .ToListAsync();
 
@@ -1725,15 +1917,24 @@ public async Task<IActionResult> Command(Guid id)
                 else
                 {
                     foreach (var device in storeDevices)
-                        createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now));
+                    {
+                        createdCommands.Add(BuildDeviceCommand(
+                            device,
+                            validation.NormalizedType,
+                            request.PayloadJson,
+                            request.Priority,
+                            request.MaxAttempts,
+                            request.ExpiresUtc,
+                            issuedBy: CurrentActor(),
+                            issuedUtc: now,
+                            groupName: null));
+                    }
                 }
             }
-            else if (normalizedTargetType.Equals("Group", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(model.GroupName))
+            else if (!string.IsNullOrWhiteSpace(request.GroupName))
             {
-                var normalizedGroup = model.GroupName.Trim();
-
                 var groupDevices = await _db.DeviceGroupMembers
-                    .Where(m => _db.DeviceGroups.Any(g => g.DeviceGroupId == m.DeviceGroupId && g.GroupName == normalizedGroup))
+                    .Where(m => _db.DeviceGroups.Any(g => g.DeviceGroupId == m.DeviceGroupId && g.GroupName == request.GroupName))
                     .Join(_db.Devices.Where(d => d.IsEnabled), m => m.DeviceId, d => d.DeviceId, (m, d) => d)
                     .OrderBy(d => d.StoreNumber)
                     .ThenBy(d => d.Hostname)
@@ -1746,34 +1947,56 @@ public async Task<IActionResult> Command(Guid id)
                 else
                 {
                     foreach (var device in groupDevices)
-                        createdCommands.Add(BuildHelpdeskCommandForDevice(device, model.CommandKey, now, normalizedGroup));
+                    {
+                        createdCommands.Add(BuildDeviceCommand(
+                            device,
+                            validation.NormalizedType,
+                            request.PayloadJson,
+                            request.Priority,
+                            request.MaxAttempts,
+                            request.ExpiresUtc,
+                            issuedBy: CurrentActor(),
+                            issuedUtc: now,
+                            groupName: request.GroupName));
+                    }
                 }
             }
 
             if (!ModelState.IsValid)
             {
-                await AuditAsync("RunHelpdeskCommandValidationFailed",
+                await AuditAsync(
+                    "RunHelpdeskCommandValidationFailed",
                     normalizedTargetType,
                     model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
-                    new { model.CommandKey, model.TargetType, model.DeviceId, model.StoreNumber, model.GroupName },
+                    new
+                    {
+                        model.CommandKey,
+                        request.Type,
+                        request.DeviceId,
+                        request.StoreNumber,
+                        request.GroupName
+                    },
                     false,
                     "Target validation failed");
+
                 await PopulateHelpdeskCommandLists(model, cutoff);
                 return View("HelpdeskCommands", model);
             }
 
             _db.Commands.AddRange(createdCommands);
             await _db.SaveChangesAsync();
-            await AuditAsync("RunHelpdeskCommand",
+
+            await AuditAsync(
+                "RunHelpdeskCommand",
                 normalizedTargetType,
                 model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
                 new
                 {
                     model.CommandKey,
-                    model.TargetType,
-                    model.DeviceId,
-                    model.StoreNumber,
-                    model.GroupName,
+                    NormalizedType = validation.NormalizedType,
+                    request.DeviceId,
+                    request.StoreNumber,
+                    request.GroupName,
                     CreatedCommandCount = createdCommands.Count,
                     CommandIds = createdCommands.Select(c => c.CommandId).ToList()
                 });
@@ -2249,6 +2472,15 @@ public async Task<IActionResult> Command(Guid id)
         {
             var cutoff = OnlineCutoffUtc;
             var templates = GetCommandTemplates();
+            var commandTypes = GetAvailableCommandTypes();
+
+            var defaultTemplate = templates.FirstOrDefault()
+                ?? new CommandTemplateOptionViewModel
+                {
+                    Name = "Collect System Info",
+                    CommandType = "CollectSystemInfo",
+                    PayloadJson = "{}"
+                };
 
             var model = new IssueCommandViewModel
             {
@@ -2283,15 +2515,15 @@ public async Task<IActionResult> Command(Guid id)
                     .OrderBy(g => g)
                     .ToListAsync(),
 
-                AvailableCommandTypes = GetAvailableCommandTypes(),
+                AvailableCommandTypes = commandTypes,
                 AvailableTemplates = templates,
 
                 Priority = 100,
                 MaxAttempts = 3,
-                Type = "Echo",
-                TemplateName = "Echo - Hello",
+                Type = defaultTemplate.CommandType,
+                TemplateName = defaultTemplate.Name,
                 UseCustomJson = false,
-                PayloadJson = templates.First(t => t.Name == "Echo - Hello").PayloadJson
+                PayloadJson = defaultTemplate.PayloadJson
             };
 
             return View(model);
@@ -2316,34 +2548,48 @@ public async Task<IActionResult> Command(Guid id)
                 }
             }
 
-            var targetCount = 0;
-            if (model.DeviceId != null) targetCount++;
-            if (!string.IsNullOrWhiteSpace(model.StoreNumber)) targetCount++;
-            if (!string.IsNullOrWhiteSpace(model.GroupName)) targetCount++;
-
-            if (string.IsNullOrWhiteSpace(model.Type))
+            // Route dashboard issuance through the same request model and validation
+            // used by the Admin API.
+            var request = new CreateCommandRequest
             {
-                ModelState.AddModelError(nameof(model.Type), "Type is required.");
-            }
+                DeviceId = model.DeviceId,
+                StoreNumber = string.IsNullOrWhiteSpace(model.StoreNumber) ? null : model.StoreNumber.Trim(),
+                GroupName = string.IsNullOrWhiteSpace(model.GroupName) ? null : model.GroupName.Trim(),
+                Type = model.Type?.Trim() ?? "",
+                PayloadJson = string.IsNullOrWhiteSpace(model.PayloadJson) ? null : model.PayloadJson,
+                Priority = model.Priority,
+                MaxAttempts = model.MaxAttempts,
+                ExpiresUtc = model.ExpiresUtc
+            };
 
-            if (targetCount != 1)
+            var validation = _commandValidationService.Validate(request, helpdeskMode: false);
+            if (!validation.IsValid)
             {
-                ModelState.AddModelError("", "Provide exactly one target: Device, Store, or Group.");
-            }
-
-            if (!commandTypes.Contains(model.Type))
-            {
-                ModelState.AddModelError(nameof(model.Type), "Unsupported command type.");
+                foreach (var error in validation.Errors)
+                {
+                    ModelState.AddModelError("", error);
+                }
             }
 
             if (!ModelState.IsValid)
             {
-                await AuditAsync("IssueCommandValidationFailed",
-                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
-                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
-                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                await AuditAsync(
+                    "IssueCommandValidationFailed",
+                    request.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(request.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(request.GroupName) ? "Group" : null,
+                    request.DeviceId?.ToString() ?? request.StoreNumber ?? request.GroupName,
+                    new
+                    {
+                        request.Type,
+                        request.DeviceId,
+                        request.StoreNumber,
+                        request.GroupName,
+                        request.Priority,
+                        request.MaxAttempts,
+                        validation.Errors
+                    },
                     false,
                     "ModelState invalid");
+
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
             }
@@ -2351,10 +2597,10 @@ public async Task<IActionResult> Command(Guid id)
             var now = DateTime.UtcNow;
             var createdCommands = new List<Command>();
 
-            if (model.DeviceId != null)
+            if (request.DeviceId != null)
             {
                 var device = await _db.Devices
-                    .FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value && d.IsEnabled);
+                    .FirstOrDefaultAsync(d => d.DeviceId == request.DeviceId.Value && d.IsEnabled);
 
                 if (device == null)
                 {
@@ -2364,22 +2610,20 @@ public async Task<IActionResult> Command(Guid id)
                 {
                     createdCommands.Add(BuildDeviceCommand(
                         device,
-                        model.Type.Trim(),
-                        string.IsNullOrWhiteSpace(model.PayloadJson) ? null : model.PayloadJson,
-                        model.Priority,
-                        model.MaxAttempts,
-                        model.ExpiresUtc,
+                        validation.NormalizedType,
+                        request.PayloadJson,
+                        request.Priority,
+                        request.MaxAttempts,
+                        request.ExpiresUtc,
                         issuedBy: CurrentActor(),
                         issuedUtc: now,
                         groupName: null));
                 }
             }
-            else if (!string.IsNullOrWhiteSpace(model.StoreNumber))
+            else if (!string.IsNullOrWhiteSpace(request.StoreNumber))
             {
-                var normalizedStore = model.StoreNumber.Trim();
-
                 var storeDevices = await _db.Devices
-                    .Where(d => d.IsEnabled && d.StoreNumber == normalizedStore)
+                    .Where(d => d.IsEnabled && d.StoreNumber == request.StoreNumber)
                     .OrderBy(d => d.Hostname)
                     .ToListAsync();
 
@@ -2393,25 +2637,23 @@ public async Task<IActionResult> Command(Guid id)
                     {
                         createdCommands.Add(BuildDeviceCommand(
                             device,
-                            model.Type.Trim(),
-                            string.IsNullOrWhiteSpace(model.PayloadJson) ? null : model.PayloadJson,
-                            model.Priority,
-                            model.MaxAttempts,
-                            model.ExpiresUtc,
+                            validation.NormalizedType,
+                            request.PayloadJson,
+                            request.Priority,
+                            request.MaxAttempts,
+                            request.ExpiresUtc,
                             issuedBy: CurrentActor(),
                             issuedUtc: now,
                             groupName: null));
                     }
                 }
             }
-            else if (!string.IsNullOrWhiteSpace(model.GroupName))
+            else if (!string.IsNullOrWhiteSpace(request.GroupName))
             {
-                var normalizedGroup = model.GroupName.Trim();
-
                 var groupDevices = await _db.DeviceGroupMembers
                     .Where(m => _db.DeviceGroups.Any(g =>
                         g.DeviceGroupId == m.DeviceGroupId &&
-                        g.GroupName == normalizedGroup))
+                        g.GroupName == request.GroupName))
                     .Join(
                         _db.Devices.Where(d => d.IsEnabled),
                         m => m.DeviceId,
@@ -2431,38 +2673,58 @@ public async Task<IActionResult> Command(Guid id)
                     {
                         createdCommands.Add(BuildDeviceCommand(
                             device,
-                            model.Type.Trim(),
-                            string.IsNullOrWhiteSpace(model.PayloadJson) ? null : model.PayloadJson,
-                            model.Priority,
-                            model.MaxAttempts,
-                            model.ExpiresUtc,
+                            validation.NormalizedType,
+                            request.PayloadJson,
+                            request.Priority,
+                            request.MaxAttempts,
+                            request.ExpiresUtc,
                             issuedBy: CurrentActor(),
                             issuedUtc: now,
-                            groupName: normalizedGroup));
+                            groupName: request.GroupName));
                     }
                 }
             }
 
             if (!ModelState.IsValid)
             {
-                await AuditAsync("IssueCommandValidationFailed",
-                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
-                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
-                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                await AuditAsync(
+                    "IssueCommandValidationFailed",
+                    request.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(request.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(request.GroupName) ? "Group" : null,
+                    request.DeviceId?.ToString() ?? request.StoreNumber ?? request.GroupName,
+                    new
+                    {
+                        request.Type,
+                        request.DeviceId,
+                        request.StoreNumber,
+                        request.GroupName,
+                        request.Priority,
+                        request.MaxAttempts
+                    },
                     false,
                     "Target validation failed");
+
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
             }
 
             if (createdCommands.Count == 0)
             {
-                await AuditAsync("IssueCommandValidationFailed",
-                    model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(model.GroupName) ? "Group" : null,
-                    model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
-                    new { model.Type, model.DeviceId, model.StoreNumber, model.GroupName, model.Priority, model.MaxAttempts },
+                await AuditAsync(
+                    "IssueCommandValidationFailed",
+                    request.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(request.StoreNumber) ? "Store" : !string.IsNullOrWhiteSpace(request.GroupName) ? "Group" : null,
+                    request.DeviceId?.ToString() ?? request.StoreNumber ?? request.GroupName,
+                    new
+                    {
+                        request.Type,
+                        request.DeviceId,
+                        request.StoreNumber,
+                        request.GroupName,
+                        request.Priority,
+                        request.MaxAttempts
+                    },
                     false,
                     "No matching target devices were found.");
+
                 ModelState.AddModelError("", "No matching target devices were found.");
                 await PopulateIssueCommandLists(model, cutoff, commandTypes, templates);
                 return View(model);
@@ -2470,28 +2732,31 @@ public async Task<IActionResult> Command(Guid id)
 
             _db.Commands.AddRange(createdCommands);
             await _db.SaveChangesAsync();
-            await AuditAsync("IssueCommand",
-                model.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(model.StoreNumber) ? "Store" : "Group",
-                model.DeviceId?.ToString() ?? model.StoreNumber ?? model.GroupName,
+
+            await AuditAsync(
+                "IssueCommand",
+                request.DeviceId != null ? "Device" : !string.IsNullOrWhiteSpace(request.StoreNumber) ? "Store" : "Group",
+                request.DeviceId?.ToString() ?? request.StoreNumber ?? request.GroupName,
                 new
                 {
-                    model.Type,
-                    model.DeviceId,
-                    model.StoreNumber,
-                    model.GroupName,
-                    model.Priority,
-                    model.MaxAttempts,
-                    model.ExpiresUtc,
+                    request.Type,
+                    NormalizedType = validation.NormalizedType,
+                    request.DeviceId,
+                    request.StoreNumber,
+                    request.GroupName,
+                    request.Priority,
+                    request.MaxAttempts,
+                    request.ExpiresUtc,
                     CreatedCommandCount = createdCommands.Count,
                     CommandIds = createdCommands.Select(c => c.CommandId).ToList()
                 });
 
             if (createdCommands.Count == 1)
             {
-                if (model.DeviceId != null)
+                if (request.DeviceId != null)
                 {
-                    TempData["DeviceMessage"] = $"Command '{model.Type}' created successfully.";
-                    return RedirectToAction(nameof(Device), new { id = model.DeviceId.Value });
+                    TempData["DeviceMessage"] = $"Command '{validation.NormalizedType}' created successfully.";
+                    return RedirectToAction(nameof(Device), new { id = request.DeviceId.Value });
                 }
 
                 return RedirectToAction(nameof(Command), new { id = createdCommands[0].CommandId });
@@ -2953,49 +3218,26 @@ public async Task<IActionResult> Command(Guid id)
             model.AvailableCommands = GetHelpdeskCommands();
         }
 
-        private Command BuildHelpdeskCommandForDevice(Device device, string commandKey, DateTime issuedUtc, string? groupName = null)
-        {
-            var mapped = MapHelpdeskCommand(commandKey);
-
-            return new Command
-            {
-                CommandId = Guid.NewGuid(),
-                Type = mapped.Type,
-                Scope = "Device",
-                PayloadJson = mapped.PayloadJson,
-                Status = "Pending",
-                Priority = 100,
-                CreatedUtc = issuedUtc,
-                ExpiresUtc = null,
-                DeviceId = device.DeviceId,
-                StoreNumber = device.StoreNumber,
-                GroupName = groupName,
-                AttemptCount = 0,
-                MaxAttempts = 3,
-                IssuedBy = CurrentActor(),
-                IssuedUtc = issuedUtc
-            };
-        }
-
+       
+        /// <summary>
+        /// Maps a helpdesk command key to the actual queued command type and payload.
+        /// These map to safer named commands rather than generic process execution.
+        /// </summary>
         private static (string Type, string? PayloadJson) MapHelpdeskCommand(string commandKey)
         {
             return commandKey switch
             {
                 "CollectSystemInfo" => ("CollectSystemInfo", "{}"),
-                "NetworkInfo" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c ipconfig /all", 20)),
-                "RestartPOS" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c POSRestart.cmd", 60)),
-                "RestartRetailShell" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c RetailShellRestart.cmd", 60)),
-                "RestartAgent" => ("RunProcess", BuildRunProcessPayload("cmd.exe", "/c AgentRestart.cmd", 60)),
-                "RebootDevice" => ("RunProcess", BuildRunProcessPayload("shutdown.exe", "/r /t 5 /f", 15)),
+                "CollectProcessStatus" => ("CollectProcessStatus", "{}"),
+                "RestartPOS" => ("RestartPOS", "{}"),
+                "RestartRetailShell" => ("RestartRetailShell", "{}"),
+                "RestartAgent" => ("RestartAgent", "{}"),
+                "RebootDevice" => ("RebootDevice", "{}"),
                 _ => throw new InvalidOperationException($"Unknown helpdesk command key '{commandKey}'.")
             };
         }
 
-        private static string BuildRunProcessPayload(string fileName, string arguments, int timeoutSeconds)
-        {
-            var safeArguments = arguments.Replace("\\", "\\\\").Replace("\"", "\\\"");
-            return $"{{\n  \"fileName\": \"{fileName}\",\n  \"arguments\": \"{safeArguments}\",\n  \"timeoutSeconds\": {timeoutSeconds}\n}}";
-        }
+
 
         private async Task PopulateIssueCommandLists(
             IssueCommandViewModel model,

@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using RetailShell.Services;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -39,6 +40,10 @@ namespace RetailShell
         // User activity monitor writes last input / idle state for the agent to upload
         private UserActivityMonitor? _userActivityMonitor;
 
+        // Local shell broker pieces for agent-to-shell named pipe commands.
+        private ShellCommandServer? _shellCommandServer;
+        private PosSessionController? _posSessionController;
+        private UtilitySessionController? _utilitySessionController;
         public MainWindow()
         {
             InitializeComponent();
@@ -81,6 +86,7 @@ namespace RetailShell
 
             // Start user activity monitor after window initialization
             StartUserActivityMonitor();
+            StartShellCommandServer();
 
             if (AppConfig.Instance.EnableAnimations)
                 FadeInWindow();
@@ -99,12 +105,18 @@ namespace RetailShell
             e.Cancel = true;
         }
 
-        protected override void OnClosed(EventArgs e)
+        protected override async void OnClosed(EventArgs e)
         {
             try
             {
                 _posWatchdog?.Stop();
                 _userActivityMonitor?.Dispose();
+
+                if (_shellCommandServer != null)
+                {
+                    await _shellCommandServer.StopAsync();
+                    Log("Shell command server stopped.");
+                }
             }
             catch
             {
@@ -137,6 +149,74 @@ namespace RetailShell
                 Log("Failed to start user activity monitor: " + ex.Message);
             }
         }
+
+        // ================= Shell Command Server =================
+        private void StartShellCommandServer()
+        {
+            try
+            {
+                _posSessionController = new PosSessionController(
+                    launchPosAsync: LaunchOrBringPOSAsync,
+                    exitPosAction: ExitPosFromShell,
+                    logAction: Log);
+
+                _utilitySessionController = new UtilitySessionController(
+                    launchUtilityFunc: LaunchUtilityByName,
+                    logAction: Log);
+
+                _shellCommandServer = new ShellCommandServer(
+                    _posSessionController,
+                    _utilitySessionController,
+                    Dispatcher,
+                    Log);
+
+                _shellCommandServer.Start();
+
+                Log("Shell command server started.");
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to start shell command server: " + ex.Message);
+            }
+        }
+
+        private void ExitPosFromShell()
+        {
+            try
+            {
+                string exePath = AppConfig.Instance.POSExecutablePath;
+                if (string.IsNullOrWhiteSpace(exePath))
+                {
+                    Log("ExitPosFromShell skipped: POS executable path is not configured.");
+                    return;
+                }
+
+                string exeName = Path.GetFileNameWithoutExtension(exePath);
+                var running = Process.GetProcessesByName(exeName);
+
+                foreach (var proc in running)
+                {
+                    try
+                    {
+                        proc.Kill();
+                        proc.WaitForExit();
+                    }
+                    catch
+                    {
+                        // Best effort.
+                    }
+                }
+
+                UpdatePOSButtonState();
+                Log("POS exited successfully from shell broker.");
+            }
+            catch (Exception ex)
+            {
+                Log("Error exiting POS from shell broker: " + ex.Message);
+                throw;
+            }
+        }
+
 
         // ================= BRANDING =================
 
@@ -275,24 +355,7 @@ namespace RetailShell
         {
             try
             {
-                string exePath = AppConfig.Instance.POSExecutablePath;
-                if (string.IsNullOrWhiteSpace(exePath)) return;
-
-                string exeName = Path.GetFileNameWithoutExtension(exePath);
-                var running = Process.GetProcessesByName(exeName);
-
-                foreach (var proc in running)
-                {
-                    try
-                    {
-                        proc.Kill();
-                        proc.WaitForExit();
-                    }
-                    catch { }
-                }
-
-                UpdatePOSButtonState();
-                Log("POS exited successfully.");
+                ExitPosFromShell();
             }
             catch (Exception ex)
             {
@@ -487,45 +550,140 @@ namespace RetailShell
 
             BtnBack.Visibility = Visibility.Visible;
         }
+        private bool LaunchUtilityByName(string utilityName, out string message)
+{
+    message = "";
 
+    try
+    {
+        var util = AppConfig.Instance.Utilities
+            .FirstOrDefault(x => string.Equals(x.Name, utilityName, StringComparison.OrdinalIgnoreCase));
+
+        if (util == null || string.IsNullOrWhiteSpace(util.Exe))
+        {
+            message = $"Utility '{utilityName}' is not configured.";
+            Log(message);
+            return false;
+        }
+
+        var (fileName, args) = SplitCommand(util.Exe);
+
+        bool isShutdown = fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase) ||
+                          fileName.EndsWith("shutdown.exe", StringComparison.OrdinalIgnoreCase);
+
+        if (isShutdown && fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase))
+            fileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = args,
+            UseShellExecute = !isShutdown,
+            CreateNoWindow = isShutdown
+        };
+
+        var proc = Process.Start(psi);
+        Log($"Utility launched from shell broker: {utilityName} -> {util.Exe}");
+
+        if (proc != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                await BringProcessMainWindowToFrontAsync(proc);
+            });
+        }
+
+        message = $"Utility '{utilityName}' launched successfully.";
+        return true;
+    }
+    catch (Exception ex)
+    {
+        message = $"Failed to launch utility '{utilityName}': {ex.Message}";
+        Log(message);
+        return false;
+    }
+}
+        internal (bool Success, string Message) LaunchUtilityByName(string utilityName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(utilityName))
+                {
+                    var msg = "Utility name was empty.";
+                    Log(msg);
+                    return (false, msg);
+                }
+
+                // Special-case utilities that are handled by custom UI logic instead of a raw EXE.
+                if (utilityName.Equals("Scanner Program", StringComparison.OrdinalIgnoreCase) ||
+                    utilityName.Equals("Scanner Programming", StringComparison.OrdinalIgnoreCase))
+                {
+                    BtnScannerProgram_Click(this, new RoutedEventArgs());
+                    var msg = $"Utility '{utilityName}' launched through scanner programming flow.";
+                    Log(msg);
+                    return (true, msg);
+                }
+
+                var util = AppConfig.Instance.Utilities
+                    .FirstOrDefault(x => string.Equals(x.Name, utilityName, StringComparison.OrdinalIgnoreCase));
+
+                if (util == null || string.IsNullOrWhiteSpace(util.Exe))
+                {
+                    var msg = $"Utility '{utilityName}' is not configured.";
+                    Log(msg);
+                    return (false, msg);
+                }
+
+                var (fileName, args) = SplitCommand(util.Exe);
+
+                bool isShutdown = fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase) ||
+                                  fileName.EndsWith("shutdown.exe", StringComparison.OrdinalIgnoreCase);
+
+                if (isShutdown && fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase))
+                    fileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = args,
+                    UseShellExecute = !isShutdown,
+                    CreateNoWindow = isShutdown
+                };
+
+                var proc = Process.Start(psi);
+                Log($"Utility launched from shell broker: Name='{utilityName}', Command='{util.Exe}'");
+
+                if (proc != null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await BringProcessMainWindowToFrontAsync(proc);
+                    });
+                }
+
+                return (true, $"Utility '{utilityName}' launched successfully.");
+            }
+            catch (Exception ex)
+            {
+                var msg = $"Failed to launch utility '{utilityName}': {ex.Message}";
+                Log(msg);
+                return (false, msg);
+            }
+        }
         private void BtnUtility_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.ToolTip is string cmd && !string.IsNullOrWhiteSpace(cmd))
+            if (sender is Button btn)
             {
-                try
+                var utilityName = btn.Content switch
                 {
-                    var (fileName, args) = SplitCommand(cmd);
+                    TextBlock tb => tb.Text.Replace("\n", " ").Trim(),
+                    _ => btn.Content?.ToString()?.Replace("\n", " ").Trim() ?? string.Empty
+                };
 
-                    bool isShutdown = fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase) ||
-                                      fileName.EndsWith("shutdown.exe", StringComparison.OrdinalIgnoreCase);
-
-                    if (isShutdown && fileName.Equals("shutdown", StringComparison.OrdinalIgnoreCase))
-                        fileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
-
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = args,
-                        UseShellExecute = !isShutdown,
-                        CreateNoWindow = isShutdown
-                    };
-
-                    var proc = Process.Start(psi);
-                    Log($"Utility launched: {cmd}");
-
-                    // Bring to front if it has a window
-                    if (proc != null)
-                    {
-                        _ = Task.Run(async () =>
-                        {
-                            await BringProcessMainWindowToFrontAsync(proc);
-                        });
-                    }
-                }
-                catch (Exception ex)
+                var result = LaunchUtilityByName(utilityName);
+                if (!result.Success)
                 {
-                    MessageBox.Show("Failed to launch utility:\n" + ex.Message);
-                    Log("Failed to launch utility: " + ex.Message);
+                    MessageBox.Show(result.Message);
                 }
             }
             else

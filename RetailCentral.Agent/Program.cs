@@ -2,7 +2,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
 using Microsoft.Win32;
+using RetailCentral.Agent.Configuration;
+using RetailCentral.Agent.Services;
 using Serilog;
 
 var exeDir = AppContext.BaseDirectory;
@@ -33,6 +36,7 @@ RemoteDesktopShadowPolicy.EnsureEnabled();
 // }
 
 var builder = Host.CreateApplicationBuilder(args);
+
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
@@ -49,53 +53,66 @@ builder.Services.AddWindowsService(options =>
 // HttpClientFactory
 builder.Services.AddHttpClient();
 
-// Config object
+// Register custom validators before options are validated on startup
+builder.Services.AddSingleton<IValidateOptions<ExecutionOptions>, ExecutionOptionsValidator>();
+
+builder.Services
+    .AddOptions<ExecutionOptions>()
+    .Bind(builder.Configuration.GetSection(ExecutionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<DownloadsOptions>()
+    .Bind(builder.Configuration.GetSection(DownloadsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// Legacy compatibility config object for services that still depend on AgentConfig
 builder.Services.AddSingleton(sp =>
 {
-    var cfg = new AgentConfig();
+    var config = builder.Configuration;
+    var downloads = sp.GetRequiredService<IOptions<DownloadsOptions>>().Value;
 
-    cfg.BaseUrl = builder.Configuration["Server:BaseUrl"] ?? "";
-    cfg.StoreNumber = builder.Configuration["Agent:StoreNumber"] ?? "";
-    cfg.Hostname = builder.Configuration["Agent:Hostname"] ?? Environment.MachineName;
-    cfg.RegisterNumber = builder.Configuration["Agent:RegisterNumber"] ?? "";
-    cfg.RegisterMetadataPath = builder.Configuration["Agent:RegisterMetadataPath"]
-        ?? @"C:\RetailCentral\Agent\register-metadata.json";
+    var cfg = new AgentConfig
+    {
+        BaseUrl = config["Server:BaseUrl"] ?? "",
+        StoreNumber = config["Agent:StoreNumber"] ?? "",
+        Hostname = config["Agent:Hostname"] ?? Environment.MachineName,
+        RegisterNumber = config["Agent:RegisterNumber"] ?? "",
+        RegisterMetadataPath = config["Agent:RegisterMetadataPath"]
+            ?? @"C:\RetailCentral\Agent\register-metadata.json",
 
-    cfg.AgentVersion = builder.Configuration["Agent:AgentVersion"] ?? "0.0.0";
-    cfg.DeviceId = builder.Configuration["Agent:DeviceId"] ?? "";
-    cfg.DeviceSecret = builder.Configuration["Agent:DeviceSecret"] ?? "";
-    cfg.DeviceSecretProtected = builder.Configuration["Agent:DeviceSecretProtected"] ?? "";
-    cfg.BootstrapKey = builder.Configuration["Agent:BootstrapKey"] ?? "";
-    cfg.PollSeconds = int.Parse(builder.Configuration["Agent:PollSeconds"] ?? "10");
-    cfg.HeartbeatSeconds = int.Parse(builder.Configuration["Agent:HeartbeatSeconds"] ?? "30");
-    cfg.MaxPendingFetch = int.Parse(builder.Configuration["Agent:MaxPendingFetch"] ?? "1");
+        AgentVersion = config["Agent:AgentVersion"] ?? "0.0.0",
+        DeviceId = config["Agent:DeviceId"] ?? "",
+        DeviceSecret = config["Agent:DeviceSecret"] ?? "",
+        DeviceSecretProtected = config["Agent:DeviceSecretProtected"] ?? "",
+        BootstrapKey = config["Agent:BootstrapKey"] ?? "",
+        PollSeconds = config.GetValue<int>("Agent:PollSeconds", 10),
+        HeartbeatSeconds = config.GetValue<int>("Agent:HeartbeatSeconds", 30),
+        MaxPendingFetch = config.GetValue<int>("Agent:MaxPendingFetch", 1),
 
-    cfg.DefaultTimeoutSeconds = int.Parse(builder.Configuration["Execution:DefaultTimeoutSeconds"] ?? "30");
-    cfg.MaxStdoutChars = int.Parse(builder.Configuration["Execution:MaxStdoutChars"] ?? "8000");
-    cfg.MaxStderrChars = int.Parse(builder.Configuration["Execution:MaxStderrChars"] ?? "8000");
-    cfg.InstallCheckSeconds = int.Parse(builder.Configuration["Execution:InstallCheckSeconds"] ?? "30");
+        // Kept here for compatibility with existing downloader/package services
+        DownloadRootFolder = downloads.RootFolder,
+        StagingRootFolder = downloads.StagingRootFolder,
 
-    cfg.DownloadRootFolder = builder.Configuration["Downloads:RootFolder"] ?? @"C:\RetailCentral\Agent\downloads";
+        PosProcessName = config["ProcessMonitoring:PosProcessName"] ?? "bncpos",
+        RetailShellProcessName = config["ProcessMonitoring:RetailShellProcessName"] ?? "RetailShell",
+        AgentProcessName = config["ProcessMonitoring:AgentProcessName"] ?? "RetailCentral.Agent",
+
+        UserActivityEnabled = config.GetValue<bool>("UserActivity:Enabled"),
+        UserActivitySnapshotPath = config["UserActivity:SnapshotPath"]
+            ?? @"C:\ProgramData\RetailCentral\Shared\UserActivity.json"
+    };
+
     Directory.CreateDirectory(cfg.DownloadRootFolder);
-
-    cfg.StagingRootFolder = builder.Configuration["Downloads:StagingRootFolder"] ?? @"C:\RetailCentral\Agent\staging";
     Directory.CreateDirectory(cfg.StagingRootFolder);
-
-    var allowed = builder.Configuration.GetSection("Execution:AllowedCommands").Get<string[]>() ?? Array.Empty<string>();
-    cfg.AllowedCommands = new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
 
     // If protected secret exists, it overrides plaintext DeviceSecret
     if (!string.IsNullOrWhiteSpace(cfg.DeviceSecretProtected))
     {
         cfg.DeviceSecret = DeviceSecretStore.Unprotect(cfg.DeviceSecretProtected);
     }
-    cfg.PosProcessName = builder.Configuration["ProcessMonitoring:PosProcessName"] ?? "bncpos";
-    cfg.RetailShellProcessName = builder.Configuration["ProcessMonitoring:RetailShellProcessName"] ?? "RetailShell";
-    cfg.AgentProcessName = builder.Configuration["ProcessMonitoring:AgentProcessName"] ?? "RetailCentral.Agent";
-
-    cfg.UserActivityEnabled = builder.Configuration.GetValue<bool>("UserActivity:Enabled");
-    cfg.UserActivitySnapshotPath = builder.Configuration["UserActivity:SnapshotPath"]
-        ?? @"C:\ProgramData\RetailCentral\Shared\UserActivity.json";
 
     return cfg;
 });
@@ -106,8 +123,10 @@ builder.Services.AddSingleton<AgentApiClient>();
 builder.Services.AddSingleton<FileDownloadService>();
 builder.Services.AddSingleton<DeploymentWindowService>();
 builder.Services.AddSingleton<PackageExecutionService>();
+builder.Services.AddSingleton<ExecutionPolicyService>();
 builder.Services.AddSingleton<CommandExecutor>();
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddSingleton<ShellCommandClient>();
 
 var host = builder.Build();
 
@@ -136,17 +155,14 @@ public sealed class AgentConfig
     public int HeartbeatSeconds { get; set; } = 30;
     public int MaxPendingFetch { get; set; } = 1;
 
-    public int DefaultTimeoutSeconds { get; set; } = 30;
-    public int MaxStdoutChars { get; set; } = 8000;
-    public int MaxStderrChars { get; set; } = 8000;
-    public int InstallCheckSeconds { get; set; } = 30;
-
+    // Kept for compatibility with existing download/package services
     public string DownloadRootFolder { get; set; } = "";
     public string StagingRootFolder { get; set; } = "";
+
     public string PosProcessName { get; set; } = "bncpos";
     public string RetailShellProcessName { get; set; } = "RetailShell";
     public string AgentProcessName { get; set; } = "RetailCentral.Agent";
-    public HashSet<string> AllowedCommands { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     public bool UserActivityEnabled { get; set; } = true;
     public string UserActivitySnapshotPath { get; set; } =
         @"C:\ProgramData\RetailCentral\Shared\UserActivity.json";
@@ -176,11 +192,19 @@ public static class RemoteDesktopShadowPolicy
             if (currentInt != ShadowValue)
             {
                 key.SetValue(ShadowValueName, ShadowValue, RegistryValueKind.DWord);
-                Log.Information("Updated registry policy {KeyPath}\\{ValueName} to {Value}.", PolicyKeyPath, ShadowValueName, ShadowValue);
+                Log.Information(
+                    "Updated registry policy {KeyPath}\\{ValueName} to {Value}.",
+                    PolicyKeyPath,
+                    ShadowValueName,
+                    ShadowValue);
             }
             else
             {
-                Log.Information("Registry policy {KeyPath}\\{ValueName} already set to {Value}.", PolicyKeyPath, ShadowValueName, ShadowValue);
+                Log.Information(
+                    "Registry policy {KeyPath}\\{ValueName} already set to {Value}.",
+                    PolicyKeyPath,
+                    ShadowValueName,
+                    ShadowValue);
             }
         }
         catch (Exception ex)

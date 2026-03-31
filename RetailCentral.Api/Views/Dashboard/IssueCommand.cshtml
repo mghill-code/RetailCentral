@@ -1,28 +1,32 @@
-@model RetailCentral.Api.ViewModels.IssueCommandViewModel
-@using System.Text.Json
+﻿@model RetailCentral.Api.ViewModels.IssueCommandViewModel
 
 @{
-    Layout = "_Layout";
     ViewData["Title"] = "Issue Command";
 }
-<script>
-    document.body.setAttribute("data-no-autorefresh", "true");
-</script>
 
 <div class="page-header">
-    <div class="page-heading-copy">
+    <div>
         <h1>Issue Command</h1>
-        <p>Create an advanced command for a device, store, or group using safe templates or custom payload JSON.</p>
-    </div>
-    <div class="page-actions">
-        <a class="btn btn-secondary" href="/Dashboard/Commands">Command History</a>
+        <p>Advanced command execution with full control and validation.</p>
     </div>
 </div>
+
+<!-- WARNING -->
+<div class="alert alert-warning">
+    <strong>Advanced Command Mode:</strong>
+    This page allows direct command execution. Commands are still validated by server policy,
+    but bypass Helpdesk safeguards. Use with caution.
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
 
 @if (!ViewData.ModelState.IsValid)
 {
     <div class="alert alert-danger">
-        <strong>Validation Errors</strong>
+        <strong>Please fix the following:</strong>
         <ul>
             @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
             {
@@ -32,132 +36,203 @@
     </div>
 }
 
-<form method="post" class="section-stack">
+<form id="issueCommandForm" method="post" action="/Dashboard/IssueCommand">
+
     @Html.AntiForgeryToken()
 
-    <div class="grid-2">
-        <div class="card">
-            <h3>Target</h3>
-            <p class="card-subtle">Choose exactly one target type.</p>
-            <div class="section-stack">
-                <div>
-                    <label><strong>Device</strong></label>
-                    <select name="DeviceId">
-                        <option value="">-- none --</option>
-                        @foreach (var d in Model.AvailableDevices)
-                        {
-                            <option value="@d.DeviceId" selected="@(Model.DeviceId == d.DeviceId)">@d.StoreNumber - @d.Hostname (@(d.IsOnline ? "Online" : "Offline"))</option>
-                        }
-                    </select>
-                </div>
-                <div>
-                    <label><strong>Store</strong></label>
-                    <select name="StoreNumber">
-                        <option value="">-- none --</option>
-                        @foreach (var s in Model.AvailableStores)
-                        {
-                            <option value="@s" selected="@(Model.StoreNumber == s)">@s</option>
-                        }
-                    </select>
-                </div>
-                <div>
-                    <label><strong>Group</strong></label>
-                    <select name="GroupName">
-                        <option value="">-- none --</option>
-                        @foreach (var g in Model.AvailableGroups)
-                        {
-                            <option value="@g" selected="@(Model.GroupName == g)">@g</option>
-                        }
-                    </select>
-                </div>
-            </div>
-        </div>
+    <!-- TARGET -->
+    <div class="card">
+        <h3>Target</h3>
+        <div class="row g-3">
 
-        <div class="card">
-            <h3>Command Settings</h3>
-            <div class="section-stack">
-                <div>
-                    <label><strong>Type</strong></label>
-                    <select id="commandType" name="Type">
-                        @foreach (var t in Model.AvailableCommandTypes)
-                        {
-                            <option value="@t" selected="@(Model.Type == t)">@t</option>
-                        }
-                    </select>
-                </div>
-                <div>
-                    <label><strong>Template</strong></label>
-                    <select id="templateName" name="TemplateName">
-                        <option value="">-- none --</option>
-                        @foreach (var t in Model.AvailableTemplates)
-                        {
-                            <option value="@t.Name" selected="@(Model.TemplateName == t.Name)">@t.Name - @t.Description</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-check">
-                    <input type="checkbox" id="useCustomJson" name="UseCustomJson" value="true" @(Model.UseCustomJson ? "checked" : null) />
-                    <label for="useCustomJson" class="form-check-label">Use custom JSON</label>
-                    <input type="hidden" name="UseCustomJson" value="false" />
-                </div>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label><strong>Priority</strong></label>
-                        <input type="number" name="Priority" value="@Model.Priority" />
-                    </div>
-                    <div class="col-md-6">
-                        <label><strong>Max Attempts</strong></label>
-                        <input type="number" name="MaxAttempts" value="@Model.MaxAttempts" />
-                    </div>
-                </div>
-                <div>
-                    <label><strong>Expires Utc (optional)</strong></label>
-                    <input type="datetime-local" name="ExpiresUtc" value="@(Model.ExpiresUtc.HasValue ? Model.ExpiresUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")" />
-                    <div class="form-text">Leave blank for no expiration. This value is UTC.</div>
-                </div>
+            <div class="col-md-4">
+                <label>Target Type</label>
+                <select id="targetType" name="TargetType">
+                    <option value="Device">Device</option>
+                    <option value="Store">Store</option>
+                    <option value="Group">Group</option>
+                    <option value="Fleet">Fleet</option>
+                </select>
+            </div>
+
+            <div class="col-md-4" id="deviceWrap">
+                <label>Device</label>
+                <select name="DeviceId">
+                    <option value="">-- Select Device --</option>
+                    @foreach (var d in Model.AvailableDevices)
+                    {
+                        <option value="@d.DeviceId">@d.StoreNumber - @d.Hostname</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-4" id="storeWrap">
+                <label>Store</label>
+                <select name="StoreNumber">
+                    <option value="">-- Select Store --</option>
+                    @foreach (var s in Model.AvailableStores)
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-4" id="groupWrap">
+                <label>Group</label>
+                <select name="GroupName">
+                    <option value="">-- Select Group --</option>
+                    @foreach (var g in Model.AvailableGroups)
+                    {
+                        <option value="@g">@g</option>
+                    }
+                </select>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- COMMAND -->
+    <div class="card">
+        <h3>Command</h3>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label>Command Type</label>
+                <select id="commandType" name="Type">
+                    @foreach (var t in Model.AvailableCommandTypes)
+                    {
+                        <option value="@t" selected="@(Model.Type == t)">
+                            @t
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label>Template</label>
+                <select id="templateSelect">
+                    <option value="">-- Select Template --</option>
+                    @foreach (var t in Model.AvailableTemplates)
+                    {
+                        <option value="@t.PayloadJson"
+                                data-type="@t.CommandType"
+                                data-desc="@t.Description">
+                            @t.Name
+                        </option>
+                    }
+                </select>
             </div>
         </div>
     </div>
 
+    <!-- TEMPLATE PREVIEW -->
     <div class="card">
-        <h3>Payload JSON</h3>
-        <textarea id="payloadJson" name="PayloadJson" rows="16">@Model.PayloadJson</textarea>
+        <h3>Template Details</h3>
+        <div id="templateDescription" class="subtle">
+            Select a template to see what it does.
+        </div>
+    </div>
+
+    <!-- PAYLOAD -->
+    <div class="card">
+        <h3>Payload</h3>
+
+        <div class="form-check" style="margin-bottom:10px;">
+            <input type="checkbox" id="useCustomJson" name="UseCustomJson" value="true" />
+            <label for="useCustomJson">Use Custom JSON</label>
+        </div>
+
+        <textarea id="payloadJson"
+                  name="PayloadJson"
+                  rows="10"
+                  style="width:100%; font-family:monospace;">@Model.PayloadJson</textarea>
+
+        <p class="subtle" style="margin-top:10px;">
+            Payload is validated against server-side command policy before execution.
+        </p>
+    </div>
+
+    <!-- OPTIONS -->
+    <div class="card">
+        <h3>Options</h3>
+
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label>Priority</label>
+                <input type="number" name="Priority" value="@Model.Priority" />
+            </div>
+
+            <div class="col-md-3">
+                <label>Expires UTC</label>
+                <input type="datetime-local"
+                       name="ExpiresUtc"
+                       value="@(Model.ExpiresUtc.HasValue? Model.ExpiresUtc.Value.ToString("yyyy-MM-ddTHH:mm") : "")" />
+            </div>
+        </div>
     </div>
 
     <div class="action-row">
-        <button type="submit">Create Command</button>
-        <a class="btn btn-secondary" href="/Dashboard/Commands">View Commands</a>
+        <button type="submit">Issue Command</button>
+        <a class="btn btn-secondary" href="/Dashboard/IssueCommand">Reset</a>
     </div>
 </form>
 
 @section Scripts {
-<script>
-    const templates = {
-    @for (var i = 0; i < Model.AvailableTemplates.Count; i++)
-    {
-        var t = Model.AvailableTemplates[i];
-        var comma = i < Model.AvailableTemplates.Count - 1 ? "," : "";
-        <text>"@t.Name": { type: @Html.Raw(JsonSerializer.Serialize(t.CommandType)), payload: @Html.Raw(JsonSerializer.Serialize(t.PayloadJson)) }@comma</text>
-    }
-    };
+    <script>
+        function updateTargetVisibility() {
+            const type = document.getElementById("targetType").value;
 
-    const templateSelect = document.getElementById("templateName");
-    const typeSelect = document.getElementById("commandType");
-    const payloadBox = document.getElementById("payloadJson");
-    const useCustomJson = document.getElementById("useCustomJson");
+            document.getElementById("deviceWrap").style.display = type === "Device" ? "block" : "none";
+            document.getElementById("storeWrap").style.display = type === "Store" ? "block" : "none";
+            document.getElementById("groupWrap").style.display = type === "Group" ? "block" : "none";
+        }
 
-    function applyTemplate() {
-        if (useCustomJson.checked) return;
-        const selected = templateSelect.value;
-        if (!selected || !templates[selected]) return;
-        typeSelect.value = templates[selected].type;
-        payloadBox.value = templates[selected].payload;
-    }
+        function applyTemplate() {
+            const select = document.getElementById("templateSelect");
+            const selected = select.options[select.selectedIndex];
 
-    templateSelect.addEventListener("change", applyTemplate);
-    useCustomJson.addEventListener("change", function () {
-        if (!this.checked) applyTemplate();
-    });
-    if (!useCustomJson.checked) applyTemplate();
-</script>
+            if (!selected.value) return;
+
+            document.getElementById("payloadJson").value = selected.value;
+            document.getElementById("commandType").value = selected.dataset.type;
+
+            document.getElementById("templateDescription").innerText =
+                selected.dataset.desc || "No description available.";
+        }
+
+        function togglePayloadMode() {
+            const useCustom = document.getElementById("useCustomJson").checked;
+            const textarea = document.getElementById("payloadJson");
+
+            textarea.readOnly = !useCustom;
+        }
+
+        function confirmDanger() {
+            document.getElementById("issueCommandForm").addEventListener("submit", function(e) {
+                const type = document.getElementById("commandType").value;
+
+                const risky = [
+                    "RestartPOS",
+                    "RestartRetailShell",
+                    "RestartAgent",
+                    "RebootDevice",
+                    "InstallPackage"
+                ];
+
+                if (risky.includes(type)) {
+                    if (!confirm("⚠ This command may disrupt store operations. Continue?")) {
+                        e.preventDefault();
+                    }
+                }
+            });
+        }
+
+        document.getElementById("targetType").addEventListener("change", updateTargetVisibility);
+        document.getElementById("templateSelect").addEventListener("change", applyTemplate);
+        document.getElementById("useCustomJson").addEventListener("change", togglePayloadMode);
+
+        updateTargetVisibility();
+        togglePayloadMode();
+        confirmDanger();
+    </script>
 }

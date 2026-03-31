@@ -1,16 +1,14 @@
-﻿using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Authentication.Negotiate;
+﻿using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
+using Microsoft.OpenApi.Models;
+using RetailCentral.Api.Configuration;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
 using Serilog;
-using System.IO;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
@@ -18,26 +16,22 @@ using System.Threading.RateLimiting;
 ===============================================================================
 RetailCommand API - Program.cs
 -------------------------------------------------------------------------------
-This is the main entry point and composition root for the entire application.
+This is the main entry point and composition root for the application.
 
 Responsibilities:
 - Configure logging (Serilog)
 - Configure dependency injection
 - Configure middleware pipeline
-- Configure authentication & authorization
+- Configure authentication and authorization
 - Configure background workers
-- Configure EF Core and database
-- Configure routing (API + Dashboard)
-
-IMPORTANT:
-EF Core design-time operations (migrations) will trigger host startup.
-This file is designed to gracefully handle that scenario.
+- Configure EF Core
+- Bind configuration objects
+- Register validation and policy services
 ===============================================================================
 */
 
-
 // -----------------------------------------------------------------------------
-// STEP 1: Preload configuration (for logging BEFORE host is built)
+// STEP 1: Preload configuration so logging can be configured before host build
 // -----------------------------------------------------------------------------
 var preConfig = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -46,7 +40,6 @@ var preConfig = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-// Resolve log directory early so Serilog can initialize correctly
 var logDir = preConfig["Logging:LogDirectory"];
 if (string.IsNullOrWhiteSpace(logDir))
 {
@@ -57,21 +50,15 @@ Directory.CreateDirectory(logDir);
 
 Console.WriteLine($"RetailCommand API log directory: {logDir}");
 
-
 // -----------------------------------------------------------------------------
-// STEP 2: Configure Serilog (global logging pipeline)
+// STEP 2: Configure Serilog
 // -----------------------------------------------------------------------------
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-
-    // Reduce noisy framework logs
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-
     .WriteTo.Console()
-
-    // Rolling file logs
     .WriteTo.File(
         Path.Combine(logDir, "api-.log"),
         rollingInterval: RollingInterval.Day,
@@ -79,9 +66,7 @@ Log.Logger = new LoggerConfiguration()
         rollOnFileSizeLimit: true,
         retainedFileCountLimit: 7,
         shared: true)
-
     .CreateLogger();
-
 
 // -----------------------------------------------------------------------------
 // STEP 3: Build application host
@@ -94,23 +79,25 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    builder.WebHost.UseKestrel();         // Use Kestrel web server
-    builder.Host.UseSerilog();            // Plug Serilog into ASP.NET pipeline
-
+    builder.WebHost.UseKestrel();
+    builder.Host.UseSerilog();
 
     // -------------------------------------------------------------------------
-    // SERVICES - Dependency Injection
+    // CORE SERVICES
     // -------------------------------------------------------------------------
-
-    // Core services
     builder.Services.AddScoped<IDeploymentService, DeploymentService>();
+    builder.Services.AddScoped<AuditService>();
+    builder.Services.AddScoped<CommandValidationService>();
 
-    // MVC + Razor Views (Dashboard UI)
+    // -------------------------------------------------------------------------
+    // MVC + RAZOR
+    // -------------------------------------------------------------------------
     builder.Services.AddControllersWithViews();
-
     builder.Services.AddEndpointsApiExplorer();
 
-    // Swagger / OpenAPI
+    // -------------------------------------------------------------------------
+    // SWAGGER
+    // -------------------------------------------------------------------------
     builder.Services.AddSwaggerGen(options =>
     {
         options.SwaggerDoc("v1", new OpenApiInfo
@@ -121,34 +108,28 @@ try
         });
     });
 
-
     // -------------------------------------------------------------------------
     // BACKGROUND WORKERS
     // -------------------------------------------------------------------------
-    // These run continuously in the background
-
-    builder.Services.AddHostedService<DataRetentionService>();              // Cleans up old data
-    builder.Services.AddHostedService<SoftwareInventoryScheduleWorker>();   // Collects installed software
-    builder.Services.AddHostedService<ProcessStatusScheduleWorker>();       // Collects process state
-    builder.Services.AddHostedService<CommandTimeoutWorker>();              // Handles expired/stuck commands
-    builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();    // Refreshes device inventory
-
+    builder.Services.AddHostedService<DataRetentionService>();
+    builder.Services.AddHostedService<SoftwareInventoryScheduleWorker>();
+    builder.Services.AddHostedService<ProcessStatusScheduleWorker>();
+    builder.Services.AddHostedService<CommandTimeoutWorker>();
+    builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();
 
     // -------------------------------------------------------------------------
-    // DATABASE (EF Core)
+    // DATABASE
     // -------------------------------------------------------------------------
     builder.Services.AddDbContext<RetailCentralDbContext>(options =>
     {
         options.UseSqlServer(builder.Configuration.GetConnectionString("RetailCentral"));
     });
 
-
     // -------------------------------------------------------------------------
-    // RATE LIMITING (Agent Protection)
+    // RATE LIMITING
     // -------------------------------------------------------------------------
     builder.Services.AddRateLimiter(options =>
     {
-        // Per-device limiter (keyed by DeviceId or IP)
         options.AddPolicy("agent", context =>
         {
             var key = context.Request.Headers["X-Device-Id"].FirstOrDefault()
@@ -169,36 +150,37 @@ try
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });
 
-
     // -------------------------------------------------------------------------
-    // DATA PROTECTION (for encrypting device secrets)
-    // -----------------------------------------------------------------------------
+    // DATA PROTECTION
+    // -------------------------------------------------------------------------
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "dp_keys")));
 
     builder.Services.AddSingleton<DeviceSecretProtection>();
 
-
     // -------------------------------------------------------------------------
     // CONFIGURATION BINDING
-    // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     builder.Services.Configure<CommandTimeoutOptions>(
         builder.Configuration.GetSection("CommandTimeout"));
 
+    // Server-side command creation policy.
+    // IMPORTANT: CommandPolicy must be a TOP-LEVEL section in appsettings.json.
+    builder.Services.Configure<CommandPolicyOptions>(
+        builder.Configuration.GetSection(CommandPolicyOptions.SectionName));
 
     // -------------------------------------------------------------------------
-    // AUTHENTICATION (Windows / AD)
-    // -----------------------------------------------------------------------------
+    // AUTHENTICATION
+    // -------------------------------------------------------------------------
     builder.Services
         .AddAuthentication(NegotiateDefaults.AuthenticationScheme)
         .AddNegotiate();
 
     builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
 
-
     // -------------------------------------------------------------------------
-    // AUTHORIZATION (Role-based access using AD groups)
-    // -----------------------------------------------------------------------------
+    // AUTHORIZATION
+    // -------------------------------------------------------------------------
     var authSection = builder.Configuration.GetSection("Security:Authorization");
 
     var dashboardViewerGroups = authSection.GetSection("DashboardViewerGroups").Get<string[]>() ?? throw new InvalidOperationException("Missing DashboardViewerGroups");
@@ -233,31 +215,25 @@ try
         });
     });
 
-
     builder.Services.AddHttpContextAccessor();
-    builder.Services.AddScoped<AuditService>();
     builder.Services.AddHealthChecks();
-
 
     // -------------------------------------------------------------------------
     // BUILD APP
-    // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     var app = builder.Build();
-
 
     // -------------------------------------------------------------------------
     // MIDDLEWARE PIPELINE
-    // -----------------------------------------------------------------------------
-
+    // -------------------------------------------------------------------------
     if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();
         app.UseSwaggerUI();
     }
 
-    app.UseStaticFiles();                // Enables CSS/JS/images for dashboard
-
-    app.UseMiddleware<HmacAuthMiddleware>();  // Protects agent endpoints
+    app.UseStaticFiles();
+    app.UseMiddleware<HmacAuthMiddleware>();
     app.UseRateLimiter();
 
     if (!app.Environment.IsDevelopment())
@@ -268,12 +244,10 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-
     // -------------------------------------------------------------------------
     // ROUTING
-    // -----------------------------------------------------------------------------
-
-    app.MapControllers();  // API endpoints
+    // -------------------------------------------------------------------------
+    app.MapControllers();
 
     app.MapControllerRoute(
         name: "default",
@@ -281,26 +255,17 @@ try
 
     app.MapHealthChecks("/health");
 
-
     // -------------------------------------------------------------------------
-    // START APPLICATION
-    // -----------------------------------------------------------------------------
+    // START APP
+    // -------------------------------------------------------------------------
     app.Run();
 }
-
-
-// -----------------------------------------------------------------------------
-// EXCEPTION HANDLING
-// -----------------------------------------------------------------------------
 catch (HostAbortedException)
 {
-    // IMPORTANT:
-    // This happens during EF Core migrations (design-time execution).
-    // It is NOT an actual crash and should NOT be logged as fatal.
+    // Expected during some EF design-time operations.
 }
 catch (Exception ex)
 {
-    // Real startup failure
     Log.Fatal(ex, "RetailCommand API terminated unexpectedly.");
     throw;
 }
@@ -308,7 +273,6 @@ finally
 {
     Log.CloseAndFlush();
 }
-
 
 // -----------------------------------------------------------------------------
 // HELPER METHODS
