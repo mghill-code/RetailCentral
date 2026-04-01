@@ -1,11 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Management;
 
+[SupportedOSPlatform("windows")]
 public sealed class Worker : BackgroundService
 {
     private readonly AgentConfig _cfg;
@@ -13,7 +17,13 @@ public sealed class Worker : BackgroundService
     private readonly CommandExecutor _exec;
     private readonly ILogger<Worker> _logger;
     private readonly UserActivitySnapshotReader _userActivityReader;
+    private readonly AgentPollingOptions _pollingOptions;
+    private readonly Random _random = new();
+
     private DateTime _nextHeartbeatUtc = DateTime.MinValue;
+    private int _emptyPollStreak;
+    private int _errorStreak;
+    private DateTime _fastPollUntilUtc = DateTime.MinValue;
 
     private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions
     {
@@ -21,14 +31,19 @@ public sealed class Worker : BackgroundService
         WriteIndented = true
     };
 
-    public Worker(AgentConfig cfg, AgentApiClient api, CommandExecutor exec, ILogger<Worker> logger)
+    public Worker(
+        AgentConfig cfg,
+        AgentApiClient api,
+        CommandExecutor exec,
+        ILogger<Worker> logger,
+        IOptions<AgentPollingOptions> pollingOptions)
     {
         _cfg = cfg;
         _api = api;
         _exec = exec;
         _logger = logger;
+        _pollingOptions = pollingOptions.Value;
 
-        // Prefer configured path if available; otherwise fall back to a safe default.
         var snapshotPath = !string.IsNullOrWhiteSpace(_cfg.UserActivitySnapshotPath)
             ? _cfg.UserActivitySnapshotPath
             : Path.Combine(
@@ -46,44 +61,11 @@ public sealed class Worker : BackgroundService
     {
         if (string.IsNullOrWhiteSpace(_cfg.DeviceId) || string.IsNullOrWhiteSpace(_cfg.DeviceSecret))
         {
-            _logger.LogInformation("DeviceId/DeviceSecret missing. Enrolling...");
-
-            while (!stoppingToken.IsCancellationRequested)
+            var enrolled = await TryEnrollAsync(stoppingToken);
+            if (!enrolled)
             {
-                try
-                {
-                    var enroll = await _api.EnrollAsync(stoppingToken);
-                    if (enroll == null)
-                    {
-                        _logger.LogWarning("Enroll returned no secret. This usually means device already exists. Use a NEW hostname or rotate secret.");
-                        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-                        return;
-                    }
-
-                    _cfg.DeviceId = enroll.Value.DeviceId.ToString();
-
-                    var protectedSecret = DeviceSecretStore.Protect(enroll.Value.DeviceSecret);
-
-                    _cfg.DeviceSecret = enroll.Value.DeviceSecret;
-                    _cfg.DeviceSecretProtected = protectedSecret;
-
-                    var appsettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.Local.json");
-                    AgentConfigWriter.SaveProtectedSecret(appsettingsPath, _cfg.DeviceId, protectedSecret);
-
-                    _logger.LogInformation("ENROLLED DeviceId={DeviceId}", _cfg.DeviceId);
-                    _logger.LogInformation("Device secret was received, protected, and written to appsettings.Local.json.");
-                    _logger.LogInformation("Restart the agent/service so it continues using protected credentials.");
-
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Enroll failed");
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                }
+                return;
             }
-
-            return;
         }
 
         _logger.LogInformation("Agent started. DeviceId={DeviceId}", _cfg.DeviceId);
@@ -92,73 +74,54 @@ public sealed class Worker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            bool gotCommands = false;
+            bool hadTransientError = false;
+            int? serverSuggestedSeconds = null;
+
             try
             {
                 if (DateTime.UtcNow >= _nextHeartbeatUtc)
                 {
-                    RefreshRegisterMetadataWithDetectedValues();
+                    var heartbeat = BuildHeartbeatPayload();
+                    await _api.HeartbeatAsync(heartbeat, stoppingToken);
 
-                    var userActivity = _cfg.UserActivityEnabled
-                        ? _userActivityReader.Read()
-                        : null;
-                    //Temp to check logging.
-                    _logger.LogInformation("User activity snapshot read: {@UserActivity}", userActivity);
-                    if (userActivity == null && _cfg.UserActivityEnabled)
-                    {
-                        _logger.LogDebug("User activity snapshot not available for this heartbeat.");
-                    }
-
-                    var hb = new
-                    {
-                        timestampUtc = DateTime.UtcNow,
-                        storeNumber = _cfg.StoreNumber,
-                        hostname = _cfg.Hostname,
-                        agentVersion = _cfg.AgentVersion,
-                        osVersion = Environment.OSVersion.VersionString,
-                        metrics = new
-                        {
-                            processorCount = Environment.ProcessorCount,
-                            workingSetMb = Math.Round(Environment.WorkingSet / 1024d / 1024d, 2),
-                            machineName = Environment.MachineName,
-                            is64Bit = Environment.Is64BitOperatingSystem
-                        },
-                        inventory = BuildHeartbeatInventory(),
-                        userActivity = userActivity,
-                        extra = new { note = "Agent heartbeat" }
-                    };
-
-                    await _api.HeartbeatAsync(hb, stoppingToken);
                     _nextHeartbeatUtc = DateTime.UtcNow.AddSeconds(_cfg.HeartbeatSeconds);
-
                     _logger.LogInformation("Heartbeat OK at {UtcNow}", DateTime.UtcNow);
                 }
 
-                var json = await _api.GetPendingAsync(_cfg.MaxPendingFetch, stoppingToken);
+                var pollResult = await _api.GetPendingAsync(_cfg.MaxPendingFetch, stoppingToken);
 
-                var commands = JsonSerializer.Deserialize<List<PendingCommand>>(json, JsonOpts) ?? new();
+                var commands = pollResult.Commands ?? new List<PendingCommandEnvelope>();
+                serverSuggestedSeconds = pollResult.PollAfterSeconds;
+                gotCommands = commands.Count > 0;
+
+                _logger.LogInformation(
+                    "Pending command poll complete. CommandCount={CommandCount}, ServerPollAfter={ServerPollAfter}",
+                    commands.Count,
+                    serverSuggestedSeconds);
 
                 foreach (var cmd in commands)
                 {
                     if (cmd.CommandId == Guid.Empty || string.IsNullOrWhiteSpace(cmd.Type))
                     {
-                        _logger.LogWarning("Skipping invalid command payload: {Payload}", JsonSerializer.Serialize(cmd));
+                        _logger.LogWarning("Skipping invalid command payload: {@Command}", cmd);
                         continue;
                     }
 
                     _logger.LogInformation("Executing CommandId={CommandId} Type={Type}", cmd.CommandId, cmd.Type);
 
-                    var (status, exit, stdout, stderr, started, finished) =
+                    (string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc) result =
                         await _exec.ExecuteAsync(cmd.Type, cmd.PayloadJson, stoppingToken);
 
                     var resultBody = new
                     {
                         commandType = cmd.Type,
-                        status,
-                        exitCode = exit,
-                        stdOut = stdout,
-                        stdErr = stderr,
-                        startedUtc = started,
-                        finishedUtc = finished
+                        status = result.Status,
+                        exitCode = result.ExitCode,
+                        stdOut = result.StdOut,
+                        stdErr = result.StdErr,
+                        startedUtc = result.StartedUtc,
+                        finishedUtc = result.FinishedUtc
                     };
 
                     await _api.PostResultAsync(cmd.CommandId, resultBody, stoppingToken);
@@ -166,18 +129,207 @@ public sealed class Worker : BackgroundService
                     _logger.LogInformation(
                         "Posted result CommandId={CommandId} Status={Status} ExitCode={ExitCode}",
                         cmd.CommandId,
-                        status,
-                        exit);
+                        result.Status,
+                        result.ExitCode);
                 }
+
+                // Successful heartbeat + pending poll cycle.
+                // Clear any stale error state so the agent recovers immediately
+                // after the API becomes reachable again.
+                _errorStreak = 0;
+
+                // If the server is explicitly directing cadence, let that fully control
+                // the next delay instead of retaining a stale fast-poll window.
+                if (serverSuggestedSeconds.HasValue && serverSuggestedSeconds.Value > 0)
+                {
+                    _fastPollUntilUtc = DateTime.MinValue;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                hadTransientError = true;
+                _logger.LogWarning(ex, "Transient agent polling error.");
+            }
+            catch (TaskCanceledException ex) when (!stoppingToken.IsCancellationRequested)
+            {
+                hadTransientError = true;
+                _logger.LogWarning(ex, "Agent polling timed out.");
             }
             catch (Exception ex)
             {
+                hadTransientError = true;
                 _logger.LogError(ex, "Agent loop error");
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(_cfg.PollSeconds), stoppingToken);
+            var delay = GetNextPollDelay(gotCommands, hadTransientError, serverSuggestedSeconds);
+
+            _logger.LogInformation(
+                "Next poll in {DelaySeconds:n1}s. GotCommands={GotCommands}, Error={HadTransientError}, EmptyPollStreak={EmptyPollStreak}, ErrorStreak={ErrorStreak}, FastPollUntilUtc={FastPollUntilUtc:o}",
+                delay.TotalSeconds,
+                gotCommands,
+                hadTransientError,
+                _emptyPollStreak,
+                _errorStreak,
+                _fastPollUntilUtc);
+
+            try
+            {
+                await Task.Delay(delay, stoppingToken);
+            }
+            catch (TaskCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
+    }
+
+    private async Task<bool> TryEnrollAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("DeviceId/DeviceSecret missing. Enrolling...");
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var enroll = await _api.EnrollAsync(stoppingToken);
+                if (enroll == null)
+                {
+                    _logger.LogWarning("Enroll returned no secret. This usually means device already exists. Use a new hostname or rotate the secret.");
+                    await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                    return false;
+                }
+
+                _cfg.DeviceId = enroll.Value.DeviceId.ToString();
+
+                var protectedSecret = DeviceSecretStore.Protect(enroll.Value.DeviceSecret);
+
+                _cfg.DeviceSecret = enroll.Value.DeviceSecret;
+                _cfg.DeviceSecretProtected = protectedSecret;
+
+                var appsettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.Local.json");
+                AgentConfigWriter.SaveProtectedSecret(appsettingsPath, _cfg.DeviceId, protectedSecret);
+
+                _logger.LogInformation("ENROLLED DeviceId={DeviceId}", _cfg.DeviceId);
+                _logger.LogInformation("Device secret was received, protected, and written to appsettings.Local.json.");
+                _logger.LogInformation("Restart the agent/service so it continues using protected credentials.");
+
+                return false;
+            }
+            catch (TaskCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Enroll failed");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+
+        return false;
+    }
+
+    private object BuildHeartbeatPayload()
+    {
+        RefreshRegisterMetadataWithDetectedValues();
+
+        var userActivity = _cfg.UserActivityEnabled
+            ? _userActivityReader.Read()
+            : null;
+
+        _logger.LogInformation("User activity snapshot read: {@UserActivity}", userActivity);
+
+        if (userActivity == null && _cfg.UserActivityEnabled)
+        {
+            _logger.LogDebug("User activity snapshot not available for this heartbeat.");
+        }
+
+        return new
+        {
+            timestampUtc = DateTime.UtcNow,
+            storeNumber = _cfg.StoreNumber,
+            hostname = _cfg.Hostname,
+            agentVersion = _cfg.AgentVersion,
+            osVersion = Environment.OSVersion.VersionString,
+            metrics = new
+            {
+                processorCount = Environment.ProcessorCount,
+                workingSetMb = Math.Round(Environment.WorkingSet / 1024d / 1024d, 2),
+                machineName = Environment.MachineName,
+                is64Bit = Environment.Is64BitOperatingSystem
+            },
+            inventory = BuildHeartbeatInventory(),
+            userActivity = userActivity,
+            extra = new { note = "Agent heartbeat" }
+        };
+    }
+
+    private TimeSpan GetNextPollDelay(
+        bool gotCommands,
+        bool hadTransientError,
+        int? serverSuggestedSeconds = null)
+    {
+        if (serverSuggestedSeconds.HasValue && serverSuggestedSeconds.Value > 0)
+        {
+            return AddJitter(TimeSpan.FromSeconds(serverSuggestedSeconds.Value));
+        }
+
+        if (hadTransientError)
+        {
+            _errorStreak++;
+            _emptyPollStreak = 0;
+
+            var errorDelaySeconds = Math.Min(
+                _pollingOptions.MaxErrorBackoffSeconds,
+                _pollingOptions.InitialErrorBackoffSeconds * (int)Math.Pow(2, Math.Max(0, _errorStreak - 1)));
+
+            return AddJitter(TimeSpan.FromSeconds(errorDelaySeconds));
+        }
+
+        _errorStreak = 0;
+
+        if (gotCommands)
+        {
+            _emptyPollStreak = 0;
+            _fastPollUntilUtc = DateTime.UtcNow.AddSeconds(_pollingOptions.FastPollWindowSeconds);
+            return AddJitter(TimeSpan.FromSeconds(_pollingOptions.MinPollSeconds));
+        }
+
+        if (DateTime.UtcNow < _fastPollUntilUtc)
+        {
+            return AddJitter(TimeSpan.FromSeconds(_pollingOptions.MinPollSeconds));
+        }
+
+        _emptyPollStreak++;
+
+        var idleDelaySeconds = _emptyPollStreak switch
+        {
+            1 => _pollingOptions.BasePollSeconds,
+            2 => Math.Min(_pollingOptions.MaxIdlePollSeconds, 20),
+            3 => Math.Min(_pollingOptions.MaxIdlePollSeconds, 30),
+            4 => Math.Min(_pollingOptions.MaxIdlePollSeconds, 45),
+            _ => _pollingOptions.MaxIdlePollSeconds
+        };
+
+        return AddJitter(TimeSpan.FromSeconds(idleDelaySeconds));
+    }
+
+    private TimeSpan AddJitter(TimeSpan baseDelay)
+    {
+        var jitterPercent = Math.Max(0, _pollingOptions.JitterPercent);
+        var spread = jitterPercent / 100.0;
+
+        var factor = 1.0;
+
+        if (spread > 0)
+        {
+            var min = 1.0 - spread;
+            var max = 1.0 + spread;
+            factor = min + (_random.NextDouble() * (max - min));
+        }
+
+        var jitteredMs = Math.Max(1000, baseDelay.TotalMilliseconds * factor);
+        return TimeSpan.FromMilliseconds(jitteredMs);
     }
 
     private object BuildHeartbeatInventory()
@@ -442,14 +594,6 @@ public sealed class Worker : BackgroundService
             return "";
 
         return parts[^1];
-    }
-
-    private sealed class PendingCommand
-    {
-        public Guid CommandId { get; set; }
-        public string? Type { get; set; }
-        public string? Scope { get; set; }
-        public string? PayloadJson { get; set; }
     }
 
     private sealed class RegisterMetadata

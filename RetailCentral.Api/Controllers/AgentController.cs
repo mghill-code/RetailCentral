@@ -1,5 +1,6 @@
 ï»¿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Data.Entities;
 using RetailCentral.Api.Data.Enums;
@@ -7,7 +8,6 @@ using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
-using System.Linq;
 using System.Text.Json;
 
 namespace RetailCentral.Api.Controllers
@@ -20,17 +20,23 @@ namespace RetailCentral.Api.Controllers
         private readonly DeviceSecretProtection _secretProtection;
         private readonly IConfiguration _config;
         private readonly AuditService _auditService;
+        private readonly AgentPollingHintsOptions _pollingHints;
+        private readonly ILogger<AgentController> _logger;
 
         public AgentController(
-         RetailCentralDbContext db,
-         DeviceSecretProtection secretProtection,
-         IConfiguration config,
-         AuditService auditService)
+            RetailCentralDbContext db,
+            DeviceSecretProtection secretProtection,
+            IConfiguration config,
+            AuditService auditService,
+            IOptions<AgentPollingHintsOptions> pollingHints,
+            ILogger<AgentController> logger)
         {
             _db = db;
             _secretProtection = secretProtection;
             _config = config;
             _auditService = auditService;
+            _pollingHints = pollingHints.Value;
+            _logger = logger;
         }
 
         private async Task<Device?> GetDeviceFromHeader()
@@ -45,7 +51,7 @@ namespace RetailCentral.Api.Controllers
         }
 
         [HttpGet("commands/pending")]
-        public async Task<ActionResult<List<CommandDto>>> GetPending([FromQuery] int max = 5)
+        public async Task<ActionResult<PendingCommandsResponseDto>> GetPending([FromQuery] int max = 5)
         {
             if (max <= 0) max = 1;
             if (max > 20) max = 20;
@@ -129,7 +135,21 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 await _db.Database.CloseConnectionAsync();
             }
 
-            return Ok(results);
+            var pollAfterSeconds = results.Count > 0
+         ? _pollingHints.BusyPollSeconds
+         : _pollingHints.IdlePollSeconds;
+
+            _logger.LogInformation(
+                "Returning {CommandCount} pending commands for DeviceId={DeviceId} with PollAfterSeconds={PollAfterSeconds}",
+                results.Count,
+                deviceId,
+                pollAfterSeconds);
+
+            return Ok(new PendingCommandsResponseDto
+            {
+                Commands = results,
+                PollAfterSeconds = pollAfterSeconds
+            });
         }
 
         [HttpPost("enroll")]
@@ -332,6 +352,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             {
                 await UpsertRegisterInventoryFromSystemInfo(device.DeviceId, req.StdOut);
             }
+
             if (string.Equals(cmd.Type, "CollectSoftwareInventory", StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(req.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
             {
@@ -351,6 +372,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             return Ok(new { serverUtc = DateTime.UtcNow });
         }
+
         private async Task UpsertProcessStatusInventory(Guid deviceId, string? stdOut)
         {
             if (string.IsNullOrWhiteSpace(stdOut))
@@ -642,7 +664,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 _db.RegisterInventories.Add(row);
             }
 
-            // ===== Identity =====
             row.ComputerName =
                 req.Inventory?.ComputerName
                 ?? req.Hostname
@@ -654,11 +675,9 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 ?? device.StoreNumber
                 ?? row.Store;
 
-            // ===== í ½í´¥ THIS IS YOUR MAIN FIX =====
             if (!string.IsNullOrWhiteSpace(req.Inventory?.RegisterNumber))
                 row.RegisterNumber = req.Inventory.RegisterNumber;
 
-            // ===== Networking =====
             row.IPAddress =
                 !string.IsNullOrWhiteSpace(req.Inventory?.IPAddress)
                     ? req.Inventory.IPAddress
@@ -672,7 +691,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             if (!string.IsNullOrWhiteSpace(req.Inventory?.Domain))
                 row.Domain = req.Inventory.Domain;
 
-            // ===== OS =====
             row.OSVersion =
                 req.Inventory?.OSVersion
                 ?? req.OsVersion
@@ -681,7 +699,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             if (!string.IsNullOrWhiteSpace(req.Inventory?.CPUArch))
                 row.CPUArch = req.Inventory.CPUArch;
 
-            // ===== timestamps =====
             row.LastHeartbeatUtc = DateTime.UtcNow;
             row.UpdatedUtc = DateTime.UtcNow;
 
@@ -720,7 +737,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             await _db.SaveChangesAsync();
         }
-
 
         private async Task UpsertRegisterInventoryFromSystemInfo(Guid deviceId, string? stdOut)
         {
@@ -852,6 +868,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             return null;
         }
+
         private async Task UpsertSoftwareInventory(Guid deviceId, string? stdOut)
         {
             if (string.IsNullOrWhiteSpace(stdOut))
@@ -860,7 +877,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             using var doc = JsonDocument.Parse(stdOut);
             var root = doc.RootElement;
 
-            // í ½í´¥ DELETE EXISTING (Option A behavior)
             var existingSoftware = _db.Set<InstalledSoftware>()
                 .Where(x => x.DeviceId == deviceId);
 
@@ -870,7 +886,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             _db.RemoveRange(existingSoftware);
             _db.RemoveRange(existingUpdates);
 
-            // ===== SOFTWARE =====
             if (root.TryGetProperty("InstalledSoftware", out var softwareArray) &&
                 softwareArray.ValueKind == JsonValueKind.Array)
             {
@@ -888,7 +903,6 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 }
             }
 
-            // ===== WINDOWS UPDATES =====
             if (root.TryGetProperty("WindowsUpdates", out var updatesArray) &&
                 updatesArray.ValueKind == JsonValueKind.Array)
             {
@@ -907,6 +921,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             await _db.SaveChangesAsync();
         }
+
         private async Task UpsertUserActivityFromHeartbeat(Guid deviceId, HeartbeatUserActivityDto? dto)
         {
             if (dto == null)
@@ -1007,6 +1022,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
             return null;
         }
+
         private static DateTime? TryGetDateTime(JsonElement element, string propertyName)
         {
             if (element.ValueKind == JsonValueKind.Object &&
@@ -1018,6 +1034,12 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             }
 
             return null;
+        }
+
+        public sealed class PendingCommandsResponseDto
+        {
+            public List<CommandDto> Commands { get; set; } = new();
+            public int PollAfterSeconds { get; set; }
         }
     }
 }

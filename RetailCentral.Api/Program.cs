@@ -5,12 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using RetailCentral.Api.Configuration;
 using RetailCentral.Api.Data;
+using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
 using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+
 
 /*
 ===============================================================================
@@ -149,6 +151,10 @@ try
 
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });
+
+    // AGENT POLLING HINTS
+    builder.Services.Configure<AgentPollingHintsOptions>(
+    builder.Configuration.GetSection("AgentPollingHints"));
 
     // -------------------------------------------------------------------------
     // DATA PROTECTION

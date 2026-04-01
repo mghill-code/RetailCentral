@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text;
 using System.Runtime.Versioning;
 
 public sealed class AgentApiClient
@@ -9,6 +9,11 @@ public sealed class AgentApiClient
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AgentConfig _cfg;
     private readonly HmacSigner _signer;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public AgentApiClient(IHttpClientFactory httpClientFactory, AgentConfig cfg, HmacSigner signer)
     {
@@ -34,7 +39,6 @@ public sealed class AgentApiClient
             hostname = _cfg.Hostname,
             agentVersion = _cfg.AgentVersion,
             osVersion = Environment.OSVersion.VersionString,
-
             bootstrapKey = _cfg.BootstrapKey,
             machineName = Environment.MachineName,
             machineGuid = GetMachineGuid()
@@ -52,14 +56,13 @@ public sealed class AgentApiClient
         var deviceId = Guid.Parse(json.GetProperty("deviceId").GetString()!);
         var secretProp = json.TryGetProperty("deviceSecret", out var s) ? s.GetString() : null;
 
-        // only new device enroll returns a secret (existing device returns null)
         if (string.IsNullOrWhiteSpace(secretProp))
             return null;
 
         return (deviceId, secretProp!);
     }
 
-    public async Task<string> GetPendingAsync(int max, CancellationToken ct)
+    public async Task<PendingCommandsPollResult> GetPendingAsync(int max, CancellationToken ct)
     {
         var path = $"/api/agent/v1/commands/pending?max={max}";
         var method = "GET";
@@ -73,13 +76,24 @@ public sealed class AgentApiClient
         req.Headers.Add("X-Device-Timestamp", ts);
         req.Headers.Add("X-Device-Signature", sig);
 
-        var resp = await client.SendAsync(req, ct);
+        using var resp = await client.SendAsync(req, ct);
         var txt = await resp.Content.ReadAsStringAsync(ct);
+
+        if (resp.StatusCode == HttpStatusCode.TooManyRequests ||
+            resp.StatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            throw new HttpRequestException($"GetPending transient failure: {(int)resp.StatusCode} {txt}");
+        }
 
         if (!resp.IsSuccessStatusCode)
             throw new Exception($"GetPending failed: {(int)resp.StatusCode} {txt}");
 
-        return txt;
+        var result = JsonSerializer.Deserialize<PendingCommandsPollResult>(txt, JsonOpts);
+        if (result == null)
+            throw new Exception("GetPending returned an empty or invalid response.");
+
+        result.Commands ??= new List<PendingCommandEnvelope>();
+        return result;
     }
 
     public async Task HeartbeatAsync(object heartbeatBody, CancellationToken ct)
@@ -131,6 +145,7 @@ public sealed class AgentApiClient
         if (!resp.IsSuccessStatusCode)
             throw new Exception($"PostResult failed: {(int)resp.StatusCode} {txt}");
     }
+
     [SupportedOSPlatform("windows")]
     private static string? GetMachineGuid()
     {

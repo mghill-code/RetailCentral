@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Win32;
 using RetailCentral.Agent.Configuration;
@@ -41,6 +42,16 @@ builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
+// Reduce noisy built-in HttpClient request lifecycle logging.
+// Keep Warning/Error so real connection failures still show up.
+builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.*", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Extensions.Http", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Extensions.Http.Logging", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Extensions.Http.Logging.LoggingHttpMessageHandler", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.Extensions.Http.Logging.LoggingScopeHttpMessageHandler", LogLevel.Warning);
+
 // IMPORTANT: wire Microsoft ILogger<T> to Serilog
 builder.Services.AddSerilog();
 
@@ -67,6 +78,10 @@ builder.Services
     .Bind(builder.Configuration.GetSection(DownloadsOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+// AgentPolling Configs
+builder.Services.Configure<AgentPollingOptions>(
+    builder.Configuration.GetSection("AgentPolling"));
 
 // Legacy compatibility config object for services that still depend on AgentConfig
 builder.Services.AddSingleton(sp =>
