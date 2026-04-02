@@ -2,6 +2,25 @@
 
 @{
     ViewData["Title"] = "Logs Dashboard";
+
+    var selected = Model.SelectedReport?.ToLowerInvariant() ?? "reactivated";
+
+    string CardClass(string key, string accentClass)
+    {
+        return selected == key
+            ? $"metric-card-link active-metric {accentClass}"
+            : $"metric-card-link {accentClass}";
+    }
+
+    string SectionTitle()
+    {
+        return selected switch
+        {
+            "inactive" => "Inactive Devices",
+            "new" => "New Devices",
+            _ => "Reactivated Devices"
+        };
+    }
 }
 
 <div class="page-header">
@@ -11,48 +30,139 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">
+<div class="card section-card">
+    <div class="section-header">
         <h2>Summary Reports</h2>
     </div>
-    <div class="card-body">
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:16px;">
-            <div class="card">
-                <div class="card-header"><h2>Inactive Devices</h2></div>
-                <div class="card-body">
-                    <div>Last 30 Days: <strong>@Model.Inactive30Days</strong></div>
-                    <div>Last 60 Days: <strong>@Model.Inactive60Days</strong></div>
-                    <div>Last 90 Days: <strong>@Model.Inactive90Days</strong></div>
-                </div>
-            </div>
 
-            <div class="card">
-                <div class="card-header"><h2>New Devices</h2></div>
-                <div class="card-body">
-                    <div>Last 30 Days: <strong>@Model.New30Days</strong></div>
-                    <div>Last 60 Days: <strong>@Model.New60Days</strong></div>
-                    <div>Last 90 Days: <strong>@Model.New90Days</strong></div>
-                </div>
+    <div class="grid grid-3">
+        <a href="@Url.Action("LogsDashboard", "Dashboard", new { report = "inactive" })"
+           class="@CardClass("inactive", "warning-card")">
+            <div class="card metric-card">
+                <div class="metric-label">Inactive Devices</div>
+                <div class="metric-footnote">Last 30 Days: <strong>@Model.Inactive30Days</strong></div>
+                <div class="metric-footnote">Last 60 Days: <strong>@Model.Inactive60Days</strong></div>
+                <div class="metric-footnote">Last 90 Days: <strong>@Model.Inactive90Days</strong></div>
             </div>
+        </a>
 
-            <div class="card">
-                <div class="card-header"><h2>Reactivated Devices</h2></div>
-                <div class="card-body">
-                    <div>Recent Returned Devices: <strong>@Model.ReactivatedDevices.Count</strong></div>
-                </div>
+        <a href="@Url.Action("LogsDashboard", "Dashboard", new { report = "new" })"
+           class="@CardClass("new", "success-card")">
+            <div class="card metric-card">
+                <div class="metric-label">New Devices</div>
+                <div class="metric-footnote">Last 30 Days: <strong>@Model.New30Days</strong></div>
+                <div class="metric-footnote">Last 60 Days: <strong>@Model.New60Days</strong></div>
+                <div class="metric-footnote">Last 90 Days: <strong>@Model.New90Days</strong></div>
             </div>
-        </div>
+        </a>
+
+        <a href="@Url.Action("LogsDashboard", "Dashboard", new { report = "reactivated" })"
+           class="@CardClass("reactivated", "progress-card")">
+            <div class="card metric-card">
+                <div class="metric-label">Reactivated Devices</div>
+                <div class="metric-footnote">Recent Returned Devices: <strong>@Model.ReactivatedDevices.Count</strong></div>
+            </div>
+        </a>
     </div>
 </div>
 
-<div class="card" style="margin-top:16px;">
-    <div class="card-header">
-        <h2>Reactivated Devices</h2>
+<div class="card section-card">
+    <div class="section-header">
+        <h2>@SectionTitle()</h2>
     </div>
-    <div class="card-body">
-        @if (!Model.ReactivatedDevices.Any())
+
+    @if (selected == "inactive")
+    {
+        if (Model.InactiveDevices == null || !Model.InactiveDevices.Any())
         {
-            <p>No reactivated devices found.</p>
+            <div class="empty-state">No inactive devices found.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Device ID</th>
+                            <th>Hostname</th>
+                            <th>Store</th>
+                            <th>Agent Version</th>
+                            <th>Last Seen (UTC)</th>
+                            <th>First Seen (UTC)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in Model.InactiveDevices)
+                        {
+                            <tr>
+                                <td>@d.DeviceId</td>
+                                <td>@d.Hostname</td>
+                                <td>@d.StoreNumber</td>
+                                <td>@d.AgentVersion</td>
+                                <td>@d.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@d.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td><span class="badge badge-warning">Inactive</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else if (selected == "new")
+    {
+        if (Model.NewDevices == null || !Model.NewDevices.Any())
+        {
+            <div class="empty-state">No new devices found.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Device ID</th>
+                            <th>Hostname</th>
+                            <th>Store</th>
+                            <th>Agent Version</th>
+                            <th>First Seen (UTC)</th>
+                            <th>Last Seen (UTC)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in Model.NewDevices)
+                        {
+                            <tr>
+                                <td>@d.DeviceId</td>
+                                <td>@d.Hostname</td>
+                                <td>@d.StoreNumber</td>
+                                <td>@d.AgentVersion</td>
+                                <td>@d.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@d.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>
+                                    @if (d.IsEnabled)
+                                    {
+                                        <span class="badge badge-succeeded">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-muted">Disabled</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else
+    {
+        if (Model.ReactivatedDevices == null || !Model.ReactivatedDevices.Any())
+        {
+            <div class="empty-state">No reactivated devices found.</div>
         }
         else
         {
@@ -69,20 +179,20 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in Model.ReactivatedDevices)
+                        @foreach (var r in Model.ReactivatedDevices)
                         {
                             <tr>
-                                <td>@row.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                <td>@row.DeviceId</td>
-                                <td>@row.Hostname</td>
-                                <td>@row.StoreNumber</td>
-                                <td>@row.RemoteIp</td>
-                                <td>@row.Reason</td>
+                                <td>@r.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@r.DeviceId</td>
+                                <td>@r.Hostname</td>
+                                <td>@r.StoreNumber</td>
+                                <td>@r.RemoteIp</td>
+                                <td>@r.Reason</td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
         }
-    </div>
+    }
 </div>

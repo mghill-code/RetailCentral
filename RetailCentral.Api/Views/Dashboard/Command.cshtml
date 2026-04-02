@@ -49,11 +49,11 @@ else if (Model.Status == "Pending" && !string.IsNullOrWhiteSpace(pendingReason))
             <div class="kv-item"><span class="kv-label">Priority</span><span class="kv-value">@Model.Priority</span></div>
             <div class="kv-item"><span class="kv-label">Attempt Count</span><span class="kv-value">@Model.AttemptCount</span></div>
             <div class="kv-item"><span class="kv-label">Max Attempts</span><span class="kv-value">@Model.MaxAttempts</span></div>
-            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
-            <div class="kv-item"><span class="kv-label">Expires</span><span class="kv-value">@(expiresUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span></div>
+            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Expires</span><span class="kv-value">@(expiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span></div>
             <div class="kv-item"><span class="kv-label">Issued By</span><span class="kv-value">@(Model.IssuedBy ?? "-")</span></div>
-            <div class="kv-item"><span class="kv-label">Issued Utc</span><span class="kv-value">@Model.IssuedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
-            <div class="kv-item"><span class="kv-label">Locked Utc</span><span class="kv-value">@Model.LockedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Issued</span><span class="kv-value">@Model.IssuedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Locked</span><span class="kv-value">@Model.LockedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             <div class="kv-item"><span class="kv-label">Locked By Device</span><span class="kv-value">@(Model.LockedByDeviceId?.ToString() ?? "-")</span></div>
         </div>
     </div>
@@ -98,8 +98,8 @@ else if (Model.Status == "Pending" && !string.IsNullOrWhiteSpace(pendingReason))
                 <div class="kv-item"><span class="kv-label">Result Status</span><span class="kv-value">@Model.Result.Status</span></div>
                 <div class="kv-item"><span class="kv-label">Exit Code</span><span class="kv-value">@Model.Result.ExitCode</span></div>
                 <div class="kv-item"><span class="kv-label">Device Id</span><span class="kv-value">@Model.Result.DeviceId</span></div>
-                <div class="kv-item"><span class="kv-label">Started</span><span class="kv-value">@Model.Result.StartedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
-                <div class="kv-item"><span class="kv-label">Finished</span><span class="kv-value">@Model.Result.FinishedUtc?.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+                <div class="kv-item"><span class="kv-label">Started</span><span class="kv-value">@Model.Result.StartedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+                <div class="kv-item"><span class="kv-label">Finished</span><span class="kv-value">@Model.Result.FinishedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             </div>
             <div class="grid-2">
                 <div>

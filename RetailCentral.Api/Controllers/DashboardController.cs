@@ -60,6 +60,12 @@ namespace RetailCentral.Api.Controllers
             _commandPolicy = commandPolicy.Value;
         }
 
+        public enum LogsReportType
+        {
+            Reactivated,
+            Inactive,
+            New
+        }
         private static DateTime OnlineCutoffUtc => DateTime.UtcNow.AddMinutes(-5);
 
         private string CurrentActor()
@@ -584,8 +590,12 @@ namespace RetailCentral.Api.Controllers
 
         [Authorize(Policy = "DashboardAdmin")]
         [HttpGet]
-        public async Task<IActionResult> LogsDashboard(CancellationToken ct)
+        public async Task<IActionResult> LogsDashboard(string? report = "reactivated", CancellationToken ct = default)
         {
+            var selectedReport = string.IsNullOrWhiteSpace(report)
+                ? "reactivated"
+                : report.Trim().ToLowerInvariant();
+
             var now = DateTime.UtcNow;
             var d30 = now.AddDays(-30);
             var d60 = now.AddDays(-60);
@@ -602,6 +612,7 @@ namespace RetailCentral.Api.Controllers
                     a.Details
                 })
                 .ToListAsync(ct);
+
             var reactivated = reactivatedAuditRows
                 .Select(a =>
                 {
@@ -650,6 +661,7 @@ namespace RetailCentral.Api.Controllers
 
             var model = new LogsDashboardViewModel
             {
+                SelectedReport = selectedReport,
                 ReactivatedDevices = reactivated,
                 Inactive30Days = inactive30,
                 Inactive60Days = inactive60,
@@ -658,6 +670,43 @@ namespace RetailCentral.Api.Controllers
                 New60Days = new60,
                 New90Days = new90
             };
+
+            if (selectedReport == "inactive")
+            {
+                model.InactiveDevices = await _db.Devices
+                    .Where(d => d.IsEnabled && d.LastSeenUtc < d30)
+                    .OrderBy(d => d.LastSeenUtc)
+                    .Take(200)
+                    .Select(d => new LogsDashboardDeviceRowViewModel
+                    {
+                        DeviceId = d.DeviceId,
+                        StoreNumber = d.StoreNumber,
+                        Hostname = d.Hostname,
+                        AgentVersion = d.AgentVersion,
+                        FirstSeenUtc = d.FirstSeenUtc,
+                        LastSeenUtc = d.LastSeenUtc,
+                        IsEnabled = d.IsEnabled
+                    })
+                    .ToListAsync(ct);
+            }
+            else if (selectedReport == "new")
+            {
+                model.NewDevices = await _db.Devices
+                    .Where(d => d.FirstSeenUtc >= d30)
+                    .OrderByDescending(d => d.FirstSeenUtc)
+                    .Take(200)
+                    .Select(d => new LogsDashboardDeviceRowViewModel
+                    {
+                        DeviceId = d.DeviceId,
+                        StoreNumber = d.StoreNumber,
+                        Hostname = d.Hostname,
+                        AgentVersion = d.AgentVersion,
+                        FirstSeenUtc = d.FirstSeenUtc,
+                        LastSeenUtc = d.LastSeenUtc,
+                        IsEnabled = d.IsEnabled
+                    })
+                    .ToListAsync(ct);
+            }
 
             return View(model);
         }
@@ -1398,12 +1447,14 @@ namespace RetailCentral.Api.Controllers
 
 
         [HttpGet]
-        public async Task<IActionResult> Commands(string? status, string? search, bool expiredPendingOnly = false, int take = 200)
+        public async Task<IActionResult> Commands(string? status, string? search, string? mode, bool expiredPendingOnly = false, int take = 200)
         {
             take = Math.Clamp(take, 25, 500);
 
             var nowUtc = DateTime.UtcNow;
-            var baseQuery = _db.Commands.AsNoTracking();
+            var normalizedMode = string.IsNullOrWhiteSpace(mode) ? null : mode.Trim();
+            var allCommands = _db.Commands.AsNoTracking();
+            var baseQuery = allCommands;
 
             if (!string.IsNullOrWhiteSpace(status))
             {
@@ -1420,7 +1471,8 @@ namespace RetailCentral.Api.Controllers
                     (c.StoreNumber != null && c.StoreNumber.Contains(trimmedSearch)) ||
                     (c.GroupName != null && c.GroupName.Contains(trimmedSearch)) ||
                     (c.IssuedBy != null && c.IssuedBy.Contains(trimmedSearch)) ||
-                    (c.PayloadJson != null && c.PayloadJson.Contains(trimmedSearch)));
+                    (c.PayloadJson != null && c.PayloadJson.Contains(trimmedSearch)) ||
+                    (c.LastError != null && c.LastError.Contains(trimmedSearch)));
             }
 
             if (expiredPendingOnly)
@@ -1429,6 +1481,23 @@ namespace RetailCentral.Api.Controllers
                     c.Status == "Pending" &&
                     c.ExpiresUtc != null &&
                     c.ExpiresUtc <= nowUtc);
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedMode))
+            {
+                if (string.Equals(normalizedMode, "Retrying", StringComparison.OrdinalIgnoreCase))
+                {
+                    baseQuery = baseQuery.Where(c =>
+                        c.Status == "Pending" &&
+                        c.AttemptCount > 0 &&
+                        (c.ExpiresUtc == null || c.ExpiresUtc > nowUtc));
+                }
+                else if (string.Equals(normalizedMode, "FinalFailure", StringComparison.OrdinalIgnoreCase))
+                {
+                    baseQuery = baseQuery.Where(c =>
+                        c.Status == "Failed" &&
+                        c.AttemptCount >= c.MaxAttempts);
+                }
             }
 
             var commands = await baseQuery
@@ -1452,7 +1521,18 @@ namespace RetailCentral.Api.Controllers
                 })
                 .ToListAsync();
 
-            var allCommands = _db.Commands.AsNoTracking();
+            var retryingCount = await allCommands.CountAsync(c =>
+                c.Status == "Pending" &&
+                c.AttemptCount > 0 &&
+                (c.ExpiresUtc == null || c.ExpiresUtc > nowUtc));
+
+            var finalFailureCount = await allCommands.CountAsync(c =>
+                c.Status == "Failed" &&
+                c.AttemptCount >= c.MaxAttempts);
+
+            ViewData["RetryingCount"] = retryingCount;
+            ViewData["FinalFailureCount"] = finalFailureCount;
+            ViewData["CommandMode"] = normalizedMode;
 
             var model = new CommandCenterViewModel
             {
@@ -2432,6 +2512,7 @@ namespace RetailCentral.Api.Controllers
                 cmd.Status = "Pending";
                 cmd.LockedUtc = null;
                 cmd.LockedByDeviceId = null;
+                cmd.NextAttemptUtc = DateTime.UtcNow;
                 cmd.LastError = "Requeued from dashboard quick action";
             }
 
@@ -3302,6 +3383,7 @@ namespace RetailCentral.Api.Controllers
                 GroupName = groupName,
                 AttemptCount = 0,
                 MaxAttempts = maxAttempts,
+                NextAttemptUtc = issuedUtc,
                 IssuedBy = issuedBy,
                 IssuedUtc = issuedUtc
             };

@@ -1,10 +1,12 @@
-﻿using RetailCentral.Api.ViewModels;
-
-namespace RetailCentral.Api.ViewModels
+﻿namespace RetailCentral.Api.ViewModels
 {
     public class LogsDashboardViewModel
     {
+        public string SelectedReport { get; set; } = "reactivated";
+
         public List<ReactivatedDeviceLogViewModel> ReactivatedDevices { get; set; } = new();
+        public List<LogsDashboardDeviceRowViewModel> InactiveDevices { get; set; } = new();
+        public List<LogsDashboardDeviceRowViewModel> NewDevices { get; set; } = new();
 
         public int Inactive30Days { get; set; }
         public int Inactive60Days { get; set; }
@@ -13,6 +15,17 @@ namespace RetailCentral.Api.ViewModels
         public int New30Days { get; set; }
         public int New60Days { get; set; }
         public int New90Days { get; set; }
+    }
+
+    public class LogsDashboardDeviceRowViewModel
+    {
+        public Guid DeviceId { get; set; }
+        public string? StoreNumber { get; set; }
+        public string? Hostname { get; set; }
+        public string? AgentVersion { get; set; }
+        public DateTime FirstSeenUtc { get; set; }
+        public DateTime LastSeenUtc { get; set; }
+        public bool IsEnabled { get; set; }
     }
 
     public class ReactivatedDeviceLogViewModel

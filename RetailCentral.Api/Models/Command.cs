@@ -31,6 +31,7 @@
         public int AttemptCount { get; set; } = 0;
         public int MaxAttempts { get; set; } = 3;
         public DateTime? LastAttemptUtc { get; set; }
+        public DateTime? NextAttemptUtc { get; set; }
         public string? LastError { get; set; }
 
         // Audit

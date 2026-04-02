@@ -2,220 +2,361 @@
 
 @{
     ViewData["Title"] = "Command Center";
-}
 
-@if (TempData["CommandMessage"] != null)
-{
-    <div class="alert alert-info">@TempData["CommandMessage"]</div>
+    var retryingCount = ViewData["RetryingCount"] is int rc ? rc : 0;
+    var finalFailureCount = ViewData["FinalFailureCount"] is int ffc ? ffc : 0;
+    var commandMode = ViewData["CommandMode"]?.ToString();
+
+    string? selectedStatus = Model.Status;
+    string? search = Model.Search;
+    bool expiredPendingOnly = Model.ShowExpiredPendingOnly;
+
+    bool IsStatusSelected(string value) =>
+        string.Equals(selectedStatus, value, StringComparison.OrdinalIgnoreCase);
+
+    bool IsModeSelected(string value) =>
+        string.Equals(commandMode, value, StringComparison.OrdinalIgnoreCase);
+
+    string BuildFilterUrl(string? status = null, string? mode = null, bool? expiredOnly = null)
+    {
+        var routeValues = new Dictionary<string, string?>();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            routeValues["search"] = search;
+
+        if (!string.IsNullOrWhiteSpace(status))
+            routeValues["status"] = status;
+
+        if (!string.IsNullOrWhiteSpace(mode))
+            routeValues["mode"] = mode;
+
+        if (expiredOnly ?? false)
+            routeValues["expiredPendingOnly"] = "true";
+
+        return Url.Action("Commands", "Dashboard", routeValues) ?? "#";
+    }
+
+    string GetRowStateLabel(RetailCentral.Api.ViewModels.CommandCenterRowViewModel row)
+    {
+        if (row.Status == "Pending" && row.ExpiresUtc.HasValue && row.ExpiresUtc.Value <= DateTime.UtcNow)
+            return "Expired Pending";
+
+        if (row.Status == "Pending" && row.AttemptCount > 0)
+            return "Retrying";
+
+        if (row.Status == "Failed" && row.AttemptCount >= row.MaxAttempts)
+            return "Final Failure";
+
+        if (row.Status == "InProgress")
+            return "In Progress";
+
+        return row.Status;
+    }
+
+    string GetRowStateCss(RetailCentral.Api.ViewModels.CommandCenterRowViewModel row)
+    {
+        if (row.Status == "Pending" && row.ExpiresUtc.HasValue && row.ExpiresUtc.Value <= DateTime.UtcNow)
+            return "status-pill badge-warning";
+
+        if (row.Status == "Pending" && row.AttemptCount > 0)
+            return "status-pill badge-download";
+
+        if (row.Status == "Failed" && row.AttemptCount >= row.MaxAttempts)
+            return "status-pill badge-download";
+
+        if (row.Status == "Pending")
+            return "status-pill badge-pending";
+
+        if (row.Status == "InProgress")
+            return "status-pill badge-inprogress";
+
+        if (row.Status == "Succeeded")
+            return "status-pill badge-succeeded";
+
+        if (row.Status == "Failed")
+            return "status-pill badge-failed";
+
+        return "status-pill badge-muted";
+    }
+
+    string GetTargetPrimary(RetailCentral.Api.ViewModels.CommandCenterRowViewModel row)
+    {
+        if (row.DeviceId.HasValue)
+            return $"Device • {row.DeviceId.Value}";
+
+        if (!string.IsNullOrWhiteSpace(row.StoreNumber))
+            return $"Store • {row.StoreNumber}";
+
+        if (!string.IsNullOrWhiteSpace(row.GroupName))
+            return $"Group • {row.GroupName}";
+
+        return row.Scope;
+    }
+
+    string GetTargetSecondary(RetailCentral.Api.ViewModels.CommandCenterRowViewModel row)
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(row.StoreNumber) && !row.DeviceId.HasValue)
+            parts.Add($"Store: {row.StoreNumber}");
+
+        if (!string.IsNullOrWhiteSpace(row.GroupName))
+            parts.Add($"Group: {row.GroupName}");
+
+        if (row.DeviceId.HasValue && !string.IsNullOrWhiteSpace(row.StoreNumber))
+            parts.Add($"Store: {row.StoreNumber}");
+
+        return parts.Count == 0 ? "—" : string.Join(" • ", parts);
+    }
+
+    string GetLastErrorPreview(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "—";
+
+        return value.Length <= 120 ? value : value[..120] + "...";
+    }
+
+    string GetAttemptCss(RetailCentral.Api.ViewModels.CommandCenterRowViewModel row)
+    {
+        var label = GetRowStateLabel(row);
+
+        if (label == "Retrying")
+            return "attempt-pill is-retrying";
+
+        if (label == "Final Failure")
+            return "attempt-pill is-final";
+
+        return "attempt-pill";
+    }
 }
 
 <div class="page-header">
-    <div>
+    <div class="page-heading-copy">
         <h1>Command Center</h1>
         <p>Filter, review, and clean up queued and completed commands.</p>
     </div>
     <div class="page-actions">
-        <a class="btn btn-primary" asp-action="IssueCommand">
-            <span class="action-icon" aria-hidden="true">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                </svg>
-            </span>
-            Issue Command
-        </a>
+        <a class="btn" href="@Url.Action("IssueCommand", "Dashboard")">+ Issue Command</a>
     </div>
 </div>
 
-<div class="stats-grid command-stats-grid">
-    <a asp-action="Commands"
-       class="stat-card stat-card-link stat-card-neutral @(string.IsNullOrWhiteSpace(Model.Status) && !Model.ShowExpiredPendingOnly ? "active" : "")">
-        <div class="stat-label">Total</div>
-        <div class="stat-value">@Model.TotalCount</div>
+@if (TempData["CommandMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["CommandMessage"]</div>
+}
+
+<div class="grid grid-3">
+    <a href="@BuildFilterUrl()" class="metric-card-link">
+        <div class="card metric-card @(string.IsNullOrWhiteSpace(Model.Status) && string.IsNullOrWhiteSpace(commandMode) && !expiredPendingOnly ? "warning-card" : "")">
+            <div class="metric-label">Total</div>
+            <div class="metric-value">@Model.TotalCount</div>
+        </div>
     </a>
 
-    <a asp-action="Commands"
-       asp-route-status="Pending"
-       class="stat-card stat-card-link stat-card-warning @(Model.Status == "Pending" && !Model.ShowExpiredPendingOnly ? "active" : "")">
-        <div class="stat-label">Pending</div>
-        <div class="stat-value pending">@Model.PendingCount</div>
+    <a href="@BuildFilterUrl(status: "Pending")" class="metric-card-link">
+        <div class="card metric-card pending-card @(IsStatusSelected("Pending") && string.IsNullOrWhiteSpace(commandMode) && !expiredPendingOnly ? "active-metric" : "")">
+            <div class="metric-label">Pending</div>
+            <div class="metric-value pending">@Model.PendingCount</div>
+        </div>
     </a>
 
-    <a asp-action="Commands"
-       asp-route-status="InProgress"
-       class="stat-card stat-card-link stat-card-info @(Model.Status == "InProgress" ? "active" : "")">
-        <div class="stat-label">In Progress</div>
-        <div class="stat-value inprogress">@Model.InProgressCount</div>
+    <a href="@BuildFilterUrl(status: "InProgress")" class="metric-card-link">
+        <div class="card metric-card progress-card @(IsStatusSelected("InProgress") ? "active-metric" : "")">
+            <div class="metric-label">In Progress</div>
+            <div class="metric-value inprogress">@Model.InProgressCount</div>
+        </div>
     </a>
 
-    <a asp-action="Commands"
-       asp-route-status="Failed"
-       class="stat-card stat-card-link stat-card-danger @(Model.Status == "Failed" ? "active" : "")">
-        <div class="stat-label">Failed</div>
-        <div class="stat-value offline">@Model.FailedCount</div>
+    <a href="@BuildFilterUrl(mode: "Retrying")" class="metric-card-link">
+        <div class="card metric-card warning-card @(IsModeSelected("Retrying") ? "active-metric" : "")">
+            <div class="metric-label">Retrying</div>
+            <div class="metric-value">@retryingCount</div>
+        </div>
     </a>
 
-    <a asp-action="Commands"
-       asp-route-status="Succeeded"
-       class="stat-card stat-card-link stat-card-success @(Model.Status == "Succeeded" ? "active" : "")">
-        <div class="stat-label">Succeeded</div>
-        <div class="stat-value online">@Model.SucceededCount</div>
+    <a href="@BuildFilterUrl(status: "Failed")" class="metric-card-link">
+        <div class="card metric-card failed-card @(IsStatusSelected("Failed") && string.IsNullOrWhiteSpace(commandMode) ? "active-metric" : "")">
+            <div class="metric-label">Failed</div>
+            <div class="metric-value offline">@Model.FailedCount</div>
+        </div>
     </a>
 
-    <a asp-action="Commands"
-       asp-route-expiredPendingOnly="true"
-       class="stat-card stat-card-link stat-card-danger-soft @(Model.ShowExpiredPendingOnly ? "active" : "")">
-        <div class="stat-label">Expired Pending</div>
-        <div class="stat-value">@Model.ExpiredPendingCount</div>
+    <a href="@BuildFilterUrl(mode: "FinalFailure")" class="metric-card-link">
+        <div class="card metric-card warning-card @(IsModeSelected("FinalFailure") ? "active-metric" : "")">
+            <div class="metric-label">Final Failure</div>
+            <div class="metric-value">@finalFailureCount</div>
+        </div>
+    </a>
+
+    <a href="@BuildFilterUrl(status: "Succeeded")" class="metric-card-link">
+        <div class="card metric-card success-card @(IsStatusSelected("Succeeded") ? "active-metric" : "")">
+            <div class="metric-label">Succeeded</div>
+            <div class="metric-value online">@Model.SucceededCount</div>
+        </div>
+    </a>
+
+    <a href="@BuildFilterUrl(expiredOnly: true)" class="metric-card-link">
+        <div class="card metric-card warning-card @(expiredPendingOnly ? "active-metric" : "")">
+            <div class="metric-label">Expired Pending</div>
+            <div class="metric-value">@Model.ExpiredPendingCount</div>
+        </div>
     </a>
 </div>
 
-<div class="card command-filter-card">
-    <form method="get" asp-action="Commands" class="command-filter-grid">
-        <div>
-            <label class="form-label">Status</label>
-            <select name="status" class="form-select dashboard-select">
-                <option value="" selected="@(string.IsNullOrWhiteSpace(Model.Status) ? "selected" : null)">All</option>
-                <option value="Pending" selected="@(Model.Status == "Pending" ? "selected" : null)">Pending</option>
-                <option value="InProgress" selected="@(Model.Status == "InProgress" ? "selected" : null)">In Progress</option>
-                <option value="Failed" selected="@(Model.Status == "Failed" ? "selected" : null)">Failed</option>
-                <option value="Succeeded" selected="@(Model.Status == "Succeeded" ? "selected" : null)">Succeeded</option>
-                <option value="Canceled" selected="@(Model.Status == "Canceled" ? "selected" : null)">Canceled</option>
-            </select>
+<div class="card section-card">
+    <div class="section-header">
+        <h2>Filters</h2>
+    </div>
+
+    <form method="get" asp-action="Commands" asp-controller="Dashboard">
+        <div class="filters-grid">
+            <div class="field">
+                <label class="form-label" for="search">Search</label>
+                <input id="search"
+                       name="search"
+                       class="form-control"
+                       value="@Model.Search"
+                       placeholder="Type, store, group, issued by, payload, last error..." />
+            </div>
+
+            <div class="field">
+                <label class="form-label" for="status">Status</label>
+                <select id="status" name="status" class="form-select">
+                    <option value="">All statuses</option>
+                    <option value="Pending" selected="@(IsStatusSelected("Pending"))">Pending</option>
+                    <option value="InProgress" selected="@(IsStatusSelected("InProgress"))">In Progress</option>
+                    <option value="Failed" selected="@(IsStatusSelected("Failed"))">Failed</option>
+                    <option value="Succeeded" selected="@(IsStatusSelected("Succeeded"))">Succeeded</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label class="form-label" for="mode">Mode</label>
+                <select id="mode" name="mode" class="form-select">
+                    <option value="">All modes</option>
+                    <option value="Retrying" selected="@(IsModeSelected("Retrying"))">Retrying</option>
+                    <option value="FinalFailure" selected="@(IsModeSelected("FinalFailure"))">Final Failure</option>
+                </select>
+            </div>
+
+            <div class="filter-actions-row">
+                <label class="form-label">&nbsp;</label>
+                <div class="filter-actions">
+                    <button type="submit" class="btn">Apply</button>
+                    <a class="btn btn-secondary" href="@Url.Action("Commands", "Dashboard")">Reset</a>
+                </div>
+            </div>
         </div>
 
-        <div>
-            <label class="form-label">Search</label>
-            <input type="text" name="search" value="@Model.Search" class="form-control" placeholder="Type, store, group, issued by, payload..." />
-        </div>
-
-        <div class="form-check command-filter-check">
-            <input class="form-check-input" type="checkbox" id="expiredPendingOnly" name="expiredPendingOnly" value="true" @(Model.ShowExpiredPendingOnly ? "checked" : null) />
-            <label class="form-check-label" for="expiredPendingOnly">Expired pending only</label>
-        </div>
-
-        <div class="command-filter-actions">
-            <button type="submit" class="btn">Apply</button>
-            <a class="btn btn-secondary" asp-action="Commands">Reset</a>
-        </div>
+        @if (Model.ShowExpiredPendingOnly)
+        {
+            <input type="hidden" name="expiredPendingOnly" value="true" />
+        }
     </form>
 </div>
 
-@if (Model.ExpiredPendingCount > 0)
-{
-    <div class="card command-alert-card">
-        <div>
-            <h3>Expired pending commands detected</h3>
-            <p>These commands will never run because their expiration window already passed.</p>
-        </div>
-        <form method="post" asp-action="FailExpiredPendingCommands" class="inline">
+<div class="section-toolbar">
+    <div class="section-summary">
+        Showing @Model.Commands.Count command(s).
+        @if (IsModeSelected("Retrying"))
+        {
+            <span> Currently filtered to retrying commands.</span>
+        }
+        else if (IsModeSelected("FinalFailure"))
+        {
+            <span> Currently filtered to final failures.</span>
+        }
+        else if (Model.ShowExpiredPendingOnly)
+        {
+            <span> Currently filtered to expired pending commands.</span>
+        }
+    </div>
+
+    @if (Model.ExpiredPendingCount > 0)
+    {
+        <form method="post" asp-action="FailExpiredPendingCommands" asp-controller="Dashboard">
             @Html.AntiForgeryToken()
-            <button type="submit" class="btn btn-danger">Mark All Expired Pending Failed</button>
+            <button type="submit" class="btn btn-secondary">Fail Expired Pending</button>
         </form>
-    </div>
-}
+    }
+</div>
 
-<div class="card">
-    <div class="section-heading">
-        <h3>Command Queue</h3>
-        <p>Review status, scope, expiration, errors, and retry history.</p>
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Command Results</h2>
     </div>
 
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:14%;">Created</th>
-                    <th style="width:14%;">Type</th>
-                    <th style="width:12%;">Status</th>
-                    <th style="width:10%;">Scope</th>
-                    <th style="width:8%;">Store</th>
-                    <th style="width:16%;">Device / Group</th>
-                    <th style="width:12%;">Expires</th>
-                    <th style="width:18%;">Reason / Last Error</th>
-                    <th style="width:8%;">Attempts</th>
-                    <th style="width:8%;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (Model.Commands.Count == 0)
-                {
+    @if (Model.Commands.Count == 0)
+    {
+        <div class="empty-state">
+            No commands matched the current filters.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
                     <tr>
-                        <td colspan="10" class="empty-state">No commands found.</td>
+                        <th>Type</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Issued By</th>
+                        <th>Created</th>
+                        <th>Error / Reason</th>
+                        <th>Details</th>
                     </tr>
-                }
-                else
-                {
-                    @foreach (var c in Model.Commands)
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Commands)
                     {
-                        var statusCss = c.IsExpiredPending ? "badge-danger" : c.Status?.ToLower() switch
-                        {
-                            "succeeded" => "badge-succeeded",
-                            "failed" => "badge-failed",
-                            "pending" => "badge-pending",
-                            "inprogress" => "badge-inprogress",
-                            _ => "badge-muted"
-                        };
+                        var rowLabel = GetRowStateLabel(row);
+                        var rowCss = GetRowStateCss(row);
+                        var attemptCss = GetAttemptCss(row);
 
                         <tr>
-                            <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>
-                                <div><a href="/Dashboard/Command/@c.CommandId"><strong>@c.Type</strong></a></div>
-                                <div class="subtle command-id-row">@c.CommandId</div>
+                                <div class="cell-primary">@row.Type</div>
+                                <div class="cell-secondary">@row.Scope</div>
                             </td>
                             <td>
-                                <span class="badge @statusCss">@(c.IsExpiredPending ? "Expired Pending" : c.Status)</span>
+                                <div class="cell-primary">@GetTargetPrimary(row)</div>
+                                <div class="cell-secondary">@GetTargetSecondary(row)</div>
                             </td>
-                            <td>@c.Scope</td>
-                            <td>@(string.IsNullOrWhiteSpace(c.StoreNumber) ? "-" : c.StoreNumber)</td>
                             <td>
-                                @if (c.DeviceId != null)
-                                {
-                                    <div class="command-target-text">@c.DeviceId</div>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(c.GroupName))
-                                {
-                                    <div class="command-target-text">@c.GroupName</div>
-                                }
-                                else
-                                {
-                                    <span class="subtle">n/a</span>
-                                }
+                                <span class="@rowCss">@rowLabel</span>
                             </td>
-                            <td>@(c.ExpiresUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
                             <td>
-                                @if (!string.IsNullOrWhiteSpace(c.LastError))
+                                <span class="@attemptCss">@row.AttemptCount / @row.MaxAttempts</span>
+                            </td>
+                            <td>
+                                <div class="cell-wrap">@(string.IsNullOrWhiteSpace(row.IssuedBy) ? "—" : row.IssuedBy)</div>
+                            </td>
+                            <td>@row.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td title="@row.LastError">
+                                <div class="cell-primary">@GetLastErrorPreview(row.LastError)</div>
+                                @if (rowLabel == "Retrying")
                                 {
-                                    <div>@c.LastError</div>
+                                    <div class="cell-secondary">Retry scheduled because a prior attempt failed.</div>
                                 }
-                                else if (c.Status == "Pending")
+                                else if (rowLabel == "Final Failure")
                                 {
-                                    <div>@c.PendingReason</div>
+                                    <div class="cell-secondary">Max retry attempts reached.</div>
                                 }
-                                else
+                                else if (rowLabel == "Expired Pending")
                                 {
-                                    <span class="subtle">-</span>
+                                    <div class="cell-secondary">Command expired before an agent picked it up.</div>
                                 }
                             </td>
-                            <td>@c.AttemptCount / @c.MaxAttempts</td>
                             <td>
-                                @if (c.IsExpiredPending)
-                                {
-                                    <form method="post" asp-action="FailExpiredPendingCommand" asp-route-id="@c.CommandId" class="inline">
-                                        @Html.AntiForgeryToken()
-                                        <button type="submit" class="btn btn-danger command-inline-btn">Fail</button>
-                                    </form>
-                                }
-                                else
-                                {
-                                    <span class="subtle">-</span>
-                                }
+                                <a class="btn btn-secondary btn-sm" href="@Url.Action("Command", "Dashboard", new { id = row.CommandId })">Details</a>
                             </td>
                         </tr>
                     }
-                }
-            </tbody>
-        </table>
-    </div>
+                </tbody>
+            </table>
+        </div>
+    }
 </div>

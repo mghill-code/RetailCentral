@@ -142,8 +142,8 @@
                 <div><strong>Memory:</strong> <span class="@(h.MemoryHealthy ? "health-ok" : "health-issue")">@(h.MemoryHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Recent Failures:</strong> <span class="@(h.FailuresHealthy ? "health-ok" : "health-issue")">@(h.FailuresHealthy ? "OK" : "Issue")</span></div>
                 <div><strong>Inventory:</strong> <span class="@(h.InventoryFresh ? "health-ok" : "health-stale")">@(h.InventoryFresh ? "Fresh" : "Stale")</span></div>
-                <div><strong>Last Heartbeat:</strong> @(h.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
-                <div><strong>Inventory Updated:</strong> @(h.InventoryUpdatedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
+                <div><strong>Last Heartbeat:</strong> @(h.LastHeartbeatUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
+                <div><strong>Inventory Updated:</strong> @(h.InventoryUpdatedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</div>
                 <div><strong>Disk Free:</strong> @(h.HardDriveFreeSpace ?? "-")</div>
                 <div><strong>Disk Size:</strong> @(h.HardDriveSize ?? "-")</div>
                 <div><strong>Memory:</strong> @(h.Memory ?? "-")</div>
@@ -162,9 +162,9 @@
             <div class="kv-item"><span class="kv-label">OS Version</span><span class="kv-value">@(Model.OsVersion ?? "-")</span></div>
             <div class="kv-item"><span class="kv-label">Machine Name</span><span class="kv-value">@(Model.MachineName ?? "-")</span></div>
             <div class="kv-item"><span class="kv-label">Machine Guid</span><span class="kv-value">@(Model.MachineGuid ?? "-")</span></div>
-            <div class="kv-item"><span class="kv-label">Last Seen</span><span class="kv-value">@Model.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Last Seen</span><span class="kv-value">@Model.LastSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             <div class="kv-item"><span class="kv-label">Last IP</span><span class="kv-value">@(Model.LastIp ?? "-")</span></div>
-            <div class="kv-item"><span class="kv-label">First Seen</span><span class="kv-value">@Model.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">First Seen</span><span class="kv-value">@Model.FirstSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             <div class="kv-item"><span class="kv-label">Enabled</span><span class="kv-value">@(Model.IsEnabled ? "Yes" : "Retired")</span></div>
         </div>
 
@@ -193,13 +193,13 @@
                 <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("system")</span><span>Collect System Info</span></button>
             </form>
 
-            <form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
+            <!--<form method="post" action="/Dashboard/RunHelpdeskCommand" class="inline">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TargetType" value="Device" />
                 <input type="hidden" name="DeviceId" value="@Model.DeviceId" />
                 <input type="hidden" name="CommandKey" value="NetworkInfo" />
                 <button type="submit" class="btn btn-secondary"><span class="icon-inline">@SvgIcon("network")</span><span>Network Info</span></button>
-            </form>
+            </form>-->
 
             <form method="post" action="/Dashboard/IssueCommand" class="inline">
                 @Html.AntiForgeryToken()
@@ -293,7 +293,7 @@
             <div class="kv-grid">
                 <div class="kv-item">
                     <span class="kv-label">Last Process Scan</span>
-                    <span class="kv-value">@(ps.UpdatedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span>
+                    <span class="kv-value">@(ps.UpdatedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span>
                 </div>
             </div>
 
@@ -408,7 +408,7 @@
         <div class="kv-grid" style="margin-bottom:14px;">
             <div class="kv-item">
                 <span class="kv-label">Last Software Scan</span>
-                <span class="kv-value">@(Model.LastSoftwareInventoryUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span>
+                <span class="kv-value">@(Model.LastSoftwareInventoryUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span>
             </div>
             <div class="kv-item">
                 <span class="kv-label">Installed Software Count</span>
@@ -598,7 +598,7 @@
                         <td>@c.Type</td>
                         <td><span class="badge @statusCss">@c.Status</span></td>
                         <td>@c.Scope</td>
-                        <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>@c.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                     </tr>
                 }
             </tbody>
@@ -646,7 +646,7 @@
                                 <td>@c.Type</td>
                                 <td><span class="badge @statusCss">@c.Status</span></td>
                                 <td>@c.Scope</td>
-                                <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                <td>@c.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             </tr>
                         }
                     </tbody>
@@ -689,7 +689,7 @@
                             </td>
                             <td>@c.Type</td>
                             <td><span class="badge badge-failed">@c.Status</span></td>
-                            <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@c.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                         </tr>
                     }
                 </tbody>
@@ -726,7 +726,7 @@
                                     </td>
                                     <td>@c.Type</td>
                                     <td><span class="badge badge-failed">@c.Status</span></td>
-                                    <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>@c.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                                 </tr>
                             }
                         </tbody>

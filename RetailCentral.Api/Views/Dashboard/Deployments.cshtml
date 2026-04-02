@@ -114,7 +114,7 @@
                             <td>@dep.TargetValue</td>
                             <td>@dep.ExecuteMode</td>
                             <td><span class="badge @DeploymentStatusBadge(dep.Status)">@DeploymentStatusLabel(dep.Status)</span></td>
-                            <td>@dep.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@dep.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>
                                 <div class="action-row">
                                     <a class="btn btn-outline" href="/Dashboard/DeploymentDetail/@dep.Id">View</a>

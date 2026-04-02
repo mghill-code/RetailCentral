@@ -92,7 +92,7 @@
                             </span>
                         </div>
                         <div class="subtle" style="margin-top:8px;">
-                            Last seen: @tile.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")
+                            Last seen: @tile.LastSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
                         </div>
                     </div>
                 </a>
@@ -168,7 +168,7 @@
                             <td><a href="/Dashboard/Device/@d.DeviceId">@d.Hostname</a></td>
                             <td><span class="badge @(d.IsOnline ? "badge-online" : "badge-offline")">@(d.IsOnline ? "Online" : "Offline")</span></td>
                             <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
-                            <td>@d.LastSeenUtc?.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@d.LastSeenUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                         </tr>
                     }
                 </tbody>
@@ -205,7 +205,7 @@
                             <td>@c.Type</td>
                             <td><span class="badge @statusCss">@c.Status</span></td>
                             <td>@c.Scope</td>
-                            <td>@c.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@c.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                         </tr>
                     }
                 </tbody>

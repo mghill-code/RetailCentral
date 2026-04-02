@@ -106,7 +106,7 @@ BNC84420-003</pre>
                         <td><strong>@g.GroupName</strong></td>
                         <td>@(string.IsNullOrWhiteSpace(g.Description) ? "-" : g.Description)</td>
                         <td>@g.MemberCount</td>
-                        <td>@g.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>@g.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                         <td><a class="btn btn-outline" href="/Dashboard/Group?groupName=@Uri.EscapeDataString(g.GroupName)">Open</a></td>
                     </tr>
                 }

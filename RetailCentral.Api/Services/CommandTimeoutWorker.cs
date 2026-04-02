@@ -9,20 +9,22 @@ namespace RetailCentral.Api.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<CommandTimeoutWorker> _logger;
         private readonly IOptions<CommandTimeoutOptions> _options;
+        private readonly RetryBackoffService _retryBackoffService;
 
         public CommandTimeoutWorker(
-            IServiceScopeFactory scopeFactory,
-            ILogger<CommandTimeoutWorker> logger,
-            IOptions<CommandTimeoutOptions> options)
+             IServiceScopeFactory scopeFactory,
+             ILogger<CommandTimeoutWorker> logger,
+             IOptions<CommandTimeoutOptions> options,
+             RetryBackoffService retryBackoffService)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
             _options = options;
+            _retryBackoffService = retryBackoffService;
         }
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogDebug("CommandTimeoutWorker started.");
+            _logger.LogInformation("CommandTimeoutWorker started.");
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -30,15 +32,28 @@ namespace RetailCentral.Api.Services
                 {
                     await SweepOnce(stoppingToken);
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "CommandTimeoutWorker sweep failed.");
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(_options.Value.SweepSeconds), stoppingToken);
+                try
+                {
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(Math.Max(5, _options.Value.SweepSeconds)),
+                        stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
 
-            _logger.LogDebug("CommandTimeoutWorker stopped.");
+            _logger.LogInformation("CommandTimeoutWorker stopped.");
         }
 
         private async Task SweepOnce(CancellationToken ct)
@@ -59,11 +74,14 @@ namespace RetailCentral.Api.Services
                 .Take(opts.MaxRowsPerSweep)
                 .ToListAsync(ct);
 
-            foreach (var c in expiredPending)
+            foreach (var command in expiredPending)
             {
-                c.Status = "Failed";
-                c.LastError = "Command expired before pickup by agent.";
-                c.LastAttemptUtc = nowUtc;
+                command.Status = "Failed";
+                command.NextAttemptUtc = null;
+                command.LastError = "Command expired before pickup by agent.";
+                command.LastAttemptUtc ??= command.CreatedUtc;
+                command.LockedUtc = null;
+                command.LockedByDeviceId = null;
             }
 
             var stuckInProgress = await db.Commands
@@ -75,28 +93,35 @@ namespace RetailCentral.Api.Services
                 .Take(opts.MaxRowsPerSweep)
                 .ToListAsync(ct);
 
-            foreach (var c in stuckInProgress)
+            foreach (var command in stuckInProgress)
             {
-                c.AttemptCount += 1;
-                c.LastAttemptUtc = nowUtc;
+                var reachedMaxAttempts = command.AttemptCount >= Math.Max(1, command.MaxAttempts);
 
-                if (c.AttemptCount >= c.MaxAttempts)
+                if (reachedMaxAttempts)
                 {
-                    c.Status = "Failed";
-                    c.LastError = $"Timed out after {c.AttemptCount} attempts (timeout {opts.InProgressTimeoutSeconds}s).";
+                    command.Status = "Failed";
+                    command.NextAttemptUtc = null;
+                    command.LastError =
+                        $"Command timed out after {command.AttemptCount} attempt(s) " +
+                        $"(timeout threshold: {opts.InProgressTimeoutSeconds}s).";
                 }
                 else
                 {
-                    c.Status = "Pending";
-                    c.LastError = $"Timed out (timeout {opts.InProgressTimeoutSeconds}s). Requeued attempt {c.AttemptCount}/{c.MaxAttempts}.";
+                    var nextAttemptUtc = _retryBackoffService.GetNextAttemptUtc(command.AttemptCount, nowUtc);
+                    command.Status = "Pending";
+                    command.NextAttemptUtc = nextAttemptUtc;
+                    command.LastError =
+                        $"Recovered stale in-progress command. Requeued for retry at {nextAttemptUtc:O}.";
                 }
 
-                c.LockedUtc = null;
-                c.LockedByDeviceId = null;
+                // AttemptCount was already incremented when the command was claimed.
+                command.LockedUtc = null;
+                command.LockedByDeviceId = null;
             }
 
             if (expiredPending.Count == 0 && stuckInProgress.Count == 0)
             {
+                _logger.LogDebug("CommandTimeoutWorker sweep completed. No expired or stuck commands found.");
                 return;
             }
 
@@ -104,20 +129,29 @@ namespace RetailCentral.Api.Services
 
             if (expiredPending.Count > 0)
             {
-                _logger.LogWarning("Marked {Count} expired pending commands as Failed.", expiredPending.Count);
+                _logger.LogWarning(
+                    "Marked {Count} pending command(s) as Failed because they expired before pickup.",
+                    expiredPending.Count);
             }
 
             if (stuckInProgress.Count > 0)
             {
-                _logger.LogWarning("Reaped {Count} stuck in-progress commands.", stuckInProgress.Count);
+                var requeuedCount = stuckInProgress.Count(c => c.Status == "Pending");
+                var failedCount = stuckInProgress.Count(c => c.Status == "Failed");
+
+                _logger.LogWarning(
+                    "Recovered {Total} stale in-progress command(s). Requeued={Requeued}, Failed={Failed}.",
+                    stuckInProgress.Count,
+                    requeuedCount,
+                    failedCount);
             }
         }
-    }
 
-    public class CommandTimeoutOptions
-    {
-        public int InProgressTimeoutSeconds { get; set; } = 180; // 3 minutes
-        public int SweepSeconds { get; set; } = 60;              // run once per minute
-        public int MaxRowsPerSweep { get; set; } = 200;
+        public class CommandTimeoutOptions
+        {
+            public int InProgressTimeoutSeconds { get; set; } = 180; // 3 minutes
+            public int SweepSeconds { get; set; } = 60;              // run once per minute
+            public int MaxRowsPerSweep { get; set; } = 200;
+        }
     }
 }

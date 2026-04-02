@@ -24,7 +24,7 @@
         <h3>Group Details</h3>
         <div class="kv-grid">
             <div class="kv-item"><span class="kv-label">Name</span><span class="kv-value">@Model.GroupName</span></div>
-            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span></div>
+            <div class="kv-item"><span class="kv-label">Created</span><span class="kv-value">@Model.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span></div>
             <div class="kv-item"><span class="kv-label">Description</span><span class="kv-value">@(string.IsNullOrWhiteSpace(Model.Description) ? "-" : Model.Description)</span></div>
             <div class="kv-item"><span class="kv-label">Members</span><span class="kv-value">@Model.Members.Count</span></div>
         </div>

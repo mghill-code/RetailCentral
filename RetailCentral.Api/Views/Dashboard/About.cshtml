@@ -98,7 +98,7 @@
                     </tr>
                     <tr>
                         <th>Current UTC</th>
-                        <td>@DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>@DateTime.UtcNow.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                     </tr>
                 }
             </tbody>

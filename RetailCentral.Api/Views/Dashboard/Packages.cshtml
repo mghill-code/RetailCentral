@@ -51,7 +51,7 @@
                         <td>@pkg.Id</td>
                         <td>
                             <div><strong>@pkg.Name</strong></div>
-                            <div class="subtle">Created @pkg.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</div>
+                            <div class="subtle">Created @pkg.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
                         </td>
                         <td>@(string.IsNullOrWhiteSpace(pkg.Version) ? "-" : pkg.Version)</td>
                         <td>@pkg.PackageType</td>

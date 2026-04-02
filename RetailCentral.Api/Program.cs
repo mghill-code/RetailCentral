@@ -12,7 +12,7 @@ using RetailCentral.Api.Services.Deployments;
 using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
-
+using static RetailCentral.Api.Services.CommandTimeoutWorker;
 
 /*
 ===============================================================================
@@ -53,7 +53,7 @@ Directory.CreateDirectory(logDir);
 Console.WriteLine($"RetailCommand API log directory: {logDir}");
 
 // -----------------------------------------------------------------------------
-// STEP 2: Configure Serilog
+// STEP 2: Configure Serilog logging
 // -----------------------------------------------------------------------------
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -85,20 +85,20 @@ try
     builder.Host.UseSerilog();
 
     // -------------------------------------------------------------------------
-    // CORE SERVICES
+    // CORE SERVICES (Business logic / domain services)
     // -------------------------------------------------------------------------
     builder.Services.AddScoped<IDeploymentService, DeploymentService>();
     builder.Services.AddScoped<AuditService>();
     builder.Services.AddScoped<CommandValidationService>();
 
     // -------------------------------------------------------------------------
-    // MVC + RAZOR
+    // MVC + RAZOR (Dashboard UI + API controllers)
     // -------------------------------------------------------------------------
     builder.Services.AddControllersWithViews();
     builder.Services.AddEndpointsApiExplorer();
 
     // -------------------------------------------------------------------------
-    // SWAGGER
+    // SWAGGER (API documentation)
     // -------------------------------------------------------------------------
     builder.Services.AddSwaggerGen(options =>
     {
@@ -111,16 +111,7 @@ try
     });
 
     // -------------------------------------------------------------------------
-    // BACKGROUND WORKERS
-    // -------------------------------------------------------------------------
-    builder.Services.AddHostedService<DataRetentionService>();
-    builder.Services.AddHostedService<SoftwareInventoryScheduleWorker>();
-    builder.Services.AddHostedService<ProcessStatusScheduleWorker>();
-    builder.Services.AddHostedService<CommandTimeoutWorker>();
-    builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();
-
-    // -------------------------------------------------------------------------
-    // DATABASE
+    // DATABASE (EF Core - SQL Server)
     // -------------------------------------------------------------------------
     builder.Services.AddDbContext<RetailCentralDbContext>(options =>
     {
@@ -128,7 +119,7 @@ try
     });
 
     // -------------------------------------------------------------------------
-    // RATE LIMITING
+    // RATE LIMITING (Agent protection - prevents abuse / flooding)
     // -------------------------------------------------------------------------
     builder.Services.AddRateLimiter(options =>
     {
@@ -152,12 +143,42 @@ try
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });
 
-    // AGENT POLLING HINTS
+    // -------------------------------------------------------------------------
+    // CONFIGURATION BINDING (Strongly-typed settings)
+    // -------------------------------------------------------------------------
+
+    // Controls command timeout + stale recovery behavior
+    builder.Services.Configure<CommandTimeoutOptions>(
+        builder.Configuration.GetSection("CommandTimeout"));
+
+    // Controls retry delays (exponential backoff, etc.)
+    builder.Services.Configure<RetryBackoffOptions>(
+        builder.Configuration.GetSection("RetryBackoff"));
+
+    // Controls how often agents poll the server
     builder.Services.Configure<AgentPollingHintsOptions>(
-    builder.Configuration.GetSection("AgentPollingHints"));
+        builder.Configuration.GetSection("AgentPollingHints"));
+
+    // Controls which commands are allowed and how they are validated
+    builder.Services.Configure<CommandPolicyOptions>(
+        builder.Configuration.GetSection(CommandPolicyOptions.SectionName));
 
     // -------------------------------------------------------------------------
-    // DATA PROTECTION
+    // RETRY BACKOFF SERVICE (used by timeout worker + retry logic)
+    // -------------------------------------------------------------------------
+    builder.Services.AddSingleton<RetryBackoffService>();
+
+    // -------------------------------------------------------------------------
+    // BACKGROUND WORKERS (critical system automation)
+    // -------------------------------------------------------------------------
+    builder.Services.AddHostedService<DataRetentionService>();              // DB cleanup (logs, heartbeats)
+    builder.Services.AddHostedService<SoftwareInventoryScheduleWorker>();   // Software inventory refresh
+    builder.Services.AddHostedService<ProcessStatusScheduleWorker>();       // Process monitoring
+    builder.Services.AddHostedService<CommandTimeoutWorker>();              // Retry + timeout recovery
+    builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();    // Hardware inventory refresh
+
+    // -------------------------------------------------------------------------
+    // DATA PROTECTION (used for securing secrets like DeviceSecret)
     // -------------------------------------------------------------------------
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "dp_keys")));
@@ -165,18 +186,7 @@ try
     builder.Services.AddSingleton<DeviceSecretProtection>();
 
     // -------------------------------------------------------------------------
-    // CONFIGURATION BINDING
-    // -------------------------------------------------------------------------
-    builder.Services.Configure<CommandTimeoutOptions>(
-        builder.Configuration.GetSection("CommandTimeout"));
-
-    // Server-side command creation policy.
-    // IMPORTANT: CommandPolicy must be a TOP-LEVEL section in appsettings.json.
-    builder.Services.Configure<CommandPolicyOptions>(
-        builder.Configuration.GetSection(CommandPolicyOptions.SectionName));
-
-    // -------------------------------------------------------------------------
-    // AUTHENTICATION
+    // AUTHENTICATION (Windows / Active Directory)
     // -------------------------------------------------------------------------
     builder.Services
         .AddAuthentication(NegotiateDefaults.AuthenticationScheme)
@@ -185,39 +195,39 @@ try
     builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
 
     // -------------------------------------------------------------------------
-    // AUTHORIZATION
+    // AUTHORIZATION (RBAC via AD groups)
     // -------------------------------------------------------------------------
     var authSection = builder.Configuration.GetSection("Security:Authorization");
 
-    var dashboardViewerGroups = authSection.GetSection("DashboardViewerGroups").Get<string[]>() ?? throw new InvalidOperationException("Missing DashboardViewerGroups");
-    var dashboardHelpdeskGroups = authSection.GetSection("DashboardHelpdeskGroups").Get<string[]>() ?? throw new InvalidOperationException("Missing DashboardHelpdeskGroups");
-    var dashboardEngineerGroups = authSection.GetSection("DashboardEngineerGroups").Get<string[]>() ?? throw new InvalidOperationException("Missing DashboardEngineerGroups");
-    var dashboardAdminGroups = authSection.GetSection("DashboardAdminGroups").Get<string[]>() ?? throw new InvalidOperationException("Missing DashboardAdminGroups");
+    var viewer = authSection.GetSection("DashboardViewerGroups").Get<string[]>() ?? Array.Empty<string>();
+    var helpdesk = authSection.GetSection("DashboardHelpdeskGroups").Get<string[]>() ?? Array.Empty<string>();
+    var engineer = authSection.GetSection("DashboardEngineerGroups").Get<string[]>() ?? Array.Empty<string>();
+    var admin = authSection.GetSection("DashboardAdminGroups").Get<string[]>() ?? Array.Empty<string>();
 
     builder.Services.AddAuthorization(options =>
     {
-        options.AddPolicy("DashboardViewer", policy =>
+        options.AddPolicy("DashboardViewer", p =>
         {
-            policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, dashboardViewerGroups));
+            p.RequireAuthenticatedUser();
+            p.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, viewer));
         });
 
-        options.AddPolicy("DashboardHelpdesk", policy =>
+        options.AddPolicy("DashboardHelpdesk", p =>
         {
-            policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, dashboardHelpdeskGroups));
+            p.RequireAuthenticatedUser();
+            p.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, helpdesk));
         });
 
-        options.AddPolicy("DashboardEngineer", policy =>
+        options.AddPolicy("DashboardEngineer", p =>
         {
-            policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, dashboardEngineerGroups));
+            p.RequireAuthenticatedUser();
+            p.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, engineer));
         });
 
-        options.AddPolicy("DashboardAdmin", policy =>
+        options.AddPolicy("DashboardAdmin", p =>
         {
-            policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, dashboardAdminGroups));
+            p.RequireAuthenticatedUser();
+            p.RequireAssertion(ctx => IsUserInAnyGroup(ctx.User, admin));
         });
     });
 
@@ -225,7 +235,7 @@ try
     builder.Services.AddHealthChecks();
 
     // -------------------------------------------------------------------------
-    // BUILD APP
+    // BUILD APPLICATION
     // -------------------------------------------------------------------------
     var app = builder.Build();
 
@@ -238,15 +248,22 @@ try
         app.UseSwaggerUI();
     }
 
+    // Serves static files (CSS, JS, images for dashboard)
     app.UseStaticFiles();
+
+    // HMAC auth for agent endpoints ONLY
     app.UseMiddleware<HmacAuthMiddleware>();
+
+    // Apply rate limiting
     app.UseRateLimiter();
 
+    // Force HTTPS in production
     if (!app.Environment.IsDevelopment())
     {
         app.UseHttpsRedirection();
     }
 
+    // Authentication + Authorization
     app.UseAuthentication();
     app.UseAuthorization();
 
@@ -262,13 +279,13 @@ try
     app.MapHealthChecks("/health");
 
     // -------------------------------------------------------------------------
-    // START APP
+    // START APPLICATION
     // -------------------------------------------------------------------------
     app.Run();
 }
 catch (HostAbortedException)
 {
-    // Expected during some EF design-time operations.
+    // Expected during EF migrations / design-time
 }
 catch (Exception ex)
 {

@@ -54,6 +54,8 @@ namespace RetailCentral.Api.Data
                 entity.HasIndex(c => c.StoreNumber);
                 entity.HasIndex(c => c.ExpiresUtc);
                 entity.HasIndex(c => c.LockedUtc);
+                entity.HasIndex(c => c.NextAttemptUtc);
+                entity.HasIndex(c => new { c.Status, c.NextAttemptUtc });
 
                 entity.Property(c => c.Scope)
                     .HasMaxLength(50)

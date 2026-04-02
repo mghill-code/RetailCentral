@@ -140,7 +140,7 @@
                             }
                         </td>
                         <td>@(string.IsNullOrWhiteSpace(d.AgentVersion) ? "-" : d.AgentVersion)</td>
-                        <td>@(d.LastSeenUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</td>
+                        <td>@(d.LastSeenUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</td>
                         <td>
                             <div class="action-row">
                                 <a class="btn btn-outline" href="/Dashboard/Device/@d.DeviceId">Open</a>

@@ -405,7 +405,7 @@
                         <td data-col="26">@(r.VerifoneIP ?? "")</td>
                         <td data-col="27">@(r.ScannerName ?? "")</td>
                         <td data-col="28">@(r.ScannerSerialNumber ?? "")</td>
-                        <td data-col="29">@(r.LastHeartbeatUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
+                        <td data-col="29">@(r.LastHeartbeatUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "")</td>
                     </tr>
                 }
             </tbody>

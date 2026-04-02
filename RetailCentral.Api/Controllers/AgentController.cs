@@ -22,6 +22,8 @@ namespace RetailCentral.Api.Controllers
         private readonly AuditService _auditService;
         private readonly AgentPollingHintsOptions _pollingHints;
         private readonly ILogger<AgentController> _logger;
+        private readonly RetryBackoffService _retryBackoffService;
+
 
         public AgentController(
             RetailCentralDbContext db,
@@ -29,6 +31,7 @@ namespace RetailCentral.Api.Controllers
             IConfiguration config,
             AuditService auditService,
             IOptions<AgentPollingHintsOptions> pollingHints,
+            RetryBackoffService retryBackoffService,
             ILogger<AgentController> logger)
         {
             _db = db;
@@ -36,6 +39,7 @@ namespace RetailCentral.Api.Controllers
             _config = config;
             _auditService = auditService;
             _pollingHints = pollingHints.Value;
+            _retryBackoffService = retryBackoffService;
             _logger = logger;
         }
 
@@ -63,34 +67,37 @@ namespace RetailCentral.Api.Controllers
             var deviceId = device.DeviceId;
 
             var sql = @"
-;WITH cte AS (
-  SELECT TOP (@max) *
-  FROM Commands WITH (UPDLOCK, READPAST, ROWLOCK)
-  WHERE Status = 'Pending'
-    AND (ExpiresUtc IS NULL OR ExpiresUtc > SYSUTCDATETIME())
-    AND (
-      DeviceId = @deviceId
-      OR (DeviceId IS NULL AND StoreNumber = @storeNumber)
-      OR (
-          DeviceId IS NULL
-          AND StoreNumber IS NULL
-          AND GroupName IS NOT NULL
-          AND GroupName IN (
-              SELECT g.GroupName
-              FROM DeviceGroupMembers m
-              INNER JOIN DeviceGroups g ON g.DeviceGroupId = m.DeviceGroupId
-              WHERE m.DeviceId = @deviceId
-          )
-      )
-    )
-  ORDER BY Priority ASC, CreatedUtc ASC
-)
-UPDATE cte
-SET Status = 'InProgress',
-    LockedByDeviceId = @deviceId,
-    LockedUtc = SYSUTCDATETIME()
-OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, inserted.CreatedUtc, inserted.ExpiresUtc;
-";
+            ;WITH cte AS (
+              SELECT TOP (@max) *
+              FROM Commands WITH (UPDLOCK, READPAST, ROWLOCK)
+              WHERE Status = 'Pending'
+                AND (ExpiresUtc IS NULL OR ExpiresUtc > SYSUTCDATETIME())
+                AND (NextAttemptUtc IS NULL OR NextAttemptUtc <= SYSUTCDATETIME())
+                AND (
+                  DeviceId = @deviceId
+                  OR (DeviceId IS NULL AND StoreNumber = @storeNumber)
+                  OR (
+                      DeviceId IS NULL
+                      AND StoreNumber IS NULL
+                      AND GroupName IS NOT NULL
+                      AND GroupName IN (
+                          SELECT g.GroupName
+                          FROM DeviceGroupMembers m
+                          INNER JOIN DeviceGroups g ON g.DeviceGroupId = m.DeviceGroupId
+                          WHERE m.DeviceId = @deviceId
+                      )
+                  )
+                )
+              ORDER BY Priority ASC, CreatedUtc ASC
+            )
+            UPDATE cte
+            SET Status = 'InProgress',
+                LockedByDeviceId = @deviceId,
+                LockedUtc = SYSUTCDATETIME(),
+                AttemptCount = ISNULL(AttemptCount, 0) + 1,
+                LastAttemptUtc = SYSUTCDATETIME()
+            OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, inserted.CreatedUtc, inserted.ExpiresUtc;
+            ";
 
             var results = new List<CommandDto>();
             var conn = _db.Database.GetDbConnection();
@@ -113,7 +120,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
 
                 var pStore = cmd.CreateParameter();
                 pStore.ParameterName = "@storeNumber";
-                pStore.Value = device.StoreNumber;
+                pStore.Value = device.StoreNumber ?? (object)DBNull.Value;
                 cmd.Parameters.Add(pStore);
 
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -136,8 +143,8 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             }
 
             var pollAfterSeconds = results.Count > 0
-         ? _pollingHints.BusyPollSeconds
-         : _pollingHints.IdlePollSeconds;
+                ? _pollingHints.BusyPollSeconds
+                : _pollingHints.IdlePollSeconds;
 
             _logger.LogInformation(
                 "Returning {CommandCount} pending commands for DeviceId={DeviceId} with PollAfterSeconds={PollAfterSeconds}",
@@ -320,30 +327,63 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
             if (cmd == null)
                 return NotFound("Command not found.");
 
+            var now = DateTime.UtcNow;
+
+            // AttemptCount is incremented when a command is claimed in GetPending.
+            // Do not increment it again here or retry counts will be doubled.
+            cmd.LockedUtc = null;
+            cmd.LockedByDeviceId = null;
+
             var existingResult = await _db.CommandResults
                 .FirstOrDefaultAsync(r => r.CommandId == commandId);
 
-            if (existingResult != null)
+            if (existingResult == null)
             {
-                return Ok(new { serverUtc = DateTime.UtcNow, note = "Result already recorded" });
+                _db.CommandResults.Add(new CommandResult
+                {
+                    CommandId = commandId,
+                    DeviceId = device.DeviceId,
+                    Status = req.Status,
+                    ExitCode = req.ExitCode,
+                    StdOut = req.StdOut,
+                    StdErr = req.StdErr,
+                    StartedUtc = req.StartedUtc,
+                    FinishedUtc = req.FinishedUtc
+                });
+            }
+            else
+            {
+                existingResult.DeviceId = device.DeviceId;
+                existingResult.Status = req.Status;
+                existingResult.ExitCode = req.ExitCode;
+                existingResult.StdOut = req.StdOut;
+                existingResult.StdErr = req.StdErr;
+                existingResult.StartedUtc = req.StartedUtc;
+                existingResult.FinishedUtc = req.FinishedUtc;
             }
 
-            _db.CommandResults.Add(new CommandResult
+            if (string.Equals(req.Status, "Failed", StringComparison.OrdinalIgnoreCase))
             {
-                CommandId = commandId,
-                DeviceId = device.DeviceId,
-                Status = req.Status,
-                ExitCode = req.ExitCode,
-                StdOut = req.StdOut,
-                StdErr = req.StdErr,
-                StartedUtc = req.StartedUtc,
-                FinishedUtc = req.FinishedUtc
-            });
-
-            cmd.Status = req.Status;
-            cmd.LastError = string.Equals(req.Status, "Failed", StringComparison.OrdinalIgnoreCase)
-                ? (req.StdErr ?? req.StdOut)
-                : null;
+                if (cmd.AttemptCount < cmd.MaxAttempts)
+                {
+                    var nextAttemptUtc = _retryBackoffService.GetNextAttemptUtc(cmd.AttemptCount, now);
+                    cmd.Status = "Pending";
+                    cmd.NextAttemptUtc = nextAttemptUtc;
+                    cmd.LastError = $"Attempt {cmd.AttemptCount} failed. Retrying at {nextAttemptUtc:O}.";
+                }
+                else
+                {
+                    cmd.Status = "Failed";
+                    cmd.NextAttemptUtc = null;
+                    cmd.LastError = req.StdErr ?? req.StdOut ?? "Command failed";
+                }
+            }
+            else
+            {
+                cmd.Status = req.Status;
+                cmd.NextAttemptUtc = null;
+                cmd.LastError = null;
+            }
 
             await _db.SaveChangesAsync();
 
@@ -643,6 +683,7 @@ OUTPUT inserted.CommandId, inserted.Type, inserted.Scope, inserted.PayloadJson, 
                 CreatedUtc = DateTime.UtcNow,
                 AttemptCount = 0,
                 MaxAttempts = 3,
+                NextAttemptUtc = DateTime.UtcNow,
                 IssuedBy = issuedBy,
                 IssuedUtc = DateTime.UtcNow
             });
