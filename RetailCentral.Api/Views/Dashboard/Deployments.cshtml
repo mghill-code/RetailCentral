@@ -23,6 +23,9 @@
         6 => "Cancelled",
         _ => $"Status {status}"
     };
+
+    bool CanEditDeployment(int status) => status != 4 && status != 6;
+    bool CanCancelDeployment(int status) => status != 4 && status != 6;
 }
 
 <div class="page-header">
@@ -113,17 +116,36 @@
                             </td>
                             <td>@dep.TargetValue</td>
                             <td>@dep.ExecuteMode</td>
-                            <td><span class="badge @DeploymentStatusBadge(dep.Status)">@DeploymentStatusLabel(dep.Status)</span></td>
+                            <td>
+                                <span class="badge @DeploymentStatusBadge(dep.Status)">
+                                    @DeploymentStatusLabel(dep.Status)
+                                </span>
+                            </td>
                             <td>@dep.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>
                                 <div class="action-row">
                                     <a class="btn btn-outline" href="/Dashboard/DeploymentDetail/@dep.Id">View</a>
-                                    <a class="btn btn-secondary" href="/Dashboard/EditDeployment/@dep.Id">Edit</a>
-                                    <form method="post" action="/Dashboard/CancelDeployment/@dep.Id" class="inline" onsubmit="return confirm('Cancel deployment @dep.Id?');">
-                                        @Html.AntiForgeryToken()
-                                        <button type="submit" class="btn btn-warning">Cancel</button>
-                                    </form>
-                                    <form method="post" action="/Dashboard/DeleteDeployment/@dep.Id" class="inline" onsubmit="return confirm('Hard delete deployment @dep.Id? This removes its command history links.');">
+
+                                    @if (CanEditDeployment(dep.Status))
+                                    {
+                                        <a class="btn btn-secondary" href="/Dashboard/EditDeployment/@dep.Id">Edit</a>
+                                    }
+
+                                    @if (CanCancelDeployment(dep.Status))
+                                    {
+                                        <form method="post"
+                                              action="/Dashboard/CancelDeployment/@dep.Id"
+                                              class="inline"
+                                              onsubmit="return confirm('Cancel deployment @dep.Id?');">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-warning">Cancel</button>
+                                        </form>
+                                    }
+
+                                    <form method="post"
+                                          action="/Dashboard/DeleteDeployment/@dep.Id"
+                                          class="inline"
+                                          onsubmit="return confirm('Hard delete deployment @dep.Id? This removes its command history links.');">
                                         @Html.AntiForgeryToken()
                                         <button type="submit" class="btn btn-danger">Delete</button>
                                     </form>

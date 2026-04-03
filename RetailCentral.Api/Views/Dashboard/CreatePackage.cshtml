@@ -56,7 +56,7 @@
 
                 <div class="col-md-3">
                     <label asp-for="PackageType" class="form-label fw-semibold">Package Type</label>
-                    <select asp-for="PackageType" class="form-select dashboard-select">
+                    <select asp-for="PackageType" class="form-select dashboard-select" id="packageTypeSelect">
                         <option value="">-- Select Package Type --</option>
                         @foreach (var item in Model.PackageTypes)
                         {
@@ -111,8 +111,7 @@
                     <input asp-for="UploadFile" type="file" class="form-control" />
                     <span asp-validation-for="UploadFile" class="text-danger"></span>
                     <div class="form-text">
-                        Supported types: <code>.msi</code>, <code>.exe</code>, <code>.ps1</code>,
-                        <code>.cmd</code>, <code>.bat</code>, <code>.zip</code>, <code>.msu</code>
+                        Supported types: <code>.msi</code>, <code>.exe</code>, <code>.zip</code>
                     </div>
                 </div>
 
@@ -137,10 +136,10 @@
 
                 <div class="col-md-8">
                     <label asp-for="StoragePath" class="form-label fw-semibold">Storage Path / Download URL</label>
-                    <input asp-for="StoragePath" class="form-control" placeholder="Example: https://localhost:7149/distro/POS_3_4_2.msi" />
+                    <input asp-for="StoragePath" class="form-control" placeholder="Example: https://yourserver.company.com/distro/POS_3_4_2.msi" />
                     <span asp-validation-for="StoragePath" class="text-danger"></span>
                     <div class="form-text">
-                        Auto-generated for distro uploads. For manual hosting, enter the full path or URL here.
+                        Auto-generated for distro uploads. For manual hosting, enter the full HTTPS path or URL here.
                     </div>
                 </div>
 
@@ -163,25 +162,38 @@
 
         <div>
             <h3>Execution Settings</h3>
+
+            <div id="executionAutoInfo" class="alert alert-info" style="display:none;">
+                <strong>Automatic execution profile:</strong>
+                <span id="executionAutoInfoText"></span>
+            </div>
+
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-4 execution-command-group">
                     <label asp-for="ExecutionCommand" class="form-label fw-semibold">Execution Command</label>
                     <input asp-for="ExecutionCommand" class="form-control" placeholder="Example: msiexec.exe" />
                     <span asp-validation-for="ExecutionCommand" class="text-danger"></span>
-                    <div class="form-text">Leave blank to allow server-side defaults based on package type.</div>
+                    <div class="form-text">
+                        For MSI and EXE packages this will be assigned automatically by the server.
+                    </div>
                 </div>
 
-                <div class="col-md-8">
+                <div class="col-md-8 execution-arguments-group">
                     <label asp-for="ExecutionArguments" class="form-label fw-semibold">Execution Arguments</label>
-                    <input asp-for="ExecutionArguments" class="form-control" placeholder='Example: /i {file} /qb /norestart' />
+                    <input asp-for="ExecutionArguments" class="form-control" placeholder='Example: /i {file} /qn /norestart or /S' />
                     <span asp-validation-for="ExecutionArguments" class="text-danger"></span>
-                    <div class="form-text">Use <code>{file}</code> to insert the downloaded file path.</div>
+                    <div class="form-text" id="executionArgumentsHelp">
+                        Use <code>{file}</code> to insert the downloaded file path.
+                    </div>
                 </div>
 
-                <div class="col-md-8">
+                <div class="col-md-8 working-directory-group">
                     <label asp-for="WorkingDirectory" class="form-label fw-semibold">Working Directory</label>
                     <input asp-for="WorkingDirectory" class="form-control" placeholder='Example: C:\RetailCentral\Agent\staging\6' />
                     <span asp-validation-for="WorkingDirectory" class="text-danger"></span>
+                    <div class="form-text">
+                        For MSI and EXE packages, the agent uses the package staging folder automatically.
+                    </div>
                 </div>
 
                 <div class="col-md-2">
@@ -216,18 +228,18 @@
 
         <div class="grid-2">
             <div class="alert alert-info" style="margin-bottom:0;">
-                <strong>Recommended script package</strong><br />
-                Package Type = <code>CMD</code><br />
-                Execution Command = <code>cmd.exe</code><br />
-                Execution Arguments = <code>/c {file}</code><br />
-                Timeout = <code>1800</code>
+                <strong>Recommended EXE package</strong><br />
+                Package Type = <code>EXE</code><br />
+                Execution Command = <code>Automatic</code><br />
+                Execution Arguments = <code>/S</code>, <code>/quiet</code>, or vendor-provided silent switches<br />
+                Working Directory = <code>Automatic</code>
             </div>
 
             <div class="alert alert-secondary" style="margin-bottom:0;">
                 <strong>Recommended MSI package</strong><br />
                 Package Type = <code>MSI</code><br />
-                Execution Command = <code>msiexec.exe</code><br />
-                Execution Arguments = <code>/i {file} /qb /norestart</code><br />
+                Execution Command = <code>Automatic (MsiexecInstall)</code><br />
+                Execution Arguments = <code>Automatic: /i {file} /qn /norestart</code><br />
                 Reboot Behavior = <code>None</code> or <code>Allow</code>
             </div>
         </div>
@@ -249,3 +261,71 @@
         }
     </div>
 </form>
+
+@section Scripts {
+    <script>
+        (function () {
+            const packageTypeSelect = document.getElementById("packageTypeSelect");
+            const executionCommandGroup = document.querySelector(".execution-command-group");
+            const workingDirectoryGroup = document.querySelector(".working-directory-group");
+            const executionArgumentsInput = document.getElementById("ExecutionArguments");
+            const executionArgumentsHelp = document.getElementById("executionArgumentsHelp");
+            const executionAutoInfo = document.getElementById("executionAutoInfo");
+            const executionAutoInfoText = document.getElementById("executionAutoInfoText");
+
+            function setVisibility(element, show) {
+                if (!element) return;
+                element.style.display = show ? "" : "none";
+            }
+
+            function updateExecutionUi() {
+                if (!packageTypeSelect) return;
+
+                const packageType = packageTypeSelect.value;
+
+                // 1 = MSI, 2 = EXE
+                if (packageType === "1") {
+                    setVisibility(executionCommandGroup, false);
+                    setVisibility(workingDirectoryGroup, false);
+                    setVisibility(executionAutoInfo, true);
+
+                    executionAutoInfoText.textContent =
+                        "MSI packages use the approved MsiexecInstall profile and the agent automatically stages the installer path.";
+
+                    if (executionArgumentsHelp) {
+                        executionArgumentsHelp.innerHTML =
+                            'MSI arguments are supplied automatically by the server: <code>/i {file} /qn /norestart</code>.';
+                    }
+                }
+                else if (packageType === "2") {
+                    setVisibility(executionCommandGroup, false);
+                    setVisibility(workingDirectoryGroup, false);
+                    setVisibility(executionAutoInfo, true);
+
+                    executionAutoInfoText.textContent =
+                        "EXE packages run directly from the secure package staging folder. Enter only the silent install switches below.";
+
+                    if (executionArgumentsHelp) {
+                        executionArgumentsHelp.innerHTML =
+                            'Enter only silent install switches such as <code>/S</code> or <code>/quiet</code>. Do not enter the executable name or path.';
+                    }
+                }
+                else {
+                    setVisibility(executionCommandGroup, true);
+                    setVisibility(workingDirectoryGroup, true);
+                    setVisibility(executionAutoInfo, false);
+
+                    if (executionArgumentsHelp) {
+                        executionArgumentsHelp.innerHTML =
+                            'Use <code>{file}</code> to insert the downloaded file path.';
+                    }
+                }
+            }
+
+            if (packageTypeSelect) {
+                packageTypeSelect.addEventListener("change", updateExecutionUi);
+                updateExecutionUi();
+            }
+        })();
+    </script>
+}

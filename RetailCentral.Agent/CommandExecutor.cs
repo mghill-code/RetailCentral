@@ -473,7 +473,10 @@ public sealed class CommandExecutor
                         var installArguments = (payload.InstallArguments ?? "")
                             .Replace("{file}", $"\"{downloadedPath}\"");
 
-                        var resolvedInstallCommand = ResolveInstallCommand(payload.InstallCommand, installArguments);
+                        var resolvedInstallCommand = ResolvePackageInstallCommand(
+                            payload.InstallCommand,
+                            installArguments,
+                            downloadedPath);
 
                         var timeoutSeconds = payload.TimeoutSeconds > 0
                             ? Math.Min(payload.TimeoutSeconds, _executionOptions.MaxTimeoutSeconds)
@@ -780,6 +783,21 @@ public sealed class CommandExecutor
         );
     }
 
+    private (string FileName, string Arguments, string WorkingDirectory) ResolvePackageInstallCommand(
+    string installCommand,
+    string installArguments,
+    string downloadedPath)
+    {
+        var stagedDirectory = Path.GetDirectoryName(downloadedPath) ?? _downloadsOptions.StagingRootFolder;
+
+        if (string.Equals(installCommand, "__PACKAGE_EXE__", StringComparison.OrdinalIgnoreCase))
+        {
+            _policy.ValidateExecutionFromPath(downloadedPath);
+            return (downloadedPath, installArguments, stagedDirectory);
+        }
+
+        return ResolveInstallCommand(installCommand, installArguments);
+    }
     private (string FileName, string Arguments, string WorkingDirectory) ResolveInstallCommand(string installCommand, string installArguments)
     {
         if (Path.IsPathRooted(installCommand))

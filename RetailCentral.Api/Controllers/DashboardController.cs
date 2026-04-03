@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using RetailCentral.Api.Configuration;
 using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Data;
+using RetailCentral.Api.Data.Enums;
 using RetailCentral.Api.Models;
+using RetailCentral.Api.Models.Dashboard.Deployments;
 using RetailCentral.Api.Models.Deployments;
 using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
@@ -939,11 +941,13 @@ namespace RetailCentral.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> DeploymentDetail(int id, CancellationToken cancellationToken)
         {
-            var vm = await _deploymentService.GetDeploymentAsync(id, cancellationToken);
-            if (vm == null)
+            var response = await _deploymentService.GetDeploymentAsync(id, cancellationToken);
+            if (response == null)
             {
                 return NotFound();
             }
+
+            var vm = MapDeploymentDetailsViewModel(response);
 
             ViewData["DeploymentMessage"] = TempData["DeploymentMessage"]?.ToString();
             return View(vm);
@@ -956,6 +960,12 @@ namespace RetailCentral.Api.Controllers
             var deployment = await _deploymentService.GetDeploymentByIdAsync(id, cancellationToken);
             if (deployment == null)
                 return NotFound();
+
+            if (!IsEditableDeploymentStatus(deployment.Status))
+            {
+                TempData["DeploymentMessage"] = "Completed or cancelled deployments cannot be edited.";
+                return RedirectToAction(nameof(DeploymentDetail), new { id });
+            }
 
             var vm = new CreateDeploymentViewModel
             {
@@ -1044,6 +1054,43 @@ namespace RetailCentral.Api.Controllers
             return RedirectToAction(nameof(Deployments));
         }
 
+        private static DeploymentDetailsViewModel MapDeploymentDetailsViewModel(DeploymentDetailResponse response)
+        {
+            return new DeploymentDetailsViewModel
+            {
+                Id = response.DeploymentId,
+                PackageName = response.PackageName,
+                PackageVersion = response.PackageVersion,
+                TargetType = ((DeploymentTargetType)response.TargetType).ToString(),
+                TargetValue = response.TargetValue,
+                ExecuteMode = ((DeploymentExecuteMode)response.ExecuteMode).ToString(),
+                Status = ((DeploymentStatus)response.Status).ToString(),
+                CreatedUtc = response.CreatedUtc,
+
+                // These are not present on DeploymentDetailResponse today.
+                // Keep them null unless/until the service starts returning them.
+                CreatedBy = null,
+                Notes = null,
+
+                WindowStartLocal = response.WindowStartLocal,
+                WindowEndLocal = response.WindowEndLocal,
+
+                DeviceRows = response.Devices
+                    .Select(d => new DeploymentDeviceRowViewModel
+                    {
+                        DeviceId = d.DeviceId,
+                        StoreNumber = d.StoreNumber,
+                        Hostname = d.Hostname,
+                        Status = ((DeploymentDeviceStatus)d.Status).ToString(),
+                        DownloadStatus = d.DownloadStatus,
+                        ExecuteStatus = d.ExecuteStatus,
+                        ResultMessage = d.ResultMessage,
+                        ExitCode = d.ExitCode,
+                        LastHeartbeatUtc = d.LastHeartbeatUtc
+                    })
+                    .ToList()
+            };
+        }
         private static int Percentage(int count, int total)
         {
             if (total <= 0) return 0;
@@ -1145,6 +1192,11 @@ namespace RetailCentral.Api.Controllers
             };
         }
 
+        private static bool IsEditableDeploymentStatus(int status)
+        {
+            return status != (int)DeploymentStatus.Completed
+                && status != (int)DeploymentStatus.Cancelled;
+        }
         private static bool IsMemoryHealthy(string? memoryText)
         {
             if (string.IsNullOrWhiteSpace(memoryText))
@@ -3395,14 +3447,11 @@ namespace RetailCentral.Api.Controllers
             {
                 new SelectListItem { Value = "1", Text = "MSI" },
                 new SelectListItem { Value = "2", Text = "EXE" },
-                new SelectListItem { Value = "3", Text = "PowerShell" },
-                new SelectListItem { Value = "4", Text = "CMD" },
-                new SelectListItem { Value = "5", Text = "BAT" },
                 new SelectListItem { Value = "6", Text = "ZIP" },
                 new SelectListItem { Value = "99", Text = "Other" }
             };
 
-            model.RebootBehaviors = new List<SelectListItem>
+                    model.RebootBehaviors = new List<SelectListItem>
             {
                 new SelectListItem { Value = "0", Text = "None" },
                 new SelectListItem { Value = "1", Text = "Allow" },
@@ -3559,19 +3608,56 @@ namespace RetailCentral.Api.Controllers
                     model.Sha256 = distroResult.Sha256;
                 }
 
+                var normalizedFileName = string.IsNullOrWhiteSpace(model.FileName) ? "" : model.FileName.Trim();
+                var normalizedStoragePath = string.IsNullOrWhiteSpace(model.StoragePath) ? "" : model.StoragePath.Trim();
+                var normalizedSha256 = string.IsNullOrWhiteSpace(model.Sha256) ? "" : model.Sha256.Trim();
+
+                string? executionCommand;
+                string? executionArguments;
+                string? workingDirectory = null;
+
+                switch (model.PackageType)
+                {
+                    case 1: // MSI
+                        executionCommand = "MsiexecInstall";
+                        executionArguments = "/i {file} /qn /norestart";
+                        break;
+
+                    case 2: // EXE
+                        executionCommand = "__PACKAGE_EXE__";
+                        executionArguments = string.IsNullOrWhiteSpace(model.ExecutionArguments)
+                            ? null
+                            : model.ExecutionArguments.Trim();
+                        break;
+
+                    default:
+                        executionCommand = string.IsNullOrWhiteSpace(model.ExecutionCommand)
+                            ? null
+                            : model.ExecutionCommand.Trim();
+
+                        executionArguments = string.IsNullOrWhiteSpace(model.ExecutionArguments)
+                            ? null
+                            : model.ExecutionArguments.Trim();
+
+                        workingDirectory = string.IsNullOrWhiteSpace(model.WorkingDirectory)
+                            ? null
+                            : model.WorkingDirectory.Trim();
+                        break;
+                }
+
                 var request = new CreatePackageRequest
                 {
                     Name = model.Name.Trim(),
                     Version = model.Version?.Trim(),
                     Description = model.Description?.Trim(),
                     PackageType = model.PackageType,
-                    FileName = string.IsNullOrWhiteSpace(model.FileName) ? "" : model.FileName.Trim(),
-                    StoragePath = string.IsNullOrWhiteSpace(model.StoragePath) ? "" : model.StoragePath.Trim(),
-                    Sha256 = string.IsNullOrWhiteSpace(model.Sha256) ? "" : model.Sha256.Trim(),
+                    FileName = normalizedFileName,
+                    StoragePath = normalizedStoragePath,
+                    Sha256 = normalizedSha256,
                     FileSizeBytes = model.FileSizeBytes,
-                    ExecutionCommand = string.IsNullOrWhiteSpace(model.ExecutionCommand) ? null : model.ExecutionCommand.Trim(),
-                    ExecutionArguments = string.IsNullOrWhiteSpace(model.ExecutionArguments) ? null : model.ExecutionArguments.Trim(),
-                    WorkingDirectory = string.IsNullOrWhiteSpace(model.WorkingDirectory) ? null : model.WorkingDirectory.Trim(),
+                    ExecutionCommand = executionCommand,
+                    ExecutionArguments = executionArguments,
+                    WorkingDirectory = workingDirectory,
                     TimeoutSeconds = model.TimeoutSeconds,
                     RebootBehavior = model.RebootBehavior
                 };
@@ -3753,18 +3839,15 @@ namespace RetailCentral.Api.Controllers
         {
             var extension = Path.GetExtension(file.FileName);
             var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ".msi",
-                ".exe",
-                ".ps1",
-                ".cmd",
-                ".bat",
-                ".zip"
-            };
+        {
+            ".msi",
+            ".exe",
+            ".zip"
+        };
 
             if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
             {
-                return "Only .msi, .exe, .ps1, .cmd, .bat, and .zip files are supported for distro uploads.";
+                return "Only .msi, .exe, and .zip files are supported for distro uploads.";
             }
 
             return null;

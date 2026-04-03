@@ -2,6 +2,11 @@
 
 @{
     ViewData["Title"] = "Deployment Detail";
+
+    var hasFailedRows = Model.DeviceRows != null &&
+                    Model.DeviceRows.Any(r =>
+                        string.Equals(r.Status, "Failed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(r.Status, "Partial Failure", StringComparison.OrdinalIgnoreCase));
 }
 
 <div class="page-header">
@@ -21,6 +26,11 @@
         </a>
     </div>
 </div>
+
+@if (ViewData["DeploymentMessage"] is string deploymentMessage && !string.IsNullOrWhiteSpace(deploymentMessage))
+{
+    <div class="alert alert-success">@deploymentMessage</div>
+}
 
 <div class="row g-3">
     <div class="col-lg-5">
@@ -63,6 +73,33 @@
                         <div class="text-muted mt-1">@Model.Notes</div>
                     </div>
                 }
+
+                <hr />
+
+                <h6 class="mb-2">Retry Behavior</h6>
+                <div class="text-muted small mb-3">
+                    Editing a deployment or increasing retry count does not automatically rerun failed devices.
+                    Use <strong>Retry Failed Devices</strong> to requeue failed installs for this deployment.
+                </div>
+
+                @if (hasFailedRows)
+                {
+                    <form method="post"
+                          asp-action="RetryFailedDeploymentDevices"
+                          asp-route-id="@Model.Id"
+                          onsubmit="return confirm('Requeue failed deployment devices for deployment #@Model.Id?');">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-warning">
+                            Retry Failed Devices
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <div class="text-muted small">
+                        No failed device rows are currently eligible for retry.
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -72,31 +109,76 @@
             <div class="card-body">
                 <h5 class="card-title">Device Results</h5>
 
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle">
-                        <thead>
-                            <tr>
-                                <th>Device</th>
-                                <th>Status</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in Model.DeviceRows)
-                            {
-                                <tr>
-                                    <td>@row</td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
                 @if (Model.DeviceRows == null || Model.DeviceRows.Count == 0)
                 {
                     <div class="text-muted">No device rows were returned for this deployment.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.DeviceRows)
+                                {
+                                    var statusClass =
+                                    string.Equals(row.Status, "Succeeded", StringComparison.OrdinalIgnoreCase) ? "badge-online" :
+                                    string.Equals(row.Status, "Failed", StringComparison.OrdinalIgnoreCase) ? "badge-failed" :
+                                    string.Equals(row.Status, "Partial Failure", StringComparison.OrdinalIgnoreCase) ? "badge-warning" :
+                                    string.Equals(row.Status, "InProgress", StringComparison.OrdinalIgnoreCase) ? "badge-pending" :
+                                    "badge-secondary";
+
+                                    <tr>
+                                        <td>
+                                            <div class="fw-semibold">
+                                                @(string.IsNullOrWhiteSpace(row.Hostname) ? "(unknown device)" : row.Hostname)
+                                            </div>
+                                            <div class="text-muted small">
+                                                @if (!string.IsNullOrWhiteSpace(row.StoreNumber))
+                                                {
+                                                    <span>Store: @row.StoreNumber</span>
+                                                }
+                                                @if (row.DeviceId != Guid.Empty)
+                                                {
+                                                    <span> • DeviceId: @row.DeviceId</span>
+                                                }
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            <span class="badge @statusClass">@row.Status</span>
+                                        </td>
+
+                                        <td>
+                                            <div><strong>Download:</strong> @row.DownloadStatus</div>
+                                            <div><strong>Execute:</strong> @row.ExecuteStatus</div>
+
+                                            @if (row.ExitCode.HasValue)
+                                            {
+                                                <div><strong>Exit Code:</strong> @row.ExitCode</div>
+                                            }
+
+                                            @if (!string.IsNullOrWhiteSpace(row.ResultMessage))
+                                            {
+                                                <div><strong>Message:</strong> @row.ResultMessage</div>
+                                            }
+
+                                            @if (row.LastHeartbeatUtc.HasValue)
+                                            {
+                                                <div><strong>Last Heartbeat:</strong> @row.LastHeartbeatUtc.Value.ToLocalTime().ToString("g")</div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 }
             </div>
         </div>

@@ -81,164 +81,152 @@
     </div>
 </div>
 
-<div class="card">
-    <form method="get" class="inventory-filter-grid" id="inventoryFilterForm">
-        <div>
-            <label>Search</label>
-            <input id="search" type="text" name="search" value="@Model.Search" placeholder="Computer, serial, IP, MAC, model, store..." />
+<div class="card section-card">
+    <div class="register-filter-toolbar">
+        <div class="section-heading" style="margin-bottom:0;">
+            <h3>Controls</h3>
+            <p>Filters and visible columns are grouped together to keep the page compact.</p>
         </div>
 
-        <div>
-            <label>Store</label>
-            <select id="storeFilter" name="storeFilter">
-                <option value="">-- All --</option>
-                @foreach (var s in Model.AvailableStores)
-                {
-                    <option value="@s" selected="@(Model.StoreFilter == s)">@s</option>
+        <div class="register-toolbar-actions">
+            <button type="button"
+                    id="inventoryFilterToggle"
+                    class="btn btn-secondary filter-panel-toggle"
+                    aria-expanded="false"
+                    aria-controls="inventoryFilterPanel">
+                Show Filters
+            </button>
+
+            <button type="button"
+                    id="columnToggleButton"
+                    class="btn btn-secondary filter-panel-toggle"
+                    aria-expanded="false"
+                    aria-controls="columnTogglePanel">
+                Show Columns
+            </button>
+        </div>
+    </div>
+
+    <div id="inventoryFilterPanel" class="filter-panel-content">
+        <form method="get" class="inventory-filter-grid" id="inventoryFilterForm">
+            <div>
+                <label>Search</label>
+                <input id="search" type="text" name="search" value="@Model.Search" placeholder="Computer, serial, IP, MAC, model" />
+            </div>
+
+            <div>
+                <label>Store</label>
+                <select id="storeFilter" name="storeFilter">
+                    <option value="">-- All --</option>
+                    @foreach (var s in Model.AvailableStores)
+                    {
+                        <option value="@s" selected="@(Model.StoreFilter == s)">@s</option>
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label>State</label>
+                <select id="stateFilter" name="stateFilter">
+                    <option value="">-- All --</option>
+                    @foreach (var s in Model.AvailableStates)
+                    {
+                        <option value="@s" selected="@(Model.StateFilter == s)">@s</option>
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label>Manufacturer</label>
+                <input id="manufacturerFilter" type="text" name="manufacturerFilter" value="@Model.ManufacturerFilter" />
+            </div>
+
+            <div>
+                <label>Model</label>
+                <input id="modelFilter" type="text" name="modelFilter" value="@Model.ModelFilter" />
+            </div>
+
+            <div>
+                <label>Release Level</label>
+                <input id="releaseLevelFilter" type="text" name="releaseLevelFilter" value="@Model.ReleaseLevelFilter" />
+            </div>
+
+            <div>
+                <label>Release Applied</label>
+                <input id="releaseAppliedFilter" type="text" name="releaseAppliedFilter" value="@Model.ReleaseAppliedFilter" />
+            </div>
+
+            <div>
+                <label>Scanner Name</label>
+                <input id="scannerNameFilter" type="text" name="scannerNameFilter" value="@Model.ScannerNameFilter" />
+            </div>
+
+            <div>
+                <label>Verifone Model</label>
+                <input id="verifoneModelFilter" type="text" name="verifoneModelFilter" value="@Model.VerifoneModelFilter" />
+            </div>
+
+            <div>
+                <label>Online Status</label>
+                <select id="statusFilter" name="statusFilter">
+                    <option value="">-- All --</option>
+                    <option value="Online" selected="@(Model.StatusFilter == "Online")">Online</option>
+                    <option value="Offline" selected="@(Model.StatusFilter == "Offline")">Offline</option>
+                </select>
+            </div>
+
+            <input type="hidden" name="sortBy" value="@Model.SortBy" />
+            <input type="hidden" name="sortDir" value="@Model.SortDir" />
+
+            <div class="inventory-filter-actions">
+                <button type="submit" class="btn">Filter</button>
+                <a class="btn btn-secondary" href="/Dashboard/RegisterInventory">Clear</a>
+                <button type="button" class="btn btn-secondary" id="saveFiltersBtn">Save Filters</button>
+                <button type="button" class="btn btn-secondary" id="loadFiltersBtn">Load Saved</button>
+                <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear Saved</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="columnTogglePanel" class="filter-panel-content is-collapsed" style="margin-top:16px;">
+        <div class="section-heading" style="margin-bottom:10px;">
+            <h3>Visible Columns</h3>
+            <p>Choose which inventory fields appear in the table below.</p>
+        </div>
+
+        <details class="column-toggle-panel" open>
+            <summary><strong>Show / Hide Columns</strong></summary>
+            <div class="column-toggle-grid" id="columnToggleGrid">
+                @{
+                    var headers = new[]
+                    {
+                                "ComputerName","Health","Store","Register Number","IPAddress","MACAddress","Manufacturer","Model","SerialNumber",
+                                "Memory","Hard Drive Size","Hard Drive Free Space","StoreName","StoreAddress","StoreCity","StoreState",
+                                "StoreZipCode","Release Level","Release Applied","Domain","LastReboot","SystemBuildDate","OSVersion",
+                                "CPUArch","VerifoneModel","VerifoneIP","ScannerName","ScannerSerialNumber","Last Heartbeat"
+                                };
+
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        <label class="column-toggle-item">
+                            <input type="checkbox" class="column-toggle-checkbox" data-col-index="@(i + 1)" checked />
+                            <span>@headers[i]</span>
+                        </label>
+                    }
                 }
-            </select>
-        </div>
-
-        <div>
-            <label>State</label>
-            <select id="stateFilter" name="stateFilter">
-                <option value="">-- All --</option>
-                @foreach (var s in Model.AvailableStates)
-                {
-                    <option value="@s" selected="@(Model.StateFilter == s)">@s</option>
-                }
-            </select>
-        </div>
-
-        <div>
-            <label>Manufacturer</label>
-            <input id="manufacturerFilter" type="text" name="manufacturerFilter" value="@Model.ManufacturerFilter" />
-        </div>
-
-        <div>
-            <label>Model</label>
-            <input id="modelFilter" type="text" name="modelFilter" value="@Model.ModelFilter" />
-        </div>
-
-        <div>
-            <label>Release Level</label>
-            <input id="releaseLevelFilter" type="text" name="releaseLevelFilter" value="@Model.ReleaseLevelFilter" />
-        </div>
-
-        <div>
-            <label>Release Applied</label>
-            <input id="releaseAppliedFilter" type="text" name="releaseAppliedFilter" value="@Model.ReleaseAppliedFilter" />
-        </div>
-
-        <div>
-            <label>Scanner Name</label>
-            <input id="scannerNameFilter" type="text" name="scannerNameFilter" value="@Model.ScannerNameFilter" />
-        </div>
-
-        <div>
-            <label>Verifone Model</label>
-            <input id="verifoneModelFilter" type="text" name="verifoneModelFilter" value="@Model.VerifoneModelFilter" />
-        </div>
-
-        <div>
-            <label>Online Status</label>
-            <select id="statusFilter" name="statusFilter">
-                <option value="">-- All --</option>
-                <option value="Online" selected="@(Model.StatusFilter == "Online")">Online</option>
-                <option value="Offline" selected="@(Model.StatusFilter == "Offline")">Offline</option>
-            </select>
-        </div>
-
-        <input type="hidden" name="sortBy" value="@Model.SortBy" />
-        <input type="hidden" name="sortDir" value="@Model.SortDir" />
-
-        <div class="inventory-filter-actions">
-            <button type="submit" class="btn">Filter</button>
-            <a class="btn btn-secondary" href="/Dashboard/RegisterInventory">Clear</a>
-            <button type="button" class="btn btn-secondary" id="saveFiltersBtn">Save Filters</button>
-            <button type="button" class="btn btn-secondary" id="loadFiltersBtn">Load Saved</button>
-            <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear Saved</button>
-            <a class="btn" href="@BuildExportUrl()">Export CSV</a>
-        </div>
-    </form>
-</div>
-
-<div class="card">
-    <div class="section-heading">
-        <h3>Health Score Legend</h3>
-        <p>How the dashboard calculates inventory health and what each indicator means.</p>
+            </div>
+        </details>
     </div>
-
-    <div class="health-legend">
-        <div class="legend-section">
-            <strong>Score Calculation</strong>
-            <ul>
-                <li><b>Heartbeat healthy</b> (last 5 minutes) = +40</li>
-                <li><b>Disk space OK</b> (&gt;= 15% free) = +25</li>
-                <li><b>Memory OK</b> (&gt;= 4GB) = +15</li>
-                <li><b>No command failures in last 24h</b> = +10</li>
-                <li><b>Inventory refreshed in last 24h</b> = +10</li>
-            </ul>
-        </div>
-
-        <div class="legend-section">
-            <strong>Status Levels</strong>
-            <ul>
-                <li><span class="badge badge-online">Healthy</span> 90–100</li>
-                <li><span class="badge badge-pending">Warning</span> 70–89</li>
-                <li><span class="badge badge-failed">Critical</span> 0–69</li>
-            </ul>
-        </div>
-
-        <div class="legend-section">
-            <strong>Column Meanings</strong>
-            <ul>
-                <li><span class="health-ok">OK</span> = Passing check</li>
-                <li><span class="health-issue">Issue</span> = Problem detected</li>
-                <li><span class="health-stale">Stale</span> = Inventory older than 24h</li>
-            </ul>
-        </div>
-    </div>
-</div>
-
-<div class="card">
-    <div class="section-heading">
-        <h3>Visible Columns</h3>
-        <p>Choose which inventory fields appear in the table below.</p>
-    </div>
-
-    <div class="subtle" style="margin-bottom:10px;">
-        Rows: @Model.Rows.Count
-    </div>
-
-    <details class="column-toggle-panel">
-        <summary><strong>Show / Hide Columns</strong></summary>
-        <div class="column-toggle-grid" id="columnToggleGrid">
-            @{
-                var headers = new[]
-                {
-                    "ComputerName","Health","Store","Register Number","IPAddress","MACAddress","Manufacturer","Model","SerialNumber",
-                    "Memory","Hard Drive Size","Hard Drive Free Space","StoreName","StoreAddress","StoreCity","StoreState",
-                    "StoreZipCode","Release Level","Release Applied","Domain","LastReboot","SystemBuildDate","OSVersion",
-                    "CPUArch","VerifoneModel","VerifoneIP","ScannerName","ScannerSerialNumber","Last Heartbeat"
-                };
-
-                for (int i = 0; i < headers.Length; i++)
-                {
-                    <label class="column-toggle-item">
-                        <input type="checkbox" class="column-toggle-checkbox" data-col-index="@(i + 1)" checked />
-                        <span>@headers[i]</span>
-                    </label>
-                }
-            }
-        </div>
-    </details>
 </div>
 
 <div class="card">
     <div class="section-heading">
         <h3>Inventory Table</h3>
         <p>Click any sortable column heading to reorder the inventory list.</p>
+    </div>
+
+    <div class="subtle" style="margin-bottom:10px;">
+        Rows: @Model.Rows.Count
     </div>
 
     <div class="inventory-table-wrap">
@@ -338,17 +326,17 @@
                 @foreach (var r in Model.Rows)
                 {
                     var isOnline = r.LastHeartbeatUtc.HasValue &&
-                                   r.LastHeartbeatUtc.Value >= DateTime.UtcNow.AddMinutes(-5);
+                    r.LastHeartbeatUtc.Value >= DateTime.UtcNow.AddMinutes(-5);
 
                     var healthBadgeClass =
-                        r.HealthStatus == "Healthy" ? "badge-online" :
-                        r.HealthStatus == "Warning" ? "badge-pending" :
-                        "badge-failed";
+                    r.HealthStatus == "Healthy" ? "badge-online" :
+                    r.HealthStatus == "Warning" ? "badge-pending" :
+                    "badge-failed";
 
                     var barClass =
-                        r.HealthStatus == "Healthy" ? "success" :
-                        r.HealthStatus == "Warning" ? "pending" :
-                        "failed";
+                    r.HealthStatus == "Healthy" ? "success" :
+                    r.HealthStatus == "Warning" ? "pending" :
+                    "failed";
 
                     <tr>
                         <td data-col="1">
@@ -413,16 +401,63 @@
     </div>
 </div>
 
+<div class="card">
+    <details class="legend-panel">
+        <summary><strong>Health Score Legend</strong></summary>
+
+        <div class="section-heading" style="margin-top:14px;">
+            <p>How the dashboard calculates inventory health and what each indicator means.</p>
+        </div>
+
+        <div class="health-legend">
+            <div class="legend-section">
+                <strong>Score Calculation</strong>
+                <ul>
+                    <li><b>Heartbeat healthy</b> (last 5 minutes) = +40</li>
+                    <li><b>Disk space OK</b> (&gt;= 15% free) = +25</li>
+                    <li><b>Memory OK</b> (&gt;= 4GB) = +15</li>
+                    <li><b>No command failures in last 24h</b> = +10</li>
+                    <li><b>Inventory refreshed in last 24h</b> = +10</li>
+                </ul>
+            </div>
+
+            <div class="legend-section">
+                <strong>Status Levels</strong>
+                <ul>
+                    <li><span class="badge badge-online">Healthy</span> 90–100</li>
+                    <li><span class="badge badge-pending">Warning</span> 70–89</li>
+                    <li><span class="badge badge-failed">Critical</span> 0–69</li>
+                </ul>
+            </div>
+
+            <div class="legend-section">
+                <strong>Column Meanings</strong>
+                <ul>
+                    <li><span class="health-ok">OK</span> = Passing check</li>
+                    <li><span class="health-issue">Issue</span> = Problem detected</li>
+                    <li><span class="health-stale">Stale</span> = Inventory older than 24h</li>
+                </ul>
+            </div>
+        </div>
+    </details>
+</div>
+
 <script>
     (function () {
         const filterStorageKey = "registerInventory.savedFilters";
         const columnStorageKey = "registerInventory.visibleColumns";
+        const filterPanelStateKey = "registerInventory.filtersCollapsed";
+        const columnPanelStateKey = "registerInventory.columnsCollapsed";
 
         const form = document.getElementById("inventoryFilterForm");
         const saveFiltersBtn = document.getElementById("saveFiltersBtn");
         const loadFiltersBtn = document.getElementById("loadFiltersBtn");
         const clearFiltersBtn = document.getElementById("clearFiltersBtn");
         const checkboxes = document.querySelectorAll(".column-toggle-checkbox");
+        const filterPanel = document.getElementById("inventoryFilterPanel");
+        const filterToggle = document.getElementById("inventoryFilterToggle");
+        const columnPanel = document.getElementById("columnTogglePanel");
+        const columnToggleButton = document.getElementById("columnToggleButton");
 
         function getFilterState() {
             return {
@@ -518,6 +553,40 @@
                 persistColumnVisibility();
             });
         });
+
+        function applyPanelState(panel, button, collapsed, showText, hideText) {
+            if (!panel || !button) return;
+
+            panel.classList.toggle("is-collapsed", collapsed);
+            button.textContent = collapsed ? showText : hideText;
+            button.setAttribute("aria-expanded", (!collapsed).toString());
+        }
+
+        if (filterToggle && filterPanel) {
+            const savedCollapsed = localStorage.getItem(filterPanelStateKey);
+            const initialCollapsed = savedCollapsed === null ? true : savedCollapsed === "true";
+
+            applyPanelState(filterPanel, filterToggle, initialCollapsed, "Show Filters", "Hide Filters");
+
+            filterToggle.addEventListener("click", function () {
+                const collapsed = !filterPanel.classList.contains("is-collapsed");
+                localStorage.setItem(filterPanelStateKey, collapsed.toString());
+                applyPanelState(filterPanel, filterToggle, collapsed, "Show Filters", "Hide Filters");
+            });
+        }
+
+        if (columnToggleButton && columnPanel) {
+            const savedCollapsed = localStorage.getItem(columnPanelStateKey);
+            const initialCollapsed = savedCollapsed === null ? true : savedCollapsed === "true";
+
+            applyPanelState(columnPanel, columnToggleButton, initialCollapsed, "Show Columns", "Hide Columns");
+
+            columnToggleButton.addEventListener("click", function () {
+                const collapsed = !columnPanel.classList.contains("is-collapsed");
+                localStorage.setItem(columnPanelStateKey, collapsed.toString());
+                applyPanelState(columnPanel, columnToggleButton, collapsed, "Show Columns", "Hide Columns");
+            });
+        }
 
         applyColumnVisibility();
     })();
