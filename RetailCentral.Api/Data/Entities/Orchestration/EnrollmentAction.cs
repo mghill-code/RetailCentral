@@ -6,7 +6,7 @@ namespace RetailCentral.Api.Data.Entities.Orchestration
     {
         public long Id { get; set; }
 
-        public int? DeviceId { get; set; }
+        public Guid? DeviceId { get; set; }
         public int? AgentId { get; set; }
 
         public int? AssignedProfileId { get; set; }

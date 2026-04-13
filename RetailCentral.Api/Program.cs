@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using RetailCentral.Api.BackgroundServices;
 using RetailCentral.Api.Configuration;
 using RetailCentral.Api.Data;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
+using RetailCentral.Api.Services.Orchestration;
 using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
@@ -29,6 +31,7 @@ Responsibilities:
 - Configure EF Core
 - Bind configuration objects
 - Register validation and policy services
+- Register orchestration services and zero-touch provisioning support
 ===============================================================================
 */
 
@@ -38,7 +41,10 @@ Responsibilities:
 var preConfig = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true, reloadOnChange: true)
+    .AddJsonFile(
+        $"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json",
+        optional: true,
+        reloadOnChange: true)
     .AddEnvironmentVariables()
     .Build();
 
@@ -92,6 +98,20 @@ try
     builder.Services.AddScoped<CommandValidationService>();
 
     // -------------------------------------------------------------------------
+    // ORCHESTRATION SERVICES
+    // -------------------------------------------------------------------------
+    // These services turn the platform from simple command dispatch into a
+    // workflow/orchestration engine capable of:
+    // - multi-step task sequencing
+    // - run/step state tracking
+    // - zero-touch provisioning after enrollment
+    // - reusable templates and provisioning profiles
+    builder.Services.AddScoped<IOrchestrationEngine, OrchestrationEngine>();
+    builder.Services.AddScoped<IOrchestrationCommandFactory, OrchestrationCommandFactory>();
+    builder.Services.AddScoped<IProvisioningProfileResolver, ProvisioningProfileResolver>();
+    builder.Services.AddScoped<IEnrollmentOrchestrationService, EnrollmentOrchestrationService>();
+
+    // -------------------------------------------------------------------------
     // MVC + RAZOR (Dashboard UI + API controllers)
     // -------------------------------------------------------------------------
     builder.Services.AddControllersWithViews();
@@ -106,7 +126,7 @@ try
         {
             Title = "RetailCommand API - Device Control Center",
             Version = "v1",
-            Description = "Centralized device control, monitoring, command execution, and deployment management."
+            Description = "Centralized device control, monitoring, command execution, deployment management, and orchestration."
         });
     });
 
@@ -176,6 +196,12 @@ try
     builder.Services.AddHostedService<ProcessStatusScheduleWorker>();       // Process monitoring
     builder.Services.AddHostedService<CommandTimeoutWorker>();              // Retry + timeout recovery
     builder.Services.AddHostedService<RegisterInventoryRefreshWorker>();    // Hardware inventory refresh
+
+    // Orchestration worker:
+    // - scans active orchestration runs
+    // - dispatches next eligible steps into the existing command pipeline
+    // - correlates command results back into orchestration run/step state
+    builder.Services.AddHostedService<OrchestrationWorker>();
 
     // -------------------------------------------------------------------------
     // DATA PROTECTION (used for securing secrets like DeviceSecret)

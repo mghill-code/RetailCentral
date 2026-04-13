@@ -8,6 +8,7 @@ using RetailCentral.Api.Dtos;
 using RetailCentral.Api.Models;
 using RetailCentral.Api.Security;
 using RetailCentral.Api.Services;
+using RetailCentral.Api.Services.Orchestration;
 using System.Text.Json;
 
 namespace RetailCentral.Api.Controllers
@@ -24,6 +25,9 @@ namespace RetailCentral.Api.Controllers
         private readonly ILogger<AgentController> _logger;
         private readonly RetryBackoffService _retryBackoffService;
 
+        // New: orchestration hook used to start zero-touch provisioning
+        // after a successful enrollment or re-enrollment.
+        private readonly IEnrollmentOrchestrationService _enrollmentOrchestrationService;
 
         public AgentController(
             RetailCentralDbContext db,
@@ -32,6 +36,7 @@ namespace RetailCentral.Api.Controllers
             AuditService auditService,
             IOptions<AgentPollingHintsOptions> pollingHints,
             RetryBackoffService retryBackoffService,
+            IEnrollmentOrchestrationService enrollmentOrchestrationService,
             ILogger<AgentController> logger)
         {
             _db = db;
@@ -40,6 +45,7 @@ namespace RetailCentral.Api.Controllers
             _auditService = auditService;
             _pollingHints = pollingHints.Value;
             _retryBackoffService = retryBackoffService;
+            _enrollmentOrchestrationService = enrollmentOrchestrationService;
             _logger = logger;
         }
 
@@ -187,6 +193,26 @@ namespace RetailCentral.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
+                // Start zero-touch provisioning after a successful re-enrollment.
+                // This is deliberately non-blocking from the agent's perspective:
+                // enrollment should still succeed even if orchestration creation fails.
+                try
+                {
+                    await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
+                        existing.DeviceId,
+                        null,
+                        "Register",
+                        "Production",
+                        HttpContext.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to start orchestration after re-enrollment for DeviceId={DeviceId}",
+                        existing.DeviceId);
+                }
+
                 return Ok(new EnrollResponse
                 {
                     DeviceId = existing.DeviceId,
@@ -227,6 +253,24 @@ namespace RetailCentral.Api.Controllers
 
             _db.Devices.Add(device);
             await _db.SaveChangesAsync();
+
+            // Start zero-touch provisioning after a brand-new device enrollment.
+            try
+            {
+                await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
+                    device.DeviceId,
+                    null,
+                    "Register",
+                    "Production",
+                    HttpContext.RequestAborted);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to start orchestration after new enrollment for DeviceId={DeviceId}",
+                    device.DeviceId);
+            }
 
             return Ok(new EnrollResponse
             {
