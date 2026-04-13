@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RetailCentral.Api.Data.Entities;
 using RetailCentral.Api.Models;
+using RetailCentral.Api.Data.Entities.Orchestration;
+using RetailCentral.Api.Data.Configurations.Orchestration;
 
 namespace RetailCentral.Api.Data
 {
@@ -26,8 +28,17 @@ namespace RetailCentral.Api.Data
         public DbSet<UserActivityHistory> UserActivityHistories => Set<UserActivityHistory>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+        public DbSet<OrchestrationTemplate> OrchestrationTemplates => Set<OrchestrationTemplate>();
+        public DbSet<OrchestrationTemplateStep> OrchestrationTemplateSteps => Set<OrchestrationTemplateStep>();
+        public DbSet<OrchestrationRun> OrchestrationRuns => Set<OrchestrationRun>();
+        public DbSet<OrchestrationRunStep> OrchestrationRunSteps => Set<OrchestrationRunStep>();
+        public DbSet<ProvisioningProfile> ProvisioningProfiles => Set<ProvisioningProfile>();
+        public DbSet<EnrollmentAction> EnrollmentActions => Set<EnrollmentAction>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            base.OnModelCreating(modelBuilder);
+
             modelBuilder.Entity<Device>()
                 .HasKey(d => d.DeviceId);
 
@@ -232,12 +243,10 @@ namespace RetailCentral.Api.Data
                 entity.Property(x => x.RetailShellProcessName).HasMaxLength(200);
                 entity.Property(x => x.AgentProcessName).HasMaxLength(200);
 
-                // CPU percentages
                 entity.Property(x => x.PosCpuPercent).HasPrecision(5, 2);
                 entity.Property(x => x.RetailShellCpuPercent).HasPrecision(5, 2);
                 entity.Property(x => x.AgentCpuPercent).HasPrecision(5, 2);
 
-                // Working set memory in MB
                 entity.Property(x => x.PosWorkingSetMb).HasPrecision(10, 2);
                 entity.Property(x => x.RetailShellWorkingSetMb).HasPrecision(10, 2);
                 entity.Property(x => x.AgentWorkingSetMb).HasPrecision(10, 2);
@@ -292,6 +301,13 @@ namespace RetailCentral.Api.Data
                 entity.HasIndex(x => x.DeviceId);
                 entity.HasIndex(x => x.Status);
             });
+
+            modelBuilder.ApplyConfiguration(new OrchestrationTemplateConfiguration());
+            modelBuilder.ApplyConfiguration(new OrchestrationTemplateStepConfiguration());
+            modelBuilder.ApplyConfiguration(new OrchestrationRunConfiguration());
+            modelBuilder.ApplyConfiguration(new OrchestrationRunStepConfiguration());
+            modelBuilder.ApplyConfiguration(new ProvisioningProfileConfiguration());
+            modelBuilder.ApplyConfiguration(new EnrollmentActionConfiguration());
         }
     }
 }
