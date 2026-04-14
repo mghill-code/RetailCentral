@@ -371,6 +371,33 @@ public sealed class CommandExecutor
                         return ("Succeeded", 0, json, "", started, finishedProcessStatus);
                     }
 
+                case "ValidateProcess":
+                    {
+                        var doc = JsonDocument.Parse(payloadJson ?? "{}");
+                        var root = doc.RootElement;
+
+                        var processName = root.TryGetProperty("processName", out var processNameProp)
+                            ? processNameProp.GetString()
+                            : null;
+
+                        if (string.IsNullOrWhiteSpace(processName))
+                            throw new Exception("processName required");
+
+                        var normalized = NormalizeProcessName(processName);
+                        var matches = Process.GetProcessesByName(normalized);
+
+                        var finishedValidate = DateTime.UtcNow;
+
+                        if (matches.Length > 0)
+                        {
+                            var stdout = $"Process '{normalized}' is running. Count={matches.Length}";
+                            return ("Succeeded", 0, Trunc(stdout, _executionOptions.MaxStdoutChars), "", started, finishedValidate);
+                        }
+
+                        var stderr = $"Process '{normalized}' is not running.";
+                        return ("Failed", 3, "", Trunc(stderr, _executionOptions.MaxStderrChars), started, finishedValidate);
+                    }
+
                 case "InstallPackage":
                     {
                         var payload = JsonSerializer.Deserialize<PackageDeploymentCommand>(
@@ -698,61 +725,6 @@ public sealed class CommandExecutor
     }
 
     /// <summary>
-    /// Execute an approved named profile directly.
-    /// This is used for helper-style operations like RestartAgent where a detached
-    /// helper process is often safer than trying to restart the current process inline.
-    /// </summary>
-    private async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> ExecuteNamedProfileAsync(
-        string commandType,
-        string profileName,
-        string arguments,
-        DateTime started,
-        CancellationToken ct)
-    {
-        var profile = _executionOptions.AllowedExecutables
-            .FirstOrDefault(x => string.Equals(x.Name, profileName, StringComparison.OrdinalIgnoreCase));
-
-        if (profile is null)
-            throw new Exception($"Execution profile '{profileName}' is not configured.");
-
-        _policy.ValidateExecutablePath(profile.Path);
-        _policy.ValidateArguments(profile, arguments);
-
-        ValidateWorkingDirectory(profile.WorkingDirectory);
-
-        var timeout = profile.TimeoutSeconds > 0
-            ? Math.Min(profile.TimeoutSeconds, _executionOptions.MaxTimeoutSeconds)
-            : _executionOptions.DefaultTimeoutSeconds;
-
-        var result = await ExecuteProcessAsync(
-            profile.Path,
-            arguments,
-            string.IsNullOrWhiteSpace(profile.WorkingDirectory)
-                ? Path.GetDirectoryName(profile.Path)
-                : profile.WorkingDirectory,
-            timeout,
-            ct);
-
-        var finished = DateTime.UtcNow;
-
-        var stdout = new StringBuilder();
-        stdout.AppendLine($"Command: {commandType}");
-        stdout.AppendLine($"Profile: {profile.Name}");
-        stdout.AppendLine($"Executable: {profile.Path}");
-        stdout.AppendLine(result.StdOut);
-
-        return
-        (
-            result.ExitCode == 0 ? "Succeeded" : "Failed",
-            result.ExitCode,
-            Trunc(stdout.ToString(), _executionOptions.MaxStdoutChars),
-            result.StdErr,
-            started,
-            finished
-        );
-    }
-
-    /// <summary>
     /// Request a machine reboot through the trusted system shutdown executable.
     /// </summary>
     private async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> RequestRebootAsync(
@@ -784,9 +756,9 @@ public sealed class CommandExecutor
     }
 
     private (string FileName, string Arguments, string WorkingDirectory) ResolvePackageInstallCommand(
-    string installCommand,
-    string installArguments,
-    string downloadedPath)
+        string installCommand,
+        string installArguments,
+        string downloadedPath)
     {
         var stagedDirectory = Path.GetDirectoryName(downloadedPath) ?? _downloadsOptions.StagingRootFolder;
 
@@ -798,6 +770,7 @@ public sealed class CommandExecutor
 
         return ResolveInstallCommand(installCommand, installArguments);
     }
+
     private (string FileName, string Arguments, string WorkingDirectory) ResolveInstallCommand(string installCommand, string installArguments)
     {
         if (Path.IsPathRooted(installCommand))

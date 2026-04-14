@@ -5,9 +5,11 @@ namespace RetailCentral.Api.Configuration
     /// <summary>
     /// Central server-side command policy.
     ///
-    /// This policy determines what command types the API is allowed to create,
-    /// which command types helpdesk users may issue, and what additional payload
-    /// requirements apply to sensitive commands like DownloadFile and InstallPackage.
+    /// This policy determines:
+    /// - what command types the API is allowed to create
+    /// - which command types helpdesk users may issue directly
+    /// - which command types orchestration may issue
+    /// - what additional payload requirements apply to sensitive commands
     /// </summary>
     public sealed class CommandPolicyOptions
     {
@@ -53,13 +55,20 @@ namespace RetailCentral.Api.Configuration
 
         /// <summary>
         /// Commands generally allowed through the API.
+        /// This is the broad server-side allowlist.
         /// </summary>
         public List<string> AllowedCommandTypes { get; set; } = new();
 
         /// <summary>
-        /// Reduced command set for helpdesk workflows.
+        /// Reduced command set for helpdesk/manual workflows.
         /// </summary>
         public List<string> HelpdeskAllowedCommandTypes { get; set; } = new();
+
+        /// <summary>
+        /// Command set allowed for orchestration / zero-touch provisioning.
+        /// This should typically be broader than helpdesk, but still controlled.
+        /// </summary>
+        public List<string> OrchestrationAllowedCommandTypes { get; set; } = new();
 
         /// <summary>
         /// Approved install profiles that the API may reference for InstallPackage.

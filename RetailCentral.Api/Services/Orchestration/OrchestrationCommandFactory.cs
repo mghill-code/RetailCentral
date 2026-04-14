@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Nodes;
 using RetailCentral.Api.Data.Entities.Orchestration;
 using RetailCentral.Api.Models;
 
@@ -11,16 +12,12 @@ namespace RetailCentral.Api.Services.Orchestration
             OrchestrationRunStep runStep,
             OrchestrationTemplateStep templateStep)
         {
-            var payload = new
-            {
-                orchestrationRunId = run.Id,
-                orchestrationRunStepId = runStep.Id,
-                templateStepId = templateStep.Id,
-                stepType = templateStep.StepType.ToString(),
-                parameters = templateStep.ParametersJson
-            };
-
             var commandType = ResolveCommandType(templateStep);
+
+            // Build a payload that preserves orchestration metadata but also allows
+            // agent-side command handlers to read expected top-level properties
+            // like "processName" without needing orchestration-specific parsing.
+            var payload = BuildPayload(templateStep, run, runStep);
 
             return new Command
             {
@@ -31,7 +28,10 @@ namespace RetailCentral.Api.Services.Orchestration
                 Status = "Pending",
                 IssuedBy = OrchestrationConstants.CommandSourceOrchestration,
                 StoreNumber = run.StoreId?.ToString(),
-                PayloadJson = JsonSerializer.Serialize(payload),
+                PayloadJson = payload.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = false
+                }),
                 Priority = 100,
                 CreatedUtc = DateTime.UtcNow,
                 IssuedUtc = DateTime.UtcNow,
@@ -42,6 +42,57 @@ namespace RetailCentral.Api.Services.Orchestration
             };
         }
 
+        private static JsonObject BuildPayload(
+            OrchestrationTemplateStep templateStep,
+            OrchestrationRun run,
+            OrchestrationRunStep runStep)
+        {
+            JsonObject payloadRoot;
+
+            // If ParametersJson is a JSON object, flatten it into the root payload.
+            // That keeps agent command handlers simple.
+            if (!string.IsNullOrWhiteSpace(templateStep.ParametersJson))
+            {
+                try
+                {
+                    var parsed = JsonNode.Parse(templateStep.ParametersJson);
+
+                    if (parsed is JsonObject obj)
+                    {
+                        payloadRoot = obj;
+                    }
+                    else
+                    {
+                        payloadRoot = new JsonObject
+                        {
+                            ["rawParameters"] = templateStep.ParametersJson
+                        };
+                    }
+                }
+                catch
+                {
+                    payloadRoot = new JsonObject
+                    {
+                        ["rawParameters"] = templateStep.ParametersJson
+                    };
+                }
+            }
+            else
+            {
+                payloadRoot = new JsonObject();
+            }
+
+            payloadRoot["_orchestration"] = new JsonObject
+            {
+                ["orchestrationRunId"] = run.Id,
+                ["orchestrationRunStepId"] = runStep.Id,
+                ["templateStepId"] = templateStep.Id,
+                ["stepType"] = templateStep.StepType.ToString()
+            };
+
+            return payloadRoot;
+        }
+
         private static string ResolveCommandType(OrchestrationTemplateStep templateStep)
         {
             if (!string.IsNullOrWhiteSpace(templateStep.CommandType))
@@ -49,17 +100,21 @@ namespace RetailCentral.Api.Services.Orchestration
 
             return templateStep.StepType switch
             {
-                OrchestrationStepType.CollectInventory => "CollectInventory",
+                OrchestrationStepType.CollectInventory => "CollectSystemInfo",
+                OrchestrationStepType.RestartPos => "RestartPOS",
+                OrchestrationStepType.RebootMachine => "RebootDevice",
+                OrchestrationStepType.ValidateProcess => "ValidateProcess",
+
+                // These should only be used after confirming the agent supports them
+                OrchestrationStepType.RunScript => "RunCommand",
+                OrchestrationStepType.RestartProcess => "RestartProcess",
+                OrchestrationStepType.RestartService => "RestartService",
                 OrchestrationStepType.WriteFile => "WriteFile",
                 OrchestrationStepType.ApplyConfiguration => "ApplyConfiguration",
-                OrchestrationStepType.ValidateProcess => "ValidateProcess",
-                OrchestrationStepType.RestartProcess => "RestartProcess",
-                OrchestrationStepType.RestartPos => "RestartPos",
-                OrchestrationStepType.LaunchPos => "LaunchPos",
+                OrchestrationStepType.LaunchPos => "LaunchPOS",
                 OrchestrationStepType.SendNamedPipeCommand => "NamedPipeCommand",
-                OrchestrationStepType.RunScript => "RunScript",
-                OrchestrationStepType.RebootMachine => "RebootMachine",
                 OrchestrationStepType.Wait => "Wait",
+
                 _ => "RunCommand"
             };
         }

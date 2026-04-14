@@ -110,7 +110,7 @@ try
     builder.Services.AddScoped<IOrchestrationCommandFactory, OrchestrationCommandFactory>();
     builder.Services.AddScoped<IProvisioningProfileResolver, ProvisioningProfileResolver>();
     builder.Services.AddScoped<IEnrollmentOrchestrationService, EnrollmentOrchestrationService>();
-
+    builder.Services.AddScoped<OrchestrationPolicyService>();
     // -------------------------------------------------------------------------
     // MVC + RAZOR (Dashboard UI + API controllers)
     // -------------------------------------------------------------------------

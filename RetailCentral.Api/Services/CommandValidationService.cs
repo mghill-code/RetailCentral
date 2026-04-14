@@ -6,13 +6,14 @@ using RetailCentral.Api.Dtos;
 namespace RetailCentral.Api.Services
 {
     /// <summary>
-    /// Performs API-side validation for command creation requests.
+    /// Performs API-side validation for direct/manual command creation requests.
     ///
-    /// Goals:
-    /// - Prevent unsafe commands from entering the queue
-    /// - Normalize the command type
-    /// - Enforce required payload rules for sensitive command types
-    /// - Keep validation logic centralized so Admin API and Dashboard paths use the same rules
+    /// This validator is intended for:
+    /// - helpdesk/manual API usage
+    /// - dashboard/admin command creation
+    ///
+    /// Orchestration validation is handled separately so we can apply a different
+    /// allowed-command set for zero-touch provisioning and workflow automation.
     /// </summary>
     public sealed class CommandValidationService
     {
@@ -24,7 +25,7 @@ namespace RetailCentral.Api.Services
         }
 
         /// <summary>
-        /// Validate a command request.
+        /// Validate a direct/manual command request.
         ///
         /// helpdeskMode=true applies the reduced HelpdeskAllowedCommandTypes policy.
         /// helpdeskMode=false applies the broader AllowedCommandTypes policy.
@@ -45,13 +46,18 @@ namespace RetailCentral.Api.Services
                 return CommandValidationResult.Fail(errors);
             }
 
+            // Preserve the caller's intended exact command name after trimming.
             var normalizedType = request.Type.Trim();
 
             var allowedTypes = helpdeskMode
                 ? _policy.HelpdeskAllowedCommandTypes
                 : _policy.AllowedCommandTypes;
 
-            if (!allowedTypes.Contains(normalizedType, StringComparer.OrdinalIgnoreCase))
+            var allowedTypeSet = new HashSet<string>(
+                allowedTypes ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (!allowedTypeSet.Contains(normalizedType))
             {
                 errors.Add($"Command type '{normalizedType}' is not allowed.");
             }
@@ -84,6 +90,7 @@ namespace RetailCentral.Api.Services
                 case "RestartRetailShell":
                 case "RestartAgent":
                 case "RebootDevice":
+                case "ValidateProcess":
                     ValidateOptionalObjectPayload(request.PayloadJson, errors, normalizedType);
                     break;
 
@@ -144,6 +151,15 @@ namespace RetailCentral.Api.Services
                 if (doc.RootElement.ValueKind != JsonValueKind.Object)
                 {
                     errors.Add($"{commandType} payload must be a JSON object.");
+                    return;
+                }
+
+                if (string.Equals(commandType, "ValidateProcess", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryGetRequiredString(doc.RootElement, "processName", out _))
+                    {
+                        errors.Add("ValidateProcess payload requires 'processName'.");
+                    }
                 }
             }
             catch (JsonException ex)
@@ -341,9 +357,6 @@ namespace RetailCentral.Api.Services
         }
     }
 
-    /// <summary>
-    /// Result returned from server-side command validation.
-    /// </summary>
     public sealed class CommandValidationResult
     {
         public bool IsValid { get; init; }

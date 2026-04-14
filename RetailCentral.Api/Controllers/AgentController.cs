@@ -17,6 +17,8 @@ namespace RetailCentral.Api.Controllers
     [Route("api/agent/v1")]
     public class AgentController : ControllerBase
     {
+        private const int CommandLastErrorMaxLength = 500;
+
         private readonly RetailCentralDbContext _db;
         private readonly DeviceSecretProtection _secretProtection;
         private readonly IConfiguration _config;
@@ -193,9 +195,6 @@ namespace RetailCentral.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
-                // Start zero-touch provisioning after a successful re-enrollment.
-                // This is deliberately non-blocking from the agent's perspective:
-                // enrollment should still succeed even if orchestration creation fails.
                 try
                 {
                     await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
@@ -254,7 +253,6 @@ namespace RetailCentral.Api.Controllers
             _db.Devices.Add(device);
             await _db.SaveChangesAsync();
 
-            // Start zero-touch provisioning after a brand-new device enrollment.
             try
             {
                 await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
@@ -413,13 +411,17 @@ namespace RetailCentral.Api.Controllers
                     var nextAttemptUtc = _retryBackoffService.GetNextAttemptUtc(cmd.AttemptCount, now);
                     cmd.Status = "Pending";
                     cmd.NextAttemptUtc = nextAttemptUtc;
-                    cmd.LastError = $"Attempt {cmd.AttemptCount} failed. Retrying at {nextAttemptUtc:O}.";
+                    cmd.LastError = Truncate(
+                        $"Attempt {cmd.AttemptCount} failed. Retrying at {nextAttemptUtc:O}.",
+                        CommandLastErrorMaxLength);
                 }
                 else
                 {
                     cmd.Status = "Failed";
                     cmd.NextAttemptUtc = null;
-                    cmd.LastError = req.StdErr ?? req.StdOut ?? "Command failed";
+                    cmd.LastError = Truncate(
+                        req.StdErr ?? req.StdOut ?? "Command failed",
+                        CommandLastErrorMaxLength);
                 }
             }
             else

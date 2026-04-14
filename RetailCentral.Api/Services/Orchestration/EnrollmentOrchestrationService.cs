@@ -1,4 +1,5 @@
-﻿using RetailCentral.Api.Data;
+﻿using Microsoft.EntityFrameworkCore;
+using RetailCentral.Api.Data;
 using RetailCentral.Api.Data.Entities.Orchestration;
 
 namespace RetailCentral.Api.Services.Orchestration
@@ -23,11 +24,11 @@ namespace RetailCentral.Api.Services.Orchestration
         }
 
         public async Task<long?> StartProvisioningForEnrollmentAsync(
-            Guid? deviceId,
-            int? agentId,
-            string? deviceType,
-            string? environment,
-            CancellationToken cancellationToken)
+             Guid? deviceId,
+             int? agentId,
+             string? deviceType,
+             string? environment,
+             CancellationToken cancellationToken)
         {
             var profile = await _profileResolver.ResolveProfileAsync(
                 deviceId,
@@ -44,6 +45,28 @@ namespace RetailCentral.Api.Services.Orchestration
                     agentId);
 
                 return null;
+            }
+
+            // Prevent duplicate active provisioning runs for the same device.
+            // This protects against repeated enrollments / re-enrollments creating
+            // overlapping orchestration runs that fight each other.
+            var existingActiveRun = await _db.OrchestrationRuns
+                .Where(x =>
+                    x.DeviceId == deviceId &&
+                    (x.Status == OrchestrationRunStatus.Pending ||
+                     x.Status == OrchestrationRunStatus.Running ||
+                     x.Status == OrchestrationRunStatus.WaitingForRetry))
+                .OrderByDescending(x => x.StartedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingActiveRun != null)
+            {
+                _logger.LogInformation(
+                    "Skipping new provisioning run because active run {RunId} already exists for device {DeviceId}",
+                    existingActiveRun.Id,
+                    deviceId);
+
+                return existingActiveRun.Id;
             }
 
             var run = await _orchestrationEngine.CreateRunFromTemplateAsync(
