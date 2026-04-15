@@ -4407,7 +4407,12 @@ namespace RetailCentral.Api.Controllers
                 || name.Contains("Validation", StringComparison.OrdinalIgnoreCase)
                 || name.Contains("Install", StringComparison.OrdinalIgnoreCase)
                 || name.Contains("Restart", StringComparison.OrdinalIgnoreCase)
-                || name.Contains("Collect", StringComparison.OrdinalIgnoreCase);
+                || name.Contains("Collect", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Write", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Apply", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Import", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Registry", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Script", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool SupportsGuidedParameters(string? commandType)
@@ -4418,7 +4423,8 @@ namespace RetailCentral.Api.Controllers
             return commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase)
-                || commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase);
+                || commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetGuidedParameterDescription(string? commandType)
@@ -4438,9 +4444,37 @@ namespace RetailCentral.Api.Controllers
             if (commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
                 return "InstallPackage uses a guided package selector and generates the install payload automatically.";
 
+            if (commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+                return "WriteFile writes controlled content to a trusted local path using the selected encoding.";
+
+            if (IsRecognizedButNotYetImplementedCommandType(commandType))
+                return "This command type is recognized, but guided parameter support is not implemented yet.";
+
             return "Guided parameters are not available yet for this command type.";
         }
 
+        private static bool IsRecognizedButNotYetImplementedStepType(OrchestrationStepType stepType)
+        {
+            var name = stepType.ToString();
+
+            return name.Contains("Write", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Apply", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Import", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Registry", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Script", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRecognizedButNotYetImplementedCommandType(string? commandType)
+        {
+            if (string.IsNullOrWhiteSpace(commandType))
+                return false;
+
+            return commandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("ApplyConfiguration", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("ValidateFile", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("RunScript", StringComparison.OrdinalIgnoreCase);
+        }
         private static void ApplyCommandTypeMetadata(EditOrchestrationTemplateStepViewModel model)
         {
             model.SupportsGuidedParameters = SupportsGuidedParameters(model.CommandType);
@@ -4462,6 +4496,20 @@ namespace RetailCentral.Api.Controllers
                 && string.IsNullOrWhiteSpace(model.InstallPackageExecuteMode))
             {
                 model.InstallPackageExecuteMode = "Immediate";
+            }
+
+            if (!string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                model.WriteFilePath = null;
+                model.WriteFileContent = null;
+                model.WriteFileEncoding = null;
+                model.WriteFileOverwrite = false;
+            }
+
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+            {
+                model.WriteFileEncoding = "utf-8";
             }
         }
 
@@ -4501,6 +4549,20 @@ namespace RetailCentral.Api.Controllers
                 };
 
                 return System.Text.Json.JsonSerializer.Serialize(payload);
+            }
+
+            if (model.CommandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.WriteFilePath))
+                    return null;
+
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    path = model.WriteFilePath.Trim(),
+                    content = model.WriteFileContent ?? string.Empty,
+                    encoding = string.IsNullOrWhiteSpace(model.WriteFileEncoding) ? "utf-8" : model.WriteFileEncoding.Trim(),
+                    overwrite = model.WriteFileOverwrite
+                });
             }
 
             if (model.CommandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase))
@@ -4548,6 +4610,31 @@ namespace RetailCentral.Api.Controllers
 
                     return;
                 }
+
+                if (model.CommandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (root.TryGetProperty("path", out var pathProp))
+                    {
+                        model.WriteFilePath = pathProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("content", out var contentProp))
+                    {
+                        model.WriteFileContent = contentProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("encoding", out var encodingProp))
+                    {
+                        model.WriteFileEncoding = encodingProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("overwrite", out var overwriteProp))
+                    {
+                        model.WriteFileOverwrite = overwriteProp.GetBoolean();
+                    }
+
+                    return;
+                }
             }
             catch
             {
@@ -4556,9 +4643,15 @@ namespace RetailCentral.Api.Controllers
         }
         private static string GetStepTypeDescription(OrchestrationStepType stepType)
         {
-            return RequiresCommandType(stepType)
-                ? "This step type is currently treated as command-backed and requires a Command Type."
-                : "This step type is currently treated as non-command orchestration behavior. Command Type does not apply.";
+            if (RequiresCommandType(stepType))
+            {
+                if (IsRecognizedButNotYetImplementedStepType(stepType))
+                    return "This step type is recognized as executable, but guided command mapping is not fully implemented yet.";
+
+                return "This step type is currently treated as command-backed and requires a Command Type.";
+            }
+
+            return "This step type is currently treated as non-command orchestration behavior. Command Type does not apply.";
         }
 
         private static void ApplyStepTypeMetadata(EditOrchestrationTemplateStepViewModel model)
@@ -4637,6 +4730,14 @@ namespace RetailCentral.Api.Controllers
     {
         new SelectListItem { Value = "Immediate", Text = "Immediate" },
         new SelectListItem { Value = "StagedOnly", Text = "Staged Only" }
+    };
+
+            model.WriteFileEncodingOptions = new List<SelectListItem>
+    {
+        new SelectListItem { Value = "utf-8", Text = "UTF-8" },
+        new SelectListItem { Value = "utf-8-bom", Text = "UTF-8 with BOM" },
+        new SelectListItem { Value = "ascii", Text = "ASCII" },
+        new SelectListItem { Value = "unicode", Text = "Unicode (UTF-16 LE)" }
     };
 
             if (model.InstallPackageId.HasValue)
@@ -5299,6 +5400,19 @@ namespace RetailCentral.Api.Controllers
                 ModelState.AddModelError(nameof(model.ValidateProcessName), "Process name is required for ValidateProcess.");
             }
 
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.WriteFilePath))
+                {
+                    ModelState.AddModelError(nameof(model.WriteFilePath), "Destination path is required for WriteFile.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                {
+                    ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile.");
+                }
+            }
+
             if (!ModelState.IsValid)
             {
                 await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
@@ -5445,6 +5559,19 @@ namespace RetailCentral.Api.Controllers
                 && string.IsNullOrWhiteSpace(model.ValidateProcessName))
             {
                 ModelState.AddModelError(nameof(model.ValidateProcessName), "Process name is required for ValidateProcess.");
+            }
+
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.WriteFilePath))
+                {
+                    ModelState.AddModelError(nameof(model.WriteFilePath), "Destination path is required for WriteFile.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                {
+                    ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile.");
+                }
             }
 
             if (!ModelState.IsValid)

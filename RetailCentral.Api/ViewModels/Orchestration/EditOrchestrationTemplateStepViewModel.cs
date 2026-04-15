@@ -64,10 +64,25 @@ namespace RetailCentral.Api.ViewModels.Orchestration
 
         public string? SelectedPackageSummary { get; set; }
 
+        [Display(Name = "Destination Path")]
+        [StringLength(500)]
+        public string? WriteFilePath { get; set; }
+
+        [Display(Name = "File Content")]
+        public string? WriteFileContent { get; set; }
+
+        [Display(Name = "Encoding")]
+        [StringLength(50)]
+        public string? WriteFileEncoding { get; set; }
+
+        [Display(Name = "Overwrite Existing File")]
+        public bool WriteFileOverwrite { get; set; }
+
         public List<SelectListItem> StepTypeOptions { get; set; } = new();
         public List<SelectListItem> CommandTypeOptions { get; set; } = new();
         public List<SelectListItem> OnFailureActionOptions { get; set; } = new();
         public List<SelectListItem> InstallPackageOptions { get; set; } = new();
         public List<SelectListItem> InstallPackageExecuteModeOptions { get; set; } = new();
+        public List<SelectListItem> WriteFileEncodingOptions { get; set; } = new();
     }
 }

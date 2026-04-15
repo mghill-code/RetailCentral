@@ -79,6 +79,10 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+//FileWrite settings
+builder.Services.Configure<FileWriteOptions>(
+    builder.Configuration.GetSection("FileWrites"));
+
 // AgentPolling Configs
 builder.Services.Configure<AgentPollingOptions>(
     builder.Configuration.GetSection("AgentPolling"));

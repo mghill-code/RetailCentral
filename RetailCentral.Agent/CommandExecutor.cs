@@ -20,6 +20,7 @@ public sealed class CommandExecutor
     private readonly ExecutionOptions _executionOptions;
     private readonly DownloadsOptions _downloadsOptions;
     private readonly ShellCommandClient _shellClient;
+    private readonly FileWriteOptions _fileWriteOptions;
 
     public CommandExecutor(
      AgentConfig cfg,
@@ -29,7 +30,8 @@ public sealed class CommandExecutor
      ExecutionPolicyService policy,
      ShellCommandClient shellClient,
      IOptions<ExecutionOptions> executionOptions,
-     IOptions<DownloadsOptions> downloadsOptions)
+     IOptions<DownloadsOptions> downloadsOptions,
+     IOptions<FileWriteOptions> fileWriteOptions)
     {
         _cfg = cfg;
         _downloader = downloader;
@@ -39,6 +41,7 @@ public sealed class CommandExecutor
         _shellClient = shellClient;
         _executionOptions = executionOptions.Value;
         _downloadsOptions = downloadsOptions.Value;
+        _fileWriteOptions = fileWriteOptions.Value;
     }
 
     public async Task<(string Status, int ExitCode, string StdOut, string StdErr, DateTime StartedUtc, DateTime FinishedUtc)> ExecuteAsync(
@@ -73,6 +76,88 @@ public sealed class CommandExecutor
                         return ("Succeeded", 0, $"Echo: {msg}", "", started, finishedEcho);
                     }
 
+                case "WriteFile":
+                    {
+                        var doc = JsonDocument.Parse(payloadJson ?? "{}");
+                        var root = doc.RootElement;
+
+                        var path = root.TryGetProperty("path", out var pathProp)
+                            ? pathProp.GetString()
+                            : null;
+
+                        if (string.IsNullOrWhiteSpace(path))
+                            throw new Exception("path required");
+
+                        if (_fileWriteOptions.RequireAbsolutePath && !Path.IsPathRooted(path))
+                            throw new Exception($"Path must be absolute: '{path}'");
+
+                        if (_fileWriteOptions.DisallowUNCPaths && path.StartsWith(@"\\", StringComparison.OrdinalIgnoreCase))
+                            throw new Exception($"UNC paths are not allowed: '{path}'");
+
+                        var fullPath = Path.GetFullPath(path);
+
+                        var underTrustedRoot = _fileWriteOptions.TrustedWriteRoots
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Select(Path.GetFullPath)
+                            .Any(rootPath => fullPath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase));
+
+                        if (!underTrustedRoot)
+                            throw new Exception($"Path is outside trusted write roots: '{fullPath}'");
+
+                        foreach (var blocked in _fileWriteOptions.BlockedWritePathPrefixes.Where(x => !string.IsNullOrWhiteSpace(x)))
+                        {
+                            var blockedNormalized = Path.GetFullPath(blocked);
+                            if (fullPath.StartsWith(blockedNormalized, StringComparison.OrdinalIgnoreCase))
+                                throw new Exception($"Path is under a blocked write prefix: '{fullPath}'");
+                        }
+
+                        var content = root.TryGetProperty("content", out var contentProp)
+                            ? contentProp.GetString() ?? string.Empty
+                            : string.Empty;
+
+                        var encodingName = root.TryGetProperty("encoding", out var encodingProp)
+                            ? encodingProp.GetString()
+                            : "utf-8";
+
+                        var overwrite = root.TryGetProperty("overwrite", out var overwriteProp) && overwriteProp.GetBoolean();
+
+                        if (File.Exists(fullPath) && !overwrite)
+                        {
+                            var finishedExists = DateTime.UtcNow;
+                            return
+                            (
+                                "Failed",
+                                906,
+                                "",
+                                $"File already exists and overwrite is false: {fullPath}",
+                                started,
+                                finishedExists
+                            );
+                        }
+
+                        var directory = Path.GetDirectoryName(fullPath);
+                        if (string.IsNullOrWhiteSpace(directory))
+                            throw new Exception("Parent directory could not be determined.");
+
+                        Directory.CreateDirectory(directory);
+
+                        var encoding = ResolveTextEncoding(encodingName);
+                        File.WriteAllText(fullPath, content, encoding);
+
+                        var fileInfo = new FileInfo(fullPath);
+                        var finishedWrite = DateTime.UtcNow;
+
+                        return
+                        (
+                            "Succeeded",
+                            0,
+                            $"Wrote file: {fullPath}\nEncoding: {encodingName}\nBytes: {fileInfo.Length}\nOverwrite: {overwrite}",
+                            "",
+                            started,
+                            finishedWrite
+                        );
+                    }
+                
                 case "RunProcess":
                     {
                         if (!_executionOptions.AllowRunProcess)
@@ -1376,7 +1461,20 @@ public sealed class CommandExecutor
 
         return updates;
     }
+    private static Encoding ResolveTextEncoding(string? encodingName)
+    {
+        if (string.IsNullOrWhiteSpace(encodingName))
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
+        return encodingName.Trim().ToLowerInvariant() switch
+        {
+            "utf-8" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            "utf-8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            "ascii" => Encoding.ASCII,
+            "unicode" => Encoding.Unicode,
+            _ => throw new Exception($"Unsupported encoding '{encodingName}'.")
+        };
+    }
     private static string Trunc(string s, int max)
     {
         if (string.IsNullOrEmpty(s))
