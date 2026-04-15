@@ -1,0 +1,77 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.EditOrchestrationTemplateViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] ?? "Orchestration Template";
+    var formAction = ViewData["FormAction"]?.ToString() ?? "CreateOrchestrationTemplate";
+    var submitText = ViewData["SubmitText"]?.ToString() ?? "Save";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Create or update orchestration template metadata. Step editing comes next.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="OrchestrationTemplates" class="btn btn-outline">Back to Templates</a>
+    </div>
+</div>
+
+<div class="card">
+    <form asp-action="@formAction" asp-route-id="@Model.Id" method="post" class="form-grid">
+        @Html.AntiForgeryToken()
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+        <div class="field">
+            <label asp-for="Name"></label>
+            <input asp-for="Name" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="Version"></label>
+            <input asp-for="Version" type="number" min="1" />
+            <span asp-validation-for="Version" class="text-danger"></span>
+        </div>
+
+        <div class="field field-full">
+            <label asp-for="Description"></label>
+            <textarea asp-for="Description" rows="3"></textarea>
+            <span asp-validation-for="Description" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="DeviceType"></label>
+            <select asp-for="DeviceType" asp-items="Model.DeviceTypeOptions" class="dashboard-select"></select>
+            <span asp-validation-for="DeviceType" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="Environment"></label>
+            <select asp-for="Environment" asp-items="Model.EnvironmentOptions" class="dashboard-select"></select>
+            <span asp-validation-for="Environment" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="TriggerType"></label>
+            <select asp-for="TriggerType" asp-items="Model.TriggerTypeOptions" class="dashboard-select"></select>
+            <span asp-validation-for="TriggerType" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label class="checkbox-label" style="margin-top: 32px;">
+                <input asp-for="IsActive" type="checkbox" />
+                <span>Active</span>
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">@submitText</button>
+            <a asp-action="OrchestrationTemplates" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

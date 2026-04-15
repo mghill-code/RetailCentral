@@ -1,0 +1,130 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.OrchestrationTemplatesPageViewModel
+
+@{
+    ViewData["Title"] = "Orchestration Templates";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Orchestration Templates</h1>
+        <p>Review reusable orchestration definitions, versions, targeting, and step counts.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="CreateOrchestrationTemplate" class="btn">New Template</a>
+    </div>
+</div>
+
+@if (TempData["OrchestrationTemplateMessage"] is string message && !string.IsNullOrWhiteSpace(message))
+{
+    <div class="card" style="margin-bottom:16px;">
+        <div class="cell-primary">@message</div>
+    </div>
+}
+
+<div class="chips">
+    <a asp-action="OrchestrationTemplates" class="chip @(string.IsNullOrWhiteSpace(Model.FilterMode) ? "nav-active" : "")">All Templates</a>
+    <a asp-action="OrchestrationTemplates" asp-route-filter="unused-active" class="chip @(Model.FilterMode == "unused-active" ? "nav-active" : "")">Active Without Profiles</a>
+</div>
+
+<div class="grid">
+    <div class="card metric-card">
+        <div class="metric-label">Total Templates</div>
+        <div class="metric-value">@Model.TotalTemplates</div>
+    </div>
+    <div class="card metric-card success-card">
+        <div class="metric-label">Active</div>
+        <div class="metric-value">@Model.ActiveTemplates</div>
+    </div>
+    <div class="card metric-card failed-card">
+        <div class="metric-label">Inactive</div>
+        <div class="metric-value">@Model.InactiveTemplates</div>
+    </div>
+</div>
+
+<div class="card filters-card">
+    <form method="get" asp-action="OrchestrationTemplates" class="filters-grid">
+        <div class="field">
+            <label for="search">Search</label>
+            <input id="search" name="search" type="text" value="@Model.Search" placeholder="Name or description..." />
+        </div>
+
+        <div class="field">
+            <label for="deviceType">Device Type</label>
+            <input id="deviceType" name="deviceType" type="text" value="@Model.DeviceTypeFilter" placeholder="Register" />
+        </div>
+
+        <div class="field">
+            <label for="environment">Environment</label>
+            <input id="environment" name="environment" type="text" value="@Model.EnvironmentFilter" placeholder="Production" />
+        </div>
+
+        <div class="field">
+            <label for="isActive">Active</label>
+            <select id="isActive" name="isActive" class="dashboard-select">
+                <option value="">All</option>
+                <option value="true" selected="@(Model.ActiveFilter == true)">Active</option>
+                <option value="false" selected="@(Model.ActiveFilter == false)">Inactive</option>
+            </select>
+        </div>
+
+        <div class="filter-actions">
+            <button type="submit" class="btn">Apply Filters</button>
+            <a asp-action="OrchestrationTemplates" class="btn btn-outline">Reset</a>
+        </div>
+    </form>
+</div>
+
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Templates</h2>
+    </div>
+
+    @if (Model.Templates.Count == 0)
+    {
+        <div class="empty-state">No templates matched the current filters.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Template</th>
+                        <th>Version</th>
+                        <th>Targeting</th>
+                        <th>Trigger</th>
+                        <th>Status</th>
+                        <th>Steps</th>
+                        <th>Profiles</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var template in Model.Templates)
+                    {
+                        var badgeClass = template.IsActive ? "badge badge-completed" : "badge badge-muted";
+
+                        <tr>
+                            <td>
+                                <div class="cell-primary">
+                                    <a asp-action="OrchestrationTemplate" asp-route-id="@template.Id">@template.Name</a>
+                                </div>
+                                <div class="cell-secondary">ID @template.Id</div>
+                            </td>
+                            <td>v@(template.Version)</td>
+                            <td>
+                                <div class="cell-primary">@(string.IsNullOrWhiteSpace(template.DeviceType) ? "-" : template.DeviceType)</div>
+                                <div class="cell-secondary">@(string.IsNullOrWhiteSpace(template.Environment) ? "-" : template.Environment)</div>
+                            </td>
+                            <td>@template.TriggerType</td>
+                            <td><span class="@badgeClass">@(template.IsActive ? "Active" : "Inactive")</span></td>
+                            <td>@template.StepCount</td>
+                            <td>@template.ProvisioningProfileCount</td>
+                            <td>@template.UpdatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

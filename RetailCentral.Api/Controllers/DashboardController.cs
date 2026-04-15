@@ -14,6 +14,8 @@ using RetailCentral.Api.Services;
 using RetailCentral.Api.Services.Deployments;
 using RetailCentral.Api.ViewModels;
 using RetailCentral.Api.ViewModels.Deployments;
+using RetailCentral.Api.ViewModels.Orchestration;
+using RetailCentral.Api.Data.Entities.Orchestration;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -490,7 +492,31 @@ namespace RetailCentral.Api.Controllers
             var inProgressCount = await _db.Commands.CountAsync(c => c.Status == "InProgress");
             var failed24Count = await _db.Commands.CountAsync(c => c.Status == "Failed" && c.CreatedUtc >= since24);
             var succeeded24Count = await _db.Commands.CountAsync(c => c.Status == "Succeeded" && c.CreatedUtc >= since24);
+            var orchestrationRunsActive = await _db.OrchestrationRuns.CountAsync(x =>
+                x.Status == OrchestrationRunStatus.Pending ||
+                x.Status == OrchestrationRunStatus.Running ||
+                x.Status == OrchestrationRunStatus.WaitingForRetry);
 
+            var orchestrationRunsFailedLast24Hours = await _db.OrchestrationRuns.CountAsync(x =>
+                (x.Status == OrchestrationRunStatus.Failed || x.Status == OrchestrationRunStatus.Cancelled) &&
+                x.StartedUtc >= since24);
+
+            var orchestrationTemplatesActive = await _db.OrchestrationTemplates.CountAsync(x => x.IsActive);
+
+            var orchestrationRunsWaitingForRetry = await _db.OrchestrationRuns.CountAsync(x =>
+                x.Status == OrchestrationRunStatus.WaitingForRetry);
+
+            var completedOrchestrationRunsLast24Hours = await _db.OrchestrationRuns.CountAsync(x =>
+                x.Status == OrchestrationRunStatus.Completed &&
+                x.StartedUtc >= since24);
+
+            var activeProfilesUsingInactiveTemplates = await _db.ProvisioningProfiles
+                .CountAsync(x => x.IsActive && !x.Template.IsActive);
+
+            var activeTemplatesWithoutProfiles = await _db.OrchestrationTemplates
+                .CountAsync(x => x.IsActive && !x.ProvisioningProfiles.Any(p => p.IsActive));
+
+            var provisioningProfilesActive = await _db.ProvisioningProfiles.CountAsync(x => x.IsActive);
             var progressTotal = Math.Max(1, pendingCount + inProgressCount + failed24Count + succeeded24Count);
 
             var commandProgress = new List<CommandProgressViewModel>
@@ -528,6 +554,24 @@ namespace RetailCentral.Api.Controllers
                     CssClass = "failed"
                 }
             };
+            var recentOrchestrationRuns = await _db.OrchestrationRuns
+                .AsNoTracking()
+                .Include(x => x.Template)
+                .OrderByDescending(x => x.StartedUtc)
+                .Take(10)
+                .Select(x => new OrchestrationHomepageRunViewModel
+                {
+                    Id = x.Id,
+                    TemplateName = x.Template != null ? (x.Template.Name ?? $"Template {x.TemplateId}") : $"Template {x.TemplateId}",
+                    TemplateVersion = x.Template != null ? x.Template.Version : 0,
+                    DeviceId = x.DeviceId,
+                    Status = x.Status.ToString(),
+                    CurrentStepOrder = x.CurrentStepOrder,
+                    RequestedBy = x.RequestedBy ?? string.Empty,
+                    StartedUtc = x.StartedUtc,
+                    CompletedUtc = x.CompletedUtc
+                })
+                .ToListAsync();
 
             var model = new DashboardIndexViewModel
             {
@@ -538,6 +582,15 @@ namespace RetailCentral.Api.Controllers
                 CommandsInProgress = inProgressCount,
                 CommandsFailedLast24Hours = failed24Count,
                 CommandsSucceededLast24Hours = succeeded24Count,
+                OrchestrationRunsActive = orchestrationRunsActive,
+                OrchestrationRunsFailedLast24Hours = orchestrationRunsFailedLast24Hours,
+                OrchestrationTemplatesActive = orchestrationTemplatesActive,
+                RecentOrchestrationRuns = recentOrchestrationRuns,
+                ProvisioningProfilesActive = provisioningProfilesActive,
+                OrchestrationRunsWaitingForRetry = orchestrationRunsWaitingForRetry,
+                ActiveProfilesUsingInactiveTemplates = activeProfilesUsingInactiveTemplates,
+                ActiveTemplatesWithoutProfiles = activeTemplatesWithoutProfiles,
+                CompletedOrchestrationRunsLast24Hours = completedOrchestrationRunsLast24Hours,
                 RecentDevices = devices,
                 RecentCommands = commands,
                 VersionSummary = versionSummary,
@@ -831,6 +884,1000 @@ namespace RetailCentral.Api.Controllers
             PopulateCreatePackageLists(vm);
             SetPackageFormViewData("Create", nameof(CreatePackage), "Create Package", "Create Package");
             return View(vm);
+        }
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> CreateProvisioningProfile()
+        {
+            var model = new EditProvisioningProfileViewModel
+            {
+                IsActive = true,
+                DeviceType = "Register",
+                Environment = "Production"
+            };
+
+            await PopulateProvisioningProfileLists(model);
+
+            ViewData["Title"] = "Create Provisioning Profile";
+            ViewData["FormAction"] = nameof(CreateProvisioningProfile);
+            ViewData["SubmitText"] = "Create Profile";
+            ViewData["FormMode"] = "Create";
+
+            return View("EditProvisioningProfile", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateProvisioningProfile(EditProvisioningProfileViewModel model, CancellationToken cancellationToken)
+        {
+            if (!model.TemplateId.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.TemplateId), "Template is required.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateProvisioningProfileLists(model);
+                ViewData["Title"] = "Create Provisioning Profile";
+                ViewData["FormAction"] = nameof(CreateProvisioningProfile);
+                ViewData["SubmitText"] = "Create Profile";
+                ViewData["FormMode"] = "Create";
+                return View("EditProvisioningProfile", model);
+            }
+
+            var selectedTemplateId = model.TemplateId.GetValueOrDefault();
+
+            var templateExists = await _db.OrchestrationTemplates
+                .AnyAsync(x => x.Id == selectedTemplateId && x.IsActive, cancellationToken);
+
+            if (!templateExists)
+            {
+                ModelState.AddModelError(nameof(model.TemplateId), "Selected template was not found or is inactive.");
+            }
+
+            var duplicateName = await _db.ProvisioningProfiles
+                .AnyAsync(x => x.Name == model.Name, cancellationToken);
+
+            if (duplicateName)
+            {
+                ModelState.AddModelError(nameof(model.Name), "A provisioning profile with this name already exists.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateProvisioningProfileLists(model);
+                ViewData["Title"] = "Create Provisioning Profile";
+                ViewData["FormAction"] = nameof(CreateProvisioningProfile);
+                ViewData["SubmitText"] = "Create Profile";
+                ViewData["FormMode"] = "Create";
+                return View("EditProvisioningProfile", model);
+            }
+
+            var entity = new ProvisioningProfile
+            {
+                Name = model.Name.Trim(),
+                DeviceType = string.IsNullOrWhiteSpace(model.DeviceType) ? null : model.DeviceType.Trim(),
+                StoreGroup = string.IsNullOrWhiteSpace(model.StoreGroup) ? null : model.StoreGroup.Trim(),
+                Environment = string.IsNullOrWhiteSpace(model.Environment) ? null : model.Environment.Trim(),
+                TemplateId = selectedTemplateId,
+                IsDefault = model.IsDefault,
+                IsActive = model.IsActive,
+                ParametersJson = null,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            };
+
+            _db.ProvisioningProfiles.Add(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "CreateProvisioningProfile",
+                "ProvisioningProfile",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.Name,
+                    entity.DeviceType,
+                    entity.StoreGroup,
+                    entity.Environment,
+                    entity.TemplateId,
+                    entity.IsDefault,
+                    entity.IsActive
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["ProvisioningProfileMessage"] = $"Provisioning profile '{entity.Name}' created successfully.";
+            return RedirectToAction(nameof(ProvisioningProfiles));
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> EditProvisioningProfile(int id)
+        {
+            var entity = await _db.ProvisioningProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (entity == null)
+                return NotFound();
+
+            var model = new EditProvisioningProfileViewModel
+            {
+                Id = entity.Id,
+                Name = entity.Name ?? string.Empty,
+                DeviceType = entity.DeviceType,
+                StoreGroup = entity.StoreGroup,
+                Environment = entity.Environment,
+                TemplateId = entity.TemplateId,
+                IsDefault = entity.IsDefault,
+                IsActive = entity.IsActive
+            };
+
+            await PopulateProvisioningProfileLists(model);
+
+            ViewData["Title"] = $"Edit Provisioning Profile #{entity.Id}";
+            ViewData["FormAction"] = nameof(EditProvisioningProfile);
+            ViewData["SubmitText"] = "Save Profile Changes";
+            ViewData["FormMode"] = "Edit";
+
+            return View("EditProvisioningProfile", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditProvisioningProfile(int id, EditProvisioningProfileViewModel model, CancellationToken cancellationToken)
+        {
+            var entity = await _db.ProvisioningProfiles
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            if (!model.TemplateId.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.TemplateId), "Template is required.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateProvisioningProfileLists(model);
+                ViewData["Title"] = $"Edit Provisioning Profile #{id}";
+                ViewData["FormAction"] = nameof(EditProvisioningProfile);
+                ViewData["SubmitText"] = "Save Profile Changes";
+                ViewData["FormMode"] = "Edit";
+                return View(model);
+            }
+
+            var selectedTemplateId = model.TemplateId.GetValueOrDefault();
+
+            var templateExists = await _db.OrchestrationTemplates
+                .AnyAsync(x => x.Id == selectedTemplateId && x.IsActive, cancellationToken);
+
+            if (!templateExists)
+            {
+                ModelState.AddModelError(nameof(model.TemplateId), "Selected template was not found or is inactive.");
+            }
+
+            var duplicateName = await _db.ProvisioningProfiles
+                .AnyAsync(x => x.Id != id && x.Name == model.Name, cancellationToken);
+
+            if (duplicateName)
+            {
+                ModelState.AddModelError(nameof(model.Name), "A provisioning profile with this name already exists.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateProvisioningProfileLists(model);
+                ViewData["Title"] = $"Edit Provisioning Profile #{id}";
+                ViewData["FormAction"] = nameof(EditProvisioningProfile);
+                ViewData["SubmitText"] = "Save Profile Changes";
+                ViewData["FormMode"] = "Edit";
+                return View(model);
+            }
+
+            entity.Name = model.Name.Trim();
+            entity.DeviceType = string.IsNullOrWhiteSpace(model.DeviceType) ? null : model.DeviceType.Trim();
+            entity.StoreGroup = string.IsNullOrWhiteSpace(model.StoreGroup) ? null : model.StoreGroup.Trim();
+            entity.Environment = string.IsNullOrWhiteSpace(model.Environment) ? null : model.Environment.Trim();
+            entity.TemplateId = selectedTemplateId;
+            entity.IsDefault = model.IsDefault;
+            entity.IsActive = model.IsActive;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "EditProvisioningProfile",
+                "ProvisioningProfile",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.Name,
+                    entity.DeviceType,
+                    entity.StoreGroup,
+                    entity.Environment,
+                    entity.TemplateId,
+                    entity.IsDefault,
+                    entity.IsActive
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["ProvisioningProfileMessage"] = $"Provisioning profile '{entity.Name}' updated successfully.";
+            return RedirectToAction(nameof(ProvisioningProfiles));
+        }
+
+
+
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeactivateProvisioningProfile(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.ProvisioningProfiles.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (entity == null)
+                return NotFound();
+
+            entity.IsActive = false;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "DeactivateProvisioningProfile",
+                "ProvisioningProfile",
+                entity.Id.ToString(),
+                new { entity.Id, entity.Name },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["ProvisioningProfileMessage"] = $"Provisioning profile '{entity.Name}' deactivated.";
+            return RedirectToAction(nameof(ProvisioningProfiles));
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteProvisioningProfile(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.ProvisioningProfiles.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (entity == null)
+                return NotFound();
+
+            _db.ProvisioningProfiles.Remove(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "DeleteProvisioningProfile",
+                "ProvisioningProfile",
+                id.ToString(),
+                new { Id = id, entity.Name },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["ProvisioningProfileMessage"] = $"Provisioning profile '{entity.Name}' deleted.";
+            return RedirectToAction(nameof(ProvisioningProfiles));
+        }
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> CreateOrchestrationTemplate()
+        {
+            var model = new EditOrchestrationTemplateViewModel
+            {
+                Version = 1,
+                DeviceType = "Register",
+                Environment = "Production",
+                TriggerType = (int)OrchestrationTriggerType.Manual,
+                IsActive = false
+            };
+
+            await PopulateOrchestrationTemplateLists(model);
+
+            ViewData["Title"] = "Create Orchestration Template";
+            ViewData["FormAction"] = nameof(CreateOrchestrationTemplate);
+            ViewData["SubmitText"] = "Create Template";
+
+            return View("EditOrchestrationTemplate", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateOrchestrationTemplate(EditOrchestrationTemplateViewModel model, CancellationToken cancellationToken)
+        {
+            if (!model.TriggerType.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.TriggerType), "Trigger type is required.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateLists(model);
+                ViewData["Title"] = "Create Orchestration Template";
+                ViewData["FormAction"] = nameof(CreateOrchestrationTemplate);
+                ViewData["SubmitText"] = "Create Template";
+                return View("EditOrchestrationTemplate", model);
+            }
+
+            var duplicate = await _db.OrchestrationTemplates.AnyAsync(x =>
+                x.Name == model.Name &&
+                x.Version == model.Version,
+                cancellationToken);
+
+            if (duplicate)
+            {
+                ModelState.AddModelError(nameof(model.Name), "A template with this name and version already exists.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateLists(model);
+                ViewData["Title"] = "Create Orchestration Template";
+                ViewData["FormAction"] = nameof(CreateOrchestrationTemplate);
+                ViewData["SubmitText"] = "Create Template";
+                return View("EditOrchestrationTemplate", model);
+            }
+
+            var entity = new OrchestrationTemplate
+            {
+                Name = model.Name.Trim(),
+                Description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim(),
+                Version = model.Version,
+                DeviceType = model.DeviceType.Trim(),
+                Environment = model.Environment.Trim(),
+                TriggerType = (OrchestrationTriggerType)model.TriggerType.GetValueOrDefault(),
+                IsActive = model.IsActive,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            };
+
+            _db.OrchestrationTemplates.Add(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "CreateOrchestrationTemplate",
+                "OrchestrationTemplate",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.Name,
+                    entity.Version,
+                    entity.DeviceType,
+                    entity.Environment,
+                    entity.TriggerType,
+                    entity.IsActive
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template '{entity.Name}' created successfully.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = entity.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> EditOrchestrationTemplate(int id)
+        {
+            var entity = await _db.OrchestrationTemplates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (entity == null)
+                return NotFound();
+
+            var model = new EditOrchestrationTemplateViewModel
+            {
+                Id = entity.Id,
+                Name = entity.Name ?? string.Empty,
+                Description = entity.Description,
+                Version = entity.Version,
+                DeviceType = entity.DeviceType ?? string.Empty,
+                Environment = entity.Environment ?? string.Empty,
+                TriggerType = (int)entity.TriggerType,
+                IsActive = entity.IsActive
+            };
+
+            await PopulateOrchestrationTemplateLists(model);
+
+            ViewData["Title"] = $"Edit Template #{entity.Id}";
+            ViewData["FormAction"] = nameof(EditOrchestrationTemplate);
+            ViewData["SubmitText"] = "Save Template Changes";
+
+            return View("EditOrchestrationTemplate", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditOrchestrationTemplate(int id, EditOrchestrationTemplateViewModel model, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplates
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            if (!model.TriggerType.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.TriggerType), "Trigger type is required.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateLists(model);
+                ViewData["Title"] = $"Edit Template #{id}";
+                ViewData["FormAction"] = nameof(EditOrchestrationTemplate);
+                ViewData["SubmitText"] = "Save Template Changes";
+                return View("EditOrchestrationTemplate", model);
+            }
+
+            var duplicate = await _db.OrchestrationTemplates.AnyAsync(x =>
+                x.Id != id &&
+                x.Name == model.Name &&
+                x.Version == model.Version,
+                cancellationToken);
+
+            if (duplicate)
+            {
+                ModelState.AddModelError(nameof(model.Name), "A template with this name and version already exists.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateLists(model);
+                ViewData["Title"] = $"Edit Template #{id}";
+                ViewData["FormAction"] = nameof(EditOrchestrationTemplate);
+                ViewData["SubmitText"] = "Save Template Changes";
+                return View("EditOrchestrationTemplate", model);
+            }
+
+            entity.Name = model.Name.Trim();
+            entity.Description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+            entity.Version = model.Version;
+            entity.DeviceType = model.DeviceType.Trim();
+            entity.Environment = model.Environment.Trim();
+            entity.TriggerType = (OrchestrationTriggerType)model.TriggerType.GetValueOrDefault();
+            entity.IsActive = model.IsActive;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "EditOrchestrationTemplate",
+                "OrchestrationTemplate",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.Name,
+                    entity.Version,
+                    entity.DeviceType,
+                    entity.Environment,
+                    entity.TriggerType,
+                    entity.IsActive
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template '{entity.Name}' updated successfully.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = entity.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CloneOrchestrationTemplate(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplates
+                .Include(x => x.Steps)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            var nextVersion = await _db.OrchestrationTemplates
+                .Where(x => x.Name == entity.Name)
+                .MaxAsync(x => (int?)x.Version, cancellationToken) ?? entity.Version;
+
+            var clone = new OrchestrationTemplate
+            {
+                Name = entity.Name,
+                Description = entity.Description,
+                Version = nextVersion + 1,
+                DeviceType = entity.DeviceType,
+                Environment = entity.Environment,
+                TriggerType = entity.TriggerType,
+                IsActive = false,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow,
+                Steps = entity.Steps
+                    .OrderBy(x => x.StepOrder)
+                    .Select(step => new OrchestrationTemplateStep
+                    {
+                        StepOrder = step.StepOrder,
+                        Name = step.Name,
+                        StepType = step.StepType,
+                        CommandType = step.CommandType,
+                        ParametersJson = step.ParametersJson,
+                        SuccessCriteriaJson = step.SuccessCriteriaJson,
+                        TimeoutSeconds = step.TimeoutSeconds,
+                        MaxRetries = step.MaxRetries,
+                        OnFailureAction = step.OnFailureAction,
+                        ContinueOnFailure = step.ContinueOnFailure,
+                        RollbackTemplateStepId = step.RollbackTemplateStepId
+                    })
+                    .ToList()
+            };
+
+            _db.OrchestrationTemplates.Add(clone);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "CloneOrchestrationTemplate",
+                "OrchestrationTemplate",
+                clone.Id.ToString(),
+                new
+                {
+                    SourceTemplateId = entity.Id,
+                    ClonedTemplateId = clone.Id,
+                    clone.Name,
+                    clone.Version
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template cloned as version {clone.Version}.";
+            return RedirectToAction(nameof(EditOrchestrationTemplate), new { id = clone.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ActivateOrchestrationTemplate(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplates.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (entity == null)
+                return NotFound();
+
+            entity.IsActive = true;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "ActivateOrchestrationTemplate",
+                "OrchestrationTemplate",
+                entity.Id.ToString(),
+                new { entity.Id, entity.Name, entity.Version },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template '{entity.Name}' activated.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = entity.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeactivateOrchestrationTemplate(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplates.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (entity == null)
+                return NotFound();
+
+            entity.IsActive = false;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "DeactivateOrchestrationTemplate",
+                "OrchestrationTemplate",
+                entity.Id.ToString(),
+                new { entity.Id, entity.Name, entity.Version },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template '{entity.Name}' deactivated.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = entity.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteOrchestrationTemplate(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplates
+                .Include(x => x.ProvisioningProfiles)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            var hasRuns = await _db.OrchestrationRuns.AnyAsync(x => x.TemplateId == id, cancellationToken);
+            if (hasRuns)
+            {
+                TempData["OrchestrationTemplateMessage"] = "Cannot delete template because orchestration runs exist for it.";
+                return RedirectToAction(nameof(OrchestrationTemplate), new { id });
+            }
+
+            if (entity.ProvisioningProfiles.Any())
+            {
+                TempData["OrchestrationTemplateMessage"] = "Cannot delete template because provisioning profiles still reference it.";
+                return RedirectToAction(nameof(OrchestrationTemplate), new { id });
+            }
+
+            _db.OrchestrationTemplates.Remove(entity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "DeleteOrchestrationTemplate",
+                "OrchestrationTemplate",
+                id.ToString(),
+                new { entity.Id, entity.Name, entity.Version },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Template '{entity.Name}' deleted.";
+            return RedirectToAction(nameof(OrchestrationTemplates));
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> OrchestrationRuns(string? status, string? search, int take = 200)
+        {
+            take = Math.Clamp(take, 25, 500);
+
+            var query = _db.OrchestrationRuns
+                .AsNoTracking()
+                .Include(x => x.Steps)
+                .Include(x => x.Template)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(status) &&
+                Enum.TryParse<OrchestrationRunStatus>(status, true, out var parsedStatus))
+            {
+                query = query.Where(x => x.Status == parsedStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+
+                query = query.Where(x =>
+                    (x.CorrelationId ?? string.Empty).Contains(s) ||
+                    (x.RequestedBy ?? string.Empty).Contains(s) ||
+                    (x.DeviceId != null && x.DeviceId.ToString()!.Contains(s)) ||
+                    (x.Template != null && (x.Template.Name ?? string.Empty).Contains(s)));
+            }
+
+            var runs = await query
+                .OrderByDescending(x => x.StartedUtc)
+                .Take(take)
+                .Select(x => new OrchestrationRunListItemViewModel
+                {
+                    Id = x.Id,
+                    TemplateId = x.TemplateId,
+                    TemplateName = x.Template != null ? (x.Template.Name ?? $"Template {x.TemplateId}") : $"Template {x.TemplateId}",
+                    TemplateVersion = x.Template != null ? x.Template.Version : 0,
+                    DeviceId = x.DeviceId,
+                    AgentId = x.AgentId,
+                    StoreId = x.StoreId,
+                    RegisterId = x.RegisterId,
+                    Status = x.Status.ToString(),
+                    CurrentStepOrder = x.CurrentStepOrder,
+                    CorrelationId = x.CorrelationId ?? string.Empty,
+                    RequestedBy = x.RequestedBy ?? string.Empty,
+                    TriggerSource = x.TriggerSource.ToString(),
+                    StartedUtc = x.StartedUtc,
+                    CompletedUtc = x.CompletedUtc,
+                    TotalSteps = x.Steps.Count,
+                    CompletedSteps = x.Steps.Count(step => step.Status == OrchestrationRunStepStatus.Succeeded),
+                    FailedSteps = x.Steps.Count(step =>
+                        step.Status == OrchestrationRunStepStatus.Failed ||
+                        step.Status == OrchestrationRunStepStatus.TimedOut)
+                })
+                .ToListAsync();
+
+            var allRuns = _db.OrchestrationRuns.AsNoTracking();
+
+            var model = new OrchestrationRunsPageViewModel
+            {
+                StatusFilter = status,
+                Search = search,
+                TotalRuns = await allRuns.CountAsync(),
+                PendingRuns = await allRuns.CountAsync(x => x.Status == OrchestrationRunStatus.Pending),
+                RunningRuns = await allRuns.CountAsync(x =>
+                    x.Status == OrchestrationRunStatus.Running ||
+                    x.Status == OrchestrationRunStatus.WaitingForRetry),
+                CompletedRuns = await allRuns.CountAsync(x => x.Status == OrchestrationRunStatus.Completed),
+                FailedRuns = await allRuns.CountAsync(x =>
+                    x.Status == OrchestrationRunStatus.Failed ||
+                    x.Status == OrchestrationRunStatus.Cancelled),
+                Runs = runs
+            };
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> OrchestrationRun(long id)
+        {
+            var run = await _db.OrchestrationRuns
+                .AsNoTracking()
+                .Include(x => x.Template)
+                .Include(x => x.Steps)
+                    .ThenInclude(x => x.TemplateStep)
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (run == null)
+                return NotFound();
+
+            var model = new OrchestrationRunDetailViewModel
+            {
+                Id = run.Id,
+                TemplateId = run.TemplateId,
+                TemplateName = run.Template != null ? (run.Template.Name ?? $"Template {run.TemplateId}") : $"Template {run.TemplateId}",
+                TemplateVersion = run.Template != null ? run.Template.Version : 0,
+                DeviceId = run.DeviceId,
+                AgentId = run.AgentId,
+                StoreId = run.StoreId,
+                RegisterId = run.RegisterId,
+                Status = run.Status.ToString(),
+                CurrentStepOrder = run.CurrentStepOrder,
+                CorrelationId = run.CorrelationId ?? string.Empty,
+                RequestedBy = run.RequestedBy ?? string.Empty,
+                TriggerSource = run.TriggerSource.ToString(),
+                StartedUtc = run.StartedUtc,
+                CompletedUtc = run.CompletedUtc,
+                Steps = run.Steps
+                    .OrderBy(step => step.StepOrder)
+                    .Select(step => new OrchestrationRunStepViewModel
+                    {
+                        Id = step.Id,
+                        StepOrder = step.StepOrder,
+                        Name = step.TemplateStep != null ? (step.TemplateStep.Name ?? $"Step {step.StepOrder}") : $"Step {step.StepOrder}",
+                        CommandType = step.TemplateStep != null ? (step.TemplateStep.CommandType ?? string.Empty) : string.Empty,
+                        StepType = step.TemplateStep != null ? step.TemplateStep.StepType.ToString() : string.Empty,
+                        Status = step.Status.ToString(),
+                        AttemptCount = step.AttemptCount,
+                        CommandId = step.CommandId,
+                        ErrorMessage = step.ErrorMessage,
+                        StartedUtc = step.StartedUtc,
+                        CompletedUtc = step.CompletedUtc
+                    })
+                    .ToList()
+            };
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> OrchestrationTemplates(
+    string? search,
+    string? deviceType,
+    string? environment,
+    bool? isActive,
+    string? filter,
+    int take = 200)
+        {
+            take = Math.Clamp(take, 25, 500);
+
+            var query = _db.OrchestrationTemplates
+                .AsNoTracking()
+                .Include(x => x.Steps)
+                .Include(x => x.ProvisioningProfiles)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                query = query.Where(x =>
+                    (x.Name ?? string.Empty).Contains(s) ||
+                    (x.Description ?? string.Empty).Contains(s));
+            }
+
+            if (!string.IsNullOrWhiteSpace(deviceType))
+            {
+                var dt = deviceType.Trim();
+                query = query.Where(x => (x.DeviceType ?? string.Empty) == dt);
+            }
+
+            if (!string.IsNullOrWhiteSpace(environment))
+            {
+                var env = environment.Trim();
+                query = query.Where(x => (x.Environment ?? string.Empty) == env);
+            }
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(x => x.IsActive == isActive.Value);
+            }
+
+            if (string.Equals(filter, "unused-active", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.IsActive && !x.ProvisioningProfiles.Any(p => p.IsActive));
+            }
+
+            var templates = await query
+                .OrderBy(x => x.Name)
+                .ThenByDescending(x => x.Version)
+                .Take(take)
+                .Select(x => new OrchestrationTemplateListItemViewModel
+                {
+                    Id = x.Id,
+                    Name = x.Name ?? string.Empty,
+                    Description = x.Description,
+                    Version = x.Version,
+                    DeviceType = x.DeviceType ?? string.Empty,
+                    Environment = x.Environment ?? string.Empty,
+                    TriggerType = x.TriggerType.ToString(),
+                    IsActive = x.IsActive,
+                    StepCount = x.Steps.Count,
+                    ProvisioningProfileCount = x.ProvisioningProfiles.Count,
+                    CreatedUtc = x.CreatedUtc,
+                    UpdatedUtc = x.UpdatedUtc
+                })
+                .ToListAsync();
+
+            var allTemplates = _db.OrchestrationTemplates.AsNoTracking();
+
+            var model = new OrchestrationTemplatesPageViewModel
+            {
+                Search = search,
+                DeviceTypeFilter = deviceType,
+                EnvironmentFilter = environment,
+                ActiveFilter = isActive,
+                FilterMode = filter,
+                TotalTemplates = await allTemplates.CountAsync(),
+                ActiveTemplates = await allTemplates.CountAsync(x => x.IsActive),
+                InactiveTemplates = await allTemplates.CountAsync(x => !x.IsActive),
+                Templates = templates
+            };
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> OrchestrationTemplate(int id)
+        {
+            var template = await _db.OrchestrationTemplates
+                .AsNoTracking()
+                .Include(x => x.Steps)
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (template == null)
+                return NotFound();
+
+            var model = new OrchestrationTemplateDetailViewModel
+            {
+                Id = template.Id,
+                Name = template.Name ?? string.Empty,
+                Description = template.Description,
+                Version = template.Version,
+                DeviceType = template.DeviceType ?? string.Empty,
+                Environment = template.Environment ?? string.Empty,
+                TriggerType = template.TriggerType.ToString(),
+                IsActive = template.IsActive,
+                CreatedUtc = template.CreatedUtc,
+                UpdatedUtc = template.UpdatedUtc,
+                Steps = template.Steps
+                    .OrderBy(step => step.StepOrder)
+                    .Select(step => new OrchestrationTemplateStepViewModel
+                    {
+                        Id = step.Id,
+                        StepOrder = step.StepOrder,
+                        Name = step.Name ?? $"Step {step.StepOrder}",
+                        StepType = step.StepType.ToString(),
+                        CommandType = step.CommandType ?? string.Empty,
+                        ParametersJson = step.ParametersJson,
+                        SuccessCriteriaJson = step.SuccessCriteriaJson,
+                        TimeoutSeconds = step.TimeoutSeconds,
+                        MaxRetries = step.MaxRetries,
+                        OnFailureAction = step.OnFailureAction.ToString(),
+                        ContinueOnFailure = step.ContinueOnFailure,
+                        RollbackTemplateStepId = step.RollbackTemplateStepId
+                    })
+                    .ToList()
+            };
+
+            return View(model);
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> ProvisioningProfiles(
+    string? search,
+    string? deviceType,
+    string? environment,
+    bool? isActive,
+    string? filter,
+    int take = 200)
+        {
+            take = Math.Clamp(take, 25, 500);
+
+            var query = _db.ProvisioningProfiles
+                .AsNoTracking()
+                .Include(x => x.Template)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                query = query.Where(x =>
+                    (x.Name ?? string.Empty).Contains(s) ||
+                    (x.StoreGroup ?? string.Empty).Contains(s) ||
+                    (x.Template != null && (x.Template.Name ?? string.Empty).Contains(s)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(deviceType))
+            {
+                var dt = deviceType.Trim();
+                query = query.Where(x => (x.DeviceType ?? string.Empty) == dt);
+            }
+
+            if (!string.IsNullOrWhiteSpace(environment))
+            {
+                var env = environment.Trim();
+                query = query.Where(x => (x.Environment ?? string.Empty) == env);
+            }
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(x => x.IsActive == isActive.Value);
+            }
+
+            if (string.Equals(filter, "inactive-template", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.IsActive && x.Template != null && !x.Template.IsActive);
+            }
+
+            var profiles = await query
+                .OrderBy(x => x.Name)
+                .Take(take)
+                .Select(x => new ProvisioningProfileListItemViewModel
+                {
+                    Id = x.Id,
+                    Name = x.Name ?? string.Empty,
+                    DeviceType = x.DeviceType ?? string.Empty,
+                    StoreGroup = x.StoreGroup ?? string.Empty,
+                    Environment = x.Environment ?? string.Empty,
+                    TemplateId = x.TemplateId,
+                    TemplateName = x.Template != null ? (x.Template.Name ?? $"Template {x.TemplateId}") : $"Template {x.TemplateId}",
+                    TemplateVersion = x.Template != null ? x.Template.Version : 0,
+                    IsDefault = x.IsDefault,
+                    IsActive = x.IsActive,
+                    ParametersJson = x.ParametersJson
+                })
+                .ToListAsync();
+
+            var allProfiles = _db.ProvisioningProfiles.AsNoTracking();
+
+            var model = new ProvisioningProfilesPageViewModel
+            {
+                Search = search,
+                DeviceTypeFilter = deviceType,
+                EnvironmentFilter = environment,
+                ActiveFilter = isActive,
+                FilterMode = filter,
+                TotalProfiles = await allProfiles.CountAsync(),
+                ActiveProfiles = await allProfiles.CountAsync(x => x.IsActive),
+                DefaultProfiles = await allProfiles.CountAsync(x => x.IsDefault),
+                Profiles = profiles
+            };
+
+            return View(model);
         }
 
         [Authorize(Policy = "DashboardEngineer")]
@@ -3351,7 +4398,392 @@ namespace RetailCentral.Api.Controllers
             model.AvailableCommands = GetHelpdeskCommands();
         }
 
-       
+        private static bool RequiresCommandType(OrchestrationStepType stepType)
+        {
+            var name = stepType.ToString();
+
+            return name.Contains("Command", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Validate", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Validation", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Install", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Restart", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Collect", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SupportsGuidedParameters(string? commandType)
+        {
+            if (string.IsNullOrWhiteSpace(commandType))
+                return false;
+
+            return commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetGuidedParameterDescription(string? commandType)
+        {
+            if (string.IsNullOrWhiteSpace(commandType))
+                return "Choose a command type to see guided parameter options.";
+
+            if (commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
+                return "ValidateProcess requires a process name and will store it as structured step parameters.";
+
+            if (commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase))
+                return "RestartPOS does not require additional parameters.";
+
+            if (commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase))
+                return "CollectSystemInfo does not require additional parameters.";
+
+            if (commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
+                return "InstallPackage uses a guided package selector and generates the install payload automatically.";
+
+            return "Guided parameters are not available yet for this command type.";
+        }
+
+        private static void ApplyCommandTypeMetadata(EditOrchestrationTemplateStepViewModel model)
+        {
+            model.SupportsGuidedParameters = SupportsGuidedParameters(model.CommandType);
+            model.GuidedParameterDescription = GetGuidedParameterDescription(model.CommandType);
+
+            if (!string.Equals(model.CommandType, "ValidateProcess", StringComparison.OrdinalIgnoreCase))
+            {
+                model.ValidateProcessName = null;
+            }
+
+            if (!string.Equals(model.CommandType, "InstallPackage", StringComparison.OrdinalIgnoreCase))
+            {
+                model.InstallPackageId = null;
+                model.InstallPackageExecuteMode = null;
+                model.SelectedPackageSummary = null;
+            }
+
+            if (string.Equals(model.CommandType, "InstallPackage", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.InstallPackageExecuteMode))
+            {
+                model.InstallPackageExecuteMode = "Immediate";
+            }
+        }
+
+        private static string? BuildParametersJson(EditOrchestrationTemplateStepViewModel model, InstallPackageOptionData? selectedPackage = null)
+        {
+            if (string.IsNullOrWhiteSpace(model.CommandType))
+                return null;
+
+            if (model.CommandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ValidateProcessName))
+                    return null;
+
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    processName = model.ValidateProcessName.Trim()
+                });
+            }
+
+            if (model.CommandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
+            {
+                if (selectedPackage == null)
+                    return null;
+
+                var payload = new InstallPackagePayloadModel
+                {
+                    PackageId = selectedPackage.Id,
+                    DownloadUrl = selectedPackage.StoragePath ?? string.Empty,
+                    FileName = selectedPackage.FileName ?? string.Empty,
+                    Sha256 = selectedPackage.Sha256 ?? string.Empty,
+                    InstallCommand = selectedPackage.ExecutionCommand ?? string.Empty,
+                    InstallArguments = selectedPackage.ExecutionArguments,
+                    TimeoutSeconds = model.TimeoutSeconds,
+                    ExecuteMode = string.IsNullOrWhiteSpace(model.InstallPackageExecuteMode)
+                        ? "Immediate"
+                        : model.InstallPackageExecuteMode.Trim()
+                };
+
+                return System.Text.Json.JsonSerializer.Serialize(payload);
+            }
+
+            if (model.CommandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (model.CommandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            return null;
+        }
+
+        private static void PopulateGuidedParametersFromJson(EditOrchestrationTemplateStepViewModel model, string? parametersJson)
+        {
+            ApplyCommandTypeMetadata(model);
+
+            if (string.IsNullOrWhiteSpace(parametersJson) || string.IsNullOrWhiteSpace(model.CommandType))
+                return;
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(parametersJson);
+                var root = doc.RootElement;
+
+                if (model.CommandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (root.TryGetProperty("processName", out var processName))
+                    {
+                        model.ValidateProcessName = processName.GetString();
+                    }
+
+                    return;
+                }
+
+                if (model.CommandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (root.TryGetProperty("packageId", out var packageId) && packageId.TryGetInt32(out var parsedPackageId))
+                    {
+                        model.InstallPackageId = parsedPackageId;
+                    }
+
+                    if (root.TryGetProperty("executeMode", out var executeMode))
+                    {
+                        model.InstallPackageExecuteMode = executeMode.GetString();
+                    }
+
+                    return;
+                }
+            }
+            catch
+            {
+                // Ignore malformed historical JSON and allow the form to load.
+            }
+        }
+        private static string GetStepTypeDescription(OrchestrationStepType stepType)
+        {
+            return RequiresCommandType(stepType)
+                ? "This step type is currently treated as command-backed and requires a Command Type."
+                : "This step type is currently treated as non-command orchestration behavior. Command Type does not apply.";
+        }
+
+        private static void ApplyStepTypeMetadata(EditOrchestrationTemplateStepViewModel model)
+        {
+            if (!model.StepType.HasValue)
+            {
+                model.RequiresCommandType = false;
+                model.StepTypeDescription = "Choose a step type to see how this step behaves.";
+                return;
+            }
+
+            var selectedStepType = (OrchestrationStepType)model.StepType.GetValueOrDefault();
+            model.RequiresCommandType = RequiresCommandType(selectedStepType);
+            model.StepTypeDescription = GetStepTypeDescription(selectedStepType);
+
+            if (!model.RequiresCommandType)
+            {
+                model.CommandType = null;
+            }
+        }
+
+        private async Task NormalizeTemplateStepOrderAsync(int templateId, CancellationToken cancellationToken)
+        {
+            var steps = await _db.OrchestrationTemplateSteps
+                .Where(x => x.TemplateId == templateId)
+                .OrderBy(x => x.StepOrder)
+                .ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken);
+
+            for (var i = 0; i < steps.Count; i++)
+            {
+                steps[i].StepOrder = i + 1;
+            }
+        }
+        private async Task PopulateOrchestrationTemplateStepLists(EditOrchestrationTemplateStepViewModel model, CancellationToken cancellationToken = default)
+        {
+            model.StepTypeOptions = Enum.GetValues(typeof(OrchestrationStepType))
+                .Cast<OrchestrationStepType>()
+                .Select(x => new SelectListItem
+                {
+                    Value = ((int)x).ToString(),
+                    Text = x.ToString()
+                })
+                .ToList();
+
+            model.OnFailureActionOptions = Enum.GetValues(typeof(OrchestrationFailureAction))
+                .Cast<OrchestrationFailureAction>()
+                .Select(x => new SelectListItem
+                {
+                    Value = ((int)x).ToString(),
+                    Text = x.ToString()
+                })
+                .ToList();
+
+            model.CommandTypeOptions = GetAvailableCommandTypes()
+                .Select(x => new SelectListItem
+                {
+                    Value = x,
+                    Text = x
+                })
+                .ToList();
+
+            var installPackages = await GetInstallPackageOptionsAsync(cancellationToken);
+
+            model.InstallPackageOptions = installPackages
+                .Select(x => new SelectListItem
+                {
+                    Value = x.Id.ToString(),
+                    Text = string.IsNullOrWhiteSpace(x.Version)
+                        ? $"{x.Name} ({x.FileName ?? "no file"})"
+                        : $"{x.Name} {x.Version} ({x.FileName ?? "no file"})"
+                })
+                .ToList();
+
+            model.InstallPackageExecuteModeOptions = new List<SelectListItem>
+    {
+        new SelectListItem { Value = "Immediate", Text = "Immediate" },
+        new SelectListItem { Value = "StagedOnly", Text = "Staged Only" }
+    };
+
+            if (model.InstallPackageId.HasValue)
+            {
+                var selectedPackage = installPackages.FirstOrDefault(x => x.Id == model.InstallPackageId.Value);
+                if (selectedPackage != null)
+                {
+                    model.SelectedPackageSummary =
+                        $"File: {selectedPackage.FileName ?? "-"} | " +
+                        $"Source: {selectedPackage.StoragePath ?? "-"} | " +
+                        $"Install Command: {selectedPackage.ExecutionCommand ?? "-"}";
+                }
+            }
+
+            ApplyStepTypeMetadata(model);
+            ApplyCommandTypeMetadata(model);
+        }
+        private Task PopulateOrchestrationTemplateLists(EditOrchestrationTemplateViewModel model)
+        {
+            model.DeviceTypeOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "", Text = "Select device type..." },
+                new SelectListItem { Value = "Register", Text = "Register" },
+                new SelectListItem { Value = "Server", Text = "Server" },
+                new SelectListItem { Value = "Kiosk", Text = "Kiosk" },
+                new SelectListItem { Value = "Mobile", Text = "Mobile" }
+            };
+
+                    model.EnvironmentOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "", Text = "Select environment..." },
+                new SelectListItem { Value = "Production", Text = "Production" },
+                new SelectListItem { Value = "Staging", Text = "Staging" },
+                new SelectListItem { Value = "QA", Text = "QA" },
+                new SelectListItem { Value = "Dev", Text = "Dev" },
+                new SelectListItem { Value = "Lab", Text = "Lab" }
+            };
+
+            model.TriggerTypeOptions = Enum.GetValues(typeof(OrchestrationTriggerType))
+                .Cast<OrchestrationTriggerType>()
+                .Select(x => new SelectListItem
+                {
+                    Value = ((int)x).ToString(),
+                    Text = x.ToString()
+                })
+                .ToList();
+
+            return Task.CompletedTask;
+        }
+        private sealed class InstallPackagePayloadModel
+        {
+            public int PackageId { get; set; }
+            public string DownloadUrl { get; set; } = string.Empty;
+            public string FileName { get; set; } = string.Empty;
+            public string Sha256 { get; set; } = string.Empty;
+            public string InstallCommand { get; set; } = string.Empty;
+            public string? InstallArguments { get; set; }
+            public int TimeoutSeconds { get; set; }
+            public string ExecuteMode { get; set; } = "Immediate";
+        }
+
+        private sealed class InstallPackageOptionData
+        {
+            public int Id { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public string? Version { get; set; }
+            public string? FileName { get; set; }
+            public string? StoragePath { get; set; }
+            public string? Sha256 { get; set; }
+            public string? ExecutionCommand { get; set; }
+            public string? ExecutionArguments { get; set; }
+            public int TimeoutSeconds { get; set; }
+        }
+
+        private async Task<List<InstallPackageOptionData>> GetInstallPackageOptionsAsync(CancellationToken cancellationToken)
+        {
+            var packages = await _deploymentService.GetPackagesAsync(cancellationToken);
+
+            return packages
+                .OrderBy(p => p.Name)
+                .ThenBy(p => p.Version)
+                .Select(p => new InstallPackageOptionData
+                {
+                    Id = p.Id,
+                    Name = p.Name ?? $"Package {p.Id}",
+                    Version = p.Version,
+                    FileName = p.FileName,
+                    StoragePath = p.StoragePath,
+                    Sha256 = p.Sha256,
+                    ExecutionCommand = p.ExecutionCommand,
+                    ExecutionArguments = p.ExecutionArguments,
+                    TimeoutSeconds = p.TimeoutSeconds
+                })
+                .ToList();
+        }
+        private async Task PopulateCreateOrchestrationRunLists(CreateOrchestrationRunViewModel model, CancellationToken cancellationToken)
+        {
+            var cutoff = OnlineCutoffUtc;
+
+            model.DeviceOptions = await _db.Devices
+                .AsNoTracking()
+                .Where(d => d.IsEnabled)
+                .OrderBy(d => d.StoreNumber)
+                .ThenBy(d => d.Hostname)
+                .Select(d => new SelectListItem
+                {
+                    Value = d.DeviceId.ToString(),
+                    Text = $"{d.StoreNumber} - {d.Hostname} {(d.LastSeenUtc >= cutoff ? "(Online)" : "(Offline)")}"
+                })
+                .ToListAsync(cancellationToken);
+        }
+        private async Task PopulateProvisioningProfileLists(EditProvisioningProfileViewModel model)
+        {
+            model.TemplateOptions = await _db.OrchestrationTemplates
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.Name)
+                .ThenByDescending(x => x.Version)
+                .Select(x => new SelectListItem
+                {
+                    Value = x.Id.ToString(),
+                    Text = string.IsNullOrWhiteSpace(x.DeviceType) && string.IsNullOrWhiteSpace(x.Environment)
+                        ? $"{x.Name} v{x.Version}"
+                        : $"{x.Name} v{x.Version} ({x.DeviceType ?? "-"} / {x.Environment ?? "-"})"
+                })
+                .ToListAsync();
+
+            model.DeviceTypeOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "", Text = "Select device type..." },
+                new SelectListItem { Value = "Register", Text = "Register" },
+                new SelectListItem { Value = "Server", Text = "Server" },
+                new SelectListItem { Value = "Kiosk", Text = "Kiosk" },
+                new SelectListItem { Value = "Mobile", Text = "Mobile" }
+            };
+
+                    model.EnvironmentOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "", Text = "Select environment..." },
+                new SelectListItem { Value = "Production", Text = "Production" },
+                new SelectListItem { Value = "Staging", Text = "Staging" },
+                new SelectListItem { Value = "QA", Text = "QA" },
+                new SelectListItem { Value = "Dev", Text = "Dev" },
+                new SelectListItem { Value = "Lab", Text = "Lab" }
+            };
+        }
+
         /// <summary>
         /// Maps a helpdesk command key to the actual queued command type and payload.
         /// These map to safer named commands rather than generic process execution.
@@ -3802,6 +5234,712 @@ namespace RetailCentral.Api.Controllers
             ViewData["FormAction"] = formAction;
             ViewData["SubmitText"] = submitText;
             ViewData["Title"] = title;
+        }
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateOrchestrationTemplateStep(EditOrchestrationTemplateStepViewModel model, CancellationToken cancellationToken)
+        {
+            var template = await _db.OrchestrationTemplates
+                .FirstOrDefaultAsync(x => x.Id == model.TemplateId, cancellationToken);
+
+            if (template == null)
+                return NotFound();
+
+            model.TemplateName = template.Name ?? $"Template {template.Id}";
+            ApplyStepTypeMetadata(model);
+            ApplyCommandTypeMetadata(model);
+            var installPackages = await GetInstallPackageOptionsAsync(cancellationToken);
+            InstallPackageOptionData? selectedPackage = null;
+
+            if (string.Equals(model.CommandType, "InstallPackage", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!model.InstallPackageId.HasValue)
+                {
+                    ModelState.AddModelError(nameof(model.InstallPackageId), "Package selection is required for InstallPackage.");
+                }
+                else
+                {
+                    selectedPackage = installPackages.FirstOrDefault(x => x.Id == model.InstallPackageId.Value);
+
+                    if (selectedPackage == null)
+                    {
+                        ModelState.AddModelError(nameof(model.InstallPackageId), "Selected package was not found.");
+                    }
+                    else if (string.IsNullOrWhiteSpace(selectedPackage.StoragePath)
+                        || string.IsNullOrWhiteSpace(selectedPackage.FileName)
+                        || string.IsNullOrWhiteSpace(selectedPackage.ExecutionCommand))
+                    {
+                        ModelState.AddModelError(nameof(model.InstallPackageId), "Selected package is missing required install metadata.");
+                    }
+                }
+            }
+            if (!model.StepType.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.StepType), "Step type is required.");
+            }
+
+            if (!model.OnFailureAction.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.OnFailureAction), "On failure action is required.");
+            }
+
+            if (model.StepType.HasValue)
+            {
+                var stepTypeForValidation = (OrchestrationStepType)model.StepType.GetValueOrDefault();
+                if (RequiresCommandType(stepTypeForValidation) && string.IsNullOrWhiteSpace(model.CommandType))
+                {
+                    ModelState.AddModelError(nameof(model.CommandType), "Command type is required for the selected step type.");
+                }
+            }
+
+            if (string.Equals(model.CommandType, "ValidateProcess", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.ValidateProcessName))
+            {
+                ModelState.AddModelError(nameof(model.ValidateProcessName), "Process name is required for ValidateProcess.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                ViewData["Title"] = $"Add Step to {model.TemplateName}";
+                ViewData["FormAction"] = nameof(CreateOrchestrationTemplateStep);
+                ViewData["SubmitText"] = "Add Step";
+                return View("EditOrchestrationTemplateStep", model);
+            }
+
+            var duplicateOrder = await _db.OrchestrationTemplateSteps.AnyAsync(
+                x => x.TemplateId == model.TemplateId && x.StepOrder == model.StepOrder,
+                cancellationToken);
+
+            if (duplicateOrder)
+            {
+                ModelState.AddModelError(nameof(model.StepOrder), "Another step already uses this step order.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                ViewData["Title"] = $"Add Step to {model.TemplateName}";
+                ViewData["FormAction"] = nameof(CreateOrchestrationTemplateStep);
+                ViewData["SubmitText"] = "Add Step";
+                return View("EditOrchestrationTemplateStep", model);
+            }
+
+            var selectedStepTypeValue = model.StepType.GetValueOrDefault();
+            var selectedStepType = (OrchestrationStepType)selectedStepTypeValue;
+            var normalizedCommandType = RequiresCommandType(selectedStepType)
+                ? model.CommandType?.Trim()
+                : null;
+
+            var entity = new OrchestrationTemplateStep
+            {
+                TemplateId = model.TemplateId,
+                StepOrder = model.StepOrder,
+                Name = model.Name.Trim(),
+                StepType = selectedStepType,
+                CommandType = normalizedCommandType,
+                ParametersJson = BuildParametersJson(model, selectedPackage),
+                SuccessCriteriaJson = null,
+                TimeoutSeconds = model.TimeoutSeconds,
+                MaxRetries = model.MaxRetries,
+                OnFailureAction = (OrchestrationFailureAction)model.OnFailureAction.GetValueOrDefault(),
+                ContinueOnFailure = model.ContinueOnFailure,
+                RollbackTemplateStepId = null
+            };
+
+            _db.OrchestrationTemplateSteps.Add(entity);
+            template.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "CreateOrchestrationTemplateStep",
+                "OrchestrationTemplateStep",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.TemplateId,
+                    entity.StepOrder,
+                    entity.Name,
+                    entity.StepType,
+                    entity.CommandType,
+                    entity.ParametersJson,
+                    entity.TimeoutSeconds,
+                    entity.MaxRetries,
+                    entity.OnFailureAction,
+                    entity.ContinueOnFailure
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Step '{entity.Name}' added.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = model.TemplateId });
+        }
+
+
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditOrchestrationTemplateStep(int id, EditOrchestrationTemplateStepViewModel model, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplateSteps
+                .Include(x => x.Template)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            model.TemplateId = entity.TemplateId;
+            model.TemplateName = entity.Template?.Name ?? $"Template {entity.TemplateId}";
+            ApplyStepTypeMetadata(model);
+            ApplyCommandTypeMetadata(model);
+            var installPackages = await GetInstallPackageOptionsAsync(cancellationToken);
+            InstallPackageOptionData? selectedPackage = null;
+
+            if (string.Equals(model.CommandType, "InstallPackage", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!model.InstallPackageId.HasValue)
+                {
+                    ModelState.AddModelError(nameof(model.InstallPackageId), "Package selection is required for InstallPackage.");
+                }
+                else
+                {
+                    selectedPackage = installPackages.FirstOrDefault(x => x.Id == model.InstallPackageId.Value);
+
+                    if (selectedPackage == null)
+                    {
+                        ModelState.AddModelError(nameof(model.InstallPackageId), "Selected package was not found.");
+                    }
+                    else if (string.IsNullOrWhiteSpace(selectedPackage.StoragePath)
+                        || string.IsNullOrWhiteSpace(selectedPackage.FileName)
+                        || string.IsNullOrWhiteSpace(selectedPackage.ExecutionCommand))
+                    {
+                        ModelState.AddModelError(nameof(model.InstallPackageId), "Selected package is missing required install metadata.");
+                    }
+                }
+            }
+
+            if (!model.StepType.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.StepType), "Step type is required.");
+            }
+
+            if (!model.OnFailureAction.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.OnFailureAction), "On failure action is required.");
+            }
+
+            if (model.StepType.HasValue)
+            {
+                var stepTypeForValidation = (OrchestrationStepType)model.StepType.GetValueOrDefault();
+                if (RequiresCommandType(stepTypeForValidation) && string.IsNullOrWhiteSpace(model.CommandType))
+                {
+                    ModelState.AddModelError(nameof(model.CommandType), "Command type is required for the selected step type.");
+                }
+            }
+
+            if (string.Equals(model.CommandType, "ValidateProcess", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.ValidateProcessName))
+            {
+                ModelState.AddModelError(nameof(model.ValidateProcessName), "Process name is required for ValidateProcess.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                ViewData["Title"] = $"Edit Step: {model.Name}";
+                ViewData["FormAction"] = nameof(EditOrchestrationTemplateStep);
+                ViewData["SubmitText"] = "Save Step Changes";
+                return View("EditOrchestrationTemplateStep", model);
+            }
+
+            var duplicateOrder = await _db.OrchestrationTemplateSteps.AnyAsync(
+                x => x.TemplateId == entity.TemplateId && x.Id != id && x.StepOrder == model.StepOrder,
+                cancellationToken);
+
+            if (duplicateOrder)
+            {
+                ModelState.AddModelError(nameof(model.StepOrder), "Another step already uses this step order.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                ViewData["Title"] = $"Edit Step: {model.Name}";
+                ViewData["FormAction"] = nameof(EditOrchestrationTemplateStep);
+                ViewData["SubmitText"] = "Save Step Changes";
+                return View("EditOrchestrationTemplateStep", model);
+            }
+
+            var selectedStepTypeValue = model.StepType.GetValueOrDefault();
+            var selectedStepType = (OrchestrationStepType)selectedStepTypeValue;
+            var normalizedCommandType = RequiresCommandType(selectedStepType)
+                ? model.CommandType?.Trim()
+                : null;
+
+            entity.StepOrder = model.StepOrder;
+            entity.Name = model.Name.Trim();
+            entity.StepType = selectedStepType;
+            entity.CommandType = normalizedCommandType;
+            entity.ParametersJson = BuildParametersJson(model, selectedPackage);
+            entity.TimeoutSeconds = model.TimeoutSeconds;
+            entity.MaxRetries = model.MaxRetries;
+            entity.OnFailureAction = (OrchestrationFailureAction)model.OnFailureAction.GetValueOrDefault();
+            entity.ContinueOnFailure = model.ContinueOnFailure;
+
+            if (entity.Template != null)
+            {
+                entity.Template.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "EditOrchestrationTemplateStep",
+                "OrchestrationTemplateStep",
+                entity.Id.ToString(),
+                new
+                {
+                    entity.Id,
+                    entity.TemplateId,
+                    entity.StepOrder,
+                    entity.Name,
+                    entity.StepType,
+                    entity.CommandType,
+                    entity.ParametersJson,
+                    entity.TimeoutSeconds,
+                    entity.MaxRetries,
+                    entity.OnFailureAction,
+                    entity.ContinueOnFailure
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Step '{entity.Name}' updated.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = entity.TemplateId });
+        }
+
+
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteOrchestrationTemplateStep(int id, CancellationToken cancellationToken)
+        {
+            var entity = await _db.OrchestrationTemplateSteps
+                .Include(x => x.Template)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity == null)
+                return NotFound();
+
+            var templateId = entity.TemplateId;
+            var stepName = entity.Name ?? $"Step {entity.StepOrder}";
+
+            _db.OrchestrationTemplateSteps.Remove(entity);
+
+            if (entity.Template != null)
+            {
+                entity.Template.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "DeleteOrchestrationTemplateStep",
+                "OrchestrationTemplateStep",
+                id.ToString(),
+                new
+                {
+                    Id = id,
+                    TemplateId = templateId,
+                    Name = stepName
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Step '{stepName}' deleted.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = templateId });
+        }
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> CreateOrchestrationTemplateStep(int templateId)
+        {
+            var template = await _db.OrchestrationTemplates
+                .AsNoTracking()
+                .Include(x => x.Steps)
+                .FirstOrDefaultAsync(x => x.Id == templateId);
+
+            if (template == null)
+                return NotFound();
+
+            var nextStepOrder = template.Steps.Any() ? template.Steps.Max(x => x.StepOrder) + 1 : 1;
+
+            var model = new EditOrchestrationTemplateStepViewModel
+            {
+                TemplateId = template.Id,
+                TemplateName = template.Name ?? $"Template {template.Id}",
+                StepOrder = nextStepOrder,
+                TimeoutSeconds = 300,
+                MaxRetries = 1,
+                ContinueOnFailure = false
+            };
+
+            await PopulateOrchestrationTemplateStepLists(model);
+
+            ViewData["Title"] = $"Add Step to {model.TemplateName}";
+            ViewData["FormAction"] = nameof(CreateOrchestrationTemplateStep);
+            ViewData["SubmitText"] = "Add Step";
+
+            return View("EditOrchestrationTemplateStep", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> CreateOrchestrationRun(int templateId, CancellationToken cancellationToken)
+        {
+            var template = await _db.OrchestrationTemplates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == templateId, cancellationToken);
+
+            if (template == null)
+                return NotFound();
+
+            var model = new CreateOrchestrationRunViewModel
+            {
+                TemplateId = template.Id,
+                TemplateName = template.Name ?? $"Template {template.Id}",
+                TemplateVersion = template.Version,
+                DeviceType = template.DeviceType ?? string.Empty,
+                Environment = template.Environment ?? string.Empty,
+                RequestedBy = CurrentActor(),
+                CorrelationId = Guid.NewGuid().ToString()
+            };
+
+            await PopulateCreateOrchestrationRunLists(model, cancellationToken);
+
+            ViewData["Title"] = $"Run Template: {model.TemplateName}";
+            return View("CreateOrchestrationRun", model);
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateOrchestrationRun(CreateOrchestrationRunViewModel model, CancellationToken cancellationToken)
+        {
+            var template = await _db.OrchestrationTemplates
+                .Include(x => x.Steps.OrderBy(s => s.StepOrder))
+                .FirstOrDefaultAsync(x => x.Id == model.TemplateId, cancellationToken);
+
+            if (template == null)
+                return NotFound();
+
+            model.TemplateName = template.Name ?? $"Template {template.Id}";
+            model.TemplateVersion = template.Version;
+            model.DeviceType = template.DeviceType ?? string.Empty;
+            model.Environment = template.Environment ?? string.Empty;
+
+            if (!template.IsActive)
+            {
+                ModelState.AddModelError(string.Empty, "Only active templates can be run.");
+            }
+
+            if (!model.DeviceId.HasValue)
+            {
+                ModelState.AddModelError(nameof(model.DeviceId), "Target device is required.");
+            }
+
+            Device? device = null;
+
+            if (model.DeviceId.HasValue)
+            {
+                device = await _db.Devices
+                    .FirstOrDefaultAsync(d => d.DeviceId == model.DeviceId.Value && d.IsEnabled, cancellationToken);
+
+                if (device == null)
+                {
+                    ModelState.AddModelError(nameof(model.DeviceId), "Selected device was not found or is disabled.");
+                }
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await PopulateCreateOrchestrationRunLists(model, cancellationToken);
+                ViewData["Title"] = $"Run Template: {model.TemplateName}";
+                return View("CreateOrchestrationRun", model);
+            }
+
+            var correlationId = string.IsNullOrWhiteSpace(model.CorrelationId)
+                ? Guid.NewGuid().ToString()
+                : model.CorrelationId.Trim();
+
+            var requestedBy = string.IsNullOrWhiteSpace(model.RequestedBy)
+                ? CurrentActor()
+                : model.RequestedBy.Trim();
+
+            var parsedStoreId = int.TryParse(device!.StoreNumber, out var storeIdValue)
+                ? storeIdValue
+                : (int?)null;
+
+            var parsedRegisterId = int.TryParse(device.Hostname, out var registerIdValue)
+                ? registerIdValue
+                : (int?)null;
+
+            var run = new OrchestrationRun
+            {
+                TemplateId = template.Id,
+                DeviceId = device.DeviceId,
+                AgentId = null,
+                StoreId = parsedStoreId,
+                RegisterId = parsedRegisterId,
+                Status = OrchestrationRunStatus.Pending,
+                CurrentStepOrder = template.Steps.OrderBy(s => s.StepOrder).Select(s => (int?)s.StepOrder).FirstOrDefault(),
+                CorrelationId = correlationId,
+                RequestedBy = requestedBy,
+                TriggerSource = (OrchestrationTriggerSource)template.TriggerType,
+                StartedUtc = DateTime.UtcNow,
+                CompletedUtc = null,
+                Steps = template.Steps
+                    .OrderBy(s => s.StepOrder)
+                    .Select(s => new OrchestrationRunStep
+                    {
+                        TemplateStepId = s.Id,
+                        StepOrder = s.StepOrder,
+                        Status = OrchestrationRunStepStatus.Pending,
+                        AttemptCount = 0,
+                        CommandId = null,
+                        ErrorMessage = null,
+                        StartedUtc = null,
+                        CompletedUtc = null
+                    })
+                    .ToList()
+            };
+
+            _db.OrchestrationRuns.Add(run);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "CreateOrchestrationRun",
+                "OrchestrationRun",
+                run.Id.ToString(),
+                new
+                {
+                    run.Id,
+                    run.TemplateId,
+                    run.DeviceId,
+                    run.StoreId,
+                    run.RegisterId,
+                    run.CorrelationId,
+                    run.RequestedBy,
+                    StepCount = run.Steps.Count
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Run {run.Id} created successfully.";
+            return RedirectToAction(nameof(OrchestrationRun), new { id = run.Id });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpGet]
+        public async Task<IActionResult> EditOrchestrationTemplateStep(int id)
+        {
+            var entity = await _db.OrchestrationTemplateSteps
+                .AsNoTracking()
+                .Include(x => x.Template)
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (entity == null)
+                return NotFound();
+
+            var model = new EditOrchestrationTemplateStepViewModel
+            {
+                Id = entity.Id,
+                TemplateId = entity.TemplateId,
+                TemplateName = entity.Template?.Name ?? $"Template {entity.TemplateId}",
+                StepOrder = entity.StepOrder,
+                Name = entity.Name ?? string.Empty,
+                StepType = (int)entity.StepType,
+                CommandType = entity.CommandType,
+                TimeoutSeconds = entity.TimeoutSeconds,
+                MaxRetries = entity.MaxRetries,
+                OnFailureAction = (int)entity.OnFailureAction,
+                ContinueOnFailure = entity.ContinueOnFailure
+            };
+
+            PopulateGuidedParametersFromJson(model, entity.ParametersJson);
+            await PopulateOrchestrationTemplateStepLists(model);
+
+            ViewData["Title"] = $"Edit Step: {model.Name}";
+            ViewData["FormAction"] = nameof(EditOrchestrationTemplateStep);
+            ViewData["SubmitText"] = "Save Step Changes";
+
+            return View("EditOrchestrationTemplateStep", model);
+        }
+
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> MoveOrchestrationTemplateStepUp(int id, CancellationToken cancellationToken)
+        {
+            var step = await _db.OrchestrationTemplateSteps
+                .Include(x => x.Template)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (step == null)
+                return NotFound();
+
+            await NormalizeTemplateStepOrderAsync(step.TemplateId, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var currentOrder = step.StepOrder;
+
+            var previousStep = await _db.OrchestrationTemplateSteps
+                .Where(x => x.TemplateId == step.TemplateId && x.StepOrder < currentOrder)
+                .OrderByDescending(x => x.StepOrder)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (previousStep == null)
+            {
+                TempData["OrchestrationTemplateMessage"] = "Step is already at the top.";
+                return RedirectToAction(nameof(OrchestrationTemplate), new { id = step.TemplateId });
+            }
+
+            var previousOrder = previousStep.StepOrder;
+            var tempOrder = -1;
+
+            step.StepOrder = tempOrder;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            previousStep.StepOrder = currentOrder;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            step.StepOrder = previousOrder;
+
+            if (step.Template != null)
+            {
+                step.Template.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "MoveOrchestrationTemplateStepUp",
+                "OrchestrationTemplateStep",
+                step.Id.ToString(),
+                new
+                {
+                    StepId = step.Id,
+                    step.TemplateId,
+                    step.Name,
+                    NewStepOrder = step.StepOrder
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Step '{step.Name}' moved up.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = step.TemplateId });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> MoveOrchestrationTemplateStepDown(int id, CancellationToken cancellationToken)
+        {
+            var step = await _db.OrchestrationTemplateSteps
+                .Include(x => x.Template)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (step == null)
+                return NotFound();
+
+            await NormalizeTemplateStepOrderAsync(step.TemplateId, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var currentOrder = step.StepOrder;
+
+            var nextStep = await _db.OrchestrationTemplateSteps
+                .Where(x => x.TemplateId == step.TemplateId && x.StepOrder > currentOrder)
+                .OrderBy(x => x.StepOrder)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (nextStep == null)
+            {
+                TempData["OrchestrationTemplateMessage"] = "Step is already at the bottom.";
+                return RedirectToAction(nameof(OrchestrationTemplate), new { id = step.TemplateId });
+            }
+
+            var nextOrder = nextStep.StepOrder;
+            var tempOrder = -1;
+
+            step.StepOrder = tempOrder;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            nextStep.StepOrder = currentOrder;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            step.StepOrder = nextOrder;
+
+            if (step.Template != null)
+            {
+                step.Template.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "MoveOrchestrationTemplateStepDown",
+                "OrchestrationTemplateStep",
+                step.Id.ToString(),
+                new
+                {
+                    StepId = step.Id,
+                    step.TemplateId,
+                    step.Name,
+                    NewStepOrder = step.StepOrder
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = $"Step '{step.Name}' moved down.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = step.TemplateId });
+        }
+
+        [Authorize(Policy = "DashboardEngineer")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> NormalizeOrchestrationTemplateStepOrder(int templateId, CancellationToken cancellationToken)
+        {
+            var template = await _db.OrchestrationTemplates
+                .FirstOrDefaultAsync(x => x.Id == templateId, cancellationToken);
+
+            if (template == null)
+                return NotFound();
+
+            await NormalizeTemplateStepOrderAsync(templateId, cancellationToken);
+            template.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await AuditAsync(
+                "NormalizeOrchestrationTemplateStepOrder",
+                "OrchestrationTemplate",
+                template.Id.ToString(),
+                new
+                {
+                    template.Id,
+                    template.Name,
+                    template.Version
+                },
+                true,
+                cancellationToken: cancellationToken);
+
+            TempData["OrchestrationTemplateMessage"] = "Step order normalized.";
+            return RedirectToAction(nameof(OrchestrationTemplate), new { id = templateId });
         }
 
         [Authorize(Policy = "DashboardHelpdesk")]

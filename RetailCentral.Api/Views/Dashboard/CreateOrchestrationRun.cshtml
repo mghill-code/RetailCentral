@@ -1,0 +1,77 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.CreateOrchestrationRunViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] ?? "Run Template";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Create a manual orchestration run for a single device.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="OrchestrationTemplate" asp-route-id="@Model.TemplateId" class="btn btn-outline">Back to Template</a>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:16px;">
+    <div class="card">
+        <h2>Template Summary</h2>
+        <div class="kv-grid">
+            <div class="kv-item">
+                <span class="kv-label">Template</span>
+                <span class="kv-value">@Model.TemplateName</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Version</span>
+                <span class="kv-value">@Model.TemplateVersion</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Device Type</span>
+                <span class="kv-value">@Model.DeviceType</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Environment</span>
+                <span class="kv-value">@Model.Environment</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <form asp-action="CreateOrchestrationRun" method="post" class="form-grid">
+        @Html.AntiForgeryToken()
+        <input asp-for="TemplateId" type="hidden" />
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+        <div class="field field-full">
+            <label asp-for="DeviceId"></label>
+            <select asp-for="DeviceId" asp-items="Model.DeviceOptions" class="dashboard-select">
+                <option value="">Select a target device...</option>
+            </select>
+            <span asp-validation-for="DeviceId" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="RequestedBy"></label>
+            <input asp-for="RequestedBy" />
+            <span asp-validation-for="RequestedBy" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="CorrelationId"></label>
+            <input asp-for="CorrelationId" />
+            <span asp-validation-for="CorrelationId" class="text-danger"></span>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">Start Run</button>
+            <a asp-action="OrchestrationTemplate" asp-route-id="@Model.TemplateId" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

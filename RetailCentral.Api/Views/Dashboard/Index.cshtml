@@ -74,6 +74,39 @@
         <div class="metric-footnote">Devices scoring below warning threshold</div>
     </div>
 </div>
+<div class="grid">
+    <a asp-action="OrchestrationRuns" asp-controller="Dashboard" asp-route-status="Running" class="metric-card-link">
+        <div class="card metric-card progress-card">
+            <div class="metric-label">Active Orchestration Runs</div>
+            <div class="metric-value inprogress">@Model.OrchestrationRunsActive</div>
+            <div class="metric-footnote">Pending, running, or waiting-for-retry runs</div>
+        </div>
+    </a>
+
+    <a asp-action="OrchestrationRuns" asp-controller="Dashboard" asp-route-status="Failed" class="metric-card-link">
+        <div class="card metric-card failed-card">
+            <div class="metric-label">Failed Orchestration Runs (24h)</div>
+            <div class="metric-value offline">@Model.OrchestrationRunsFailedLast24Hours</div>
+            <div class="metric-footnote">Recent run failures requiring review</div>
+        </div>
+    </a>
+
+    <a asp-action="OrchestrationTemplates" asp-controller="Dashboard" asp-route-isActive="true" class="metric-card-link">
+        <div class="card metric-card success-card">
+            <div class="metric-label">Active Templates</div>
+            <div class="metric-value online">@Model.OrchestrationTemplatesActive</div>
+            <div class="metric-footnote">Templates currently enabled for execution</div>
+        </div>
+    </a>
+
+    <a asp-action="ProvisioningProfiles" asp-controller="Dashboard" asp-route-isActive="true" class="metric-card-link">
+        <div class="card metric-card pending-card">
+            <div class="metric-label">Active Provisioning Profiles</div>
+            <div class="metric-value pending">@Model.ProvisioningProfilesActive</div>
+            <div class="metric-footnote">Profiles eligible for zero-touch assignment</div>
+        </div>
+    </a>
+</div>
 
 <div class="dashboard-stack">
     <div class="card">
@@ -99,7 +132,68 @@
             }
         </div>
     </div>
+    <div class="grid-2">
+        <div class="card">
+            <h3>Orchestration Health</h3>
+            <p class="card-subtle">Runtime and configuration signals for orchestration reliability.</p>
 
+            <div class="status-list">
+                <div class="kv-item">
+                    <span class="kv-label">Waiting for Retry</span>
+                    <span class="kv-value pending">@Model.OrchestrationRunsWaitingForRetry</span>
+                    <div class="subtle mt-2">
+                        <a asp-action="OrchestrationRuns" asp-controller="Dashboard" asp-route-status="WaitingForRetry">View retrying runs</a>
+                    </div>
+                </div>
+
+                <div class="kv-item">
+                    <span class="kv-label">Completed Runs (24h)</span>
+                    <span class="kv-value online">@Model.CompletedOrchestrationRunsLast24Hours</span>
+                    <div class="subtle mt-2">
+                        <a asp-action="OrchestrationRuns" asp-controller="Dashboard" asp-route-status="Completed">View completed runs</a>
+                    </div>
+                </div>
+
+                <div class="kv-item">
+                    <span class="kv-label">Profiles on Inactive Templates</span>
+                    <span class="kv-value offline">@Model.ActiveProfilesUsingInactiveTemplates</span>
+                    <div class="subtle mt-2">
+                        <a asp-action="ProvisioningProfiles" asp-controller="Dashboard" asp-route-filter="inactive-template">Review affected profiles</a>
+                    </div>
+                </div>
+
+                <div class="kv-item">
+                    <span class="kv-label">Active Templates Without Profiles</span>
+                    <span class="kv-value">@Model.ActiveTemplatesWithoutProfiles</span>
+                    <div class="subtle mt-2">
+                        <a asp-action="OrchestrationTemplates" asp-controller="Dashboard" asp-route-filter="unused-active">Review unused active templates</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Orchestration Notes</h3>
+            <p class="card-subtle">How to interpret orchestration health on this dashboard.</p>
+
+            <div class="section-stack">
+                <div class="kv-item">
+                    <span class="kv-label">Healthy Signal</span>
+                    <span class="kv-value">Low retry count, low failed runs, and aligned active profiles/templates</span>
+                </div>
+
+                <div class="kv-item">
+                    <span class="kv-label">Configuration Risk</span>
+                    <span class="kv-value">Active profiles pointing to inactive templates can break zero-touch provisioning</span>
+                </div>
+
+                <div class="kv-item">
+                    <span class="kv-label">Coverage Gap</span>
+                    <span class="kv-value">Templates with no active profiles are available manually but not used automatically</span>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="grid-2">
         <div class="card">
             <h3>Online vs Offline</h3>
@@ -117,7 +211,73 @@
         </div>
     </div>
 </div>
+    <div class="card">
+        <div class="toolbar-card" style="margin-bottom:14px;">
+            <div>
+                <h3 style="margin:0;">Recent Orchestration Runs</h3>
+                <div class="card-subtle" style="margin:6px 0 0 0;">Latest zero-touch and manual orchestration activity.</div>
+            </div>
+            <div>
+                <a asp-action="OrchestrationRuns" asp-controller="Dashboard" class="btn btn-outline">View All Runs</a>
+            </div>
+        </div>
 
+        @if (Model.RecentOrchestrationRuns == null || Model.RecentOrchestrationRuns.Count == 0)
+        {
+            <div class="empty-state">No orchestration runs found.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Template</th>
+                            <th>Status</th>
+                            <th>Current Step</th>
+                            <th>Device</th>
+                            <th>Requested By</th>
+                            <th>Started</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in Model.RecentOrchestrationRuns)
+                        {
+                            var statusCss = run.Status switch
+                            {
+                                "Completed" => "badge-completed",
+                                "Failed" => "badge-failed",
+                                "Cancelled" => "badge-danger",
+                                "Running" => "badge-running",
+                                "WaitingForRetry" => "badge-warning",
+                                _ => "badge-pending"
+                            };
+
+                            <tr>
+                                <td>
+                                    <a asp-action="OrchestrationRun" asp-controller="Dashboard" asp-route-id="@run.Id">
+                                        Run #@run.Id
+                                    </a>
+                                </td>
+                                <td>
+                                    <div class="cell-primary">@run.TemplateName</div>
+                                    <div class="cell-secondary">v@run.TemplateVersion</div>
+                                </td>
+                                <td>
+                                    <span class="badge @statusCss">@run.Status</span>
+                                </td>
+                                <td>@(run.CurrentStepOrder?.ToString() ?? "-")</td>
+                                <td>@(run.DeviceId?.ToString() ?? "-")</td>
+                                <td>@run.RequestedBy</td>
+                                <td>@run.StartedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
 <div class="grid-2">
     <div class="card">
         <h3>Command Progress</h3>

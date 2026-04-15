@@ -1,0 +1,78 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.EditProvisioningProfileViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] ?? "Provisioning Profile";
+    var formAction = ViewData["FormAction"]?.ToString() ?? "CreateProvisioningProfile";
+    var submitText = ViewData["SubmitText"]?.ToString() ?? "Save";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Create or update a guided provisioning profile used for zero-touch assignment.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="ProvisioningProfiles" class="btn btn-outline">Back to Profiles</a>
+    </div>
+</div>
+
+<div class="card">
+    <form asp-action="@formAction" asp-route-id="@Model.Id" method="post" class="form-grid">
+        @Html.AntiForgeryToken()
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+        <div class="field">
+            <label asp-for="Name"></label>
+            <input asp-for="Name" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="DeviceType"></label>
+            <select asp-for="DeviceType" asp-items="Model.DeviceTypeOptions" class="dashboard-select"></select>
+            <span asp-validation-for="DeviceType" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="StoreGroup"></label>
+            <input asp-for="StoreGroup" placeholder="Optional store group" />
+            <span asp-validation-for="StoreGroup" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="Environment"></label>
+            <select asp-for="Environment" asp-items="Model.EnvironmentOptions" class="dashboard-select"></select>
+            <span asp-validation-for="Environment" class="text-danger"></span>
+        </div>
+
+        <div class="field field-full">
+            <label asp-for="TemplateId"></label>
+            <select asp-for="TemplateId" asp-items="Model.TemplateOptions" class="dashboard-select">
+                <option value="">Select an active template...</option>
+            </select>
+            <span asp-validation-for="TemplateId" class="text-danger"></span>
+        </div>
+
+        <div class="checkbox-row">
+            <label class="checkbox-label">
+                <input asp-for="IsDefault" type="checkbox" />
+                <span>Default profile</span>
+            </label>
+
+            <label class="checkbox-label">
+                <input asp-for="IsActive" type="checkbox" />
+                <span>Active</span>
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">@submitText</button>
+            <a asp-action="ProvisioningProfiles" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

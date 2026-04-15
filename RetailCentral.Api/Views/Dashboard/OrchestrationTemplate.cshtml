@@ -1,0 +1,253 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.OrchestrationTemplateDetailViewModel
+@using System.Text.Json
+
+@functions {
+    private static string GetStepSummary(string? commandType, string? parametersJson)
+    {
+        if (string.IsNullOrWhiteSpace(commandType))
+            return "No guided summary available.";
+
+        if (commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase))
+            return "Collect machine inventory and runtime details";
+
+        if (commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase))
+            return "Restart POS application";
+
+        if (commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(parametersJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(parametersJson);
+                    if (doc.RootElement.TryGetProperty("processName", out var processName))
+                    {
+                        var value = processName.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            return $"Process: {value}";
+                    }
+                }
+                catch { }
+            }
+
+            return "Validate configured process";
+        }
+
+        if (commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
+        {
+            string? fileName = null;
+            string? executeMode = null;
+
+            if (!string.IsNullOrWhiteSpace(parametersJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(parametersJson);
+
+                    if (doc.RootElement.TryGetProperty("FileName", out var fileNameProp))
+                        fileName = fileNameProp.GetString();
+
+                    if (doc.RootElement.TryGetProperty("ExecuteMode", out var executeModeProp))
+                        executeMode = executeModeProp.GetString();
+
+                    if (string.IsNullOrWhiteSpace(fileName) && doc.RootElement.TryGetProperty("fileName", out var fileNameCamel))
+                        fileName = fileNameCamel.GetString();
+
+                    if (string.IsNullOrWhiteSpace(executeMode) && doc.RootElement.TryGetProperty("executeMode", out var executeModeCamel))
+                        executeMode = executeModeCamel.GetString();
+                }
+                catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(fileName) && !string.IsNullOrWhiteSpace(executeMode))
+                return $"Package: {fileName} | Mode: {executeMode}";
+
+            if (!string.IsNullOrWhiteSpace(fileName))
+                return $"Package: {fileName}";
+
+            return "Install selected package";
+        }
+
+        return commandType;
+    }
+}
+
+@{
+    ViewData["Title"] = $"Template: {Model.Name}";
+    var badgeClass = Model.IsActive ? "badge badge-completed" : "badge badge-muted";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@Model.Name</h1>
+        <p>Template definition, targeting, and ordered orchestration steps.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="OrchestrationTemplates" class="btn btn-outline">Back to Templates</a>
+        <a asp-action="EditOrchestrationTemplate" asp-route-id="@Model.Id" class="btn btn-outline">Edit</a>
+        <a asp-action="CreateOrchestrationRun" asp-route-templateId="@Model.Id" class="btn">Run Template</a>
+        <a asp-action="CreateOrchestrationTemplateStep" asp-route-templateId="@Model.Id" class="btn">Add Step</a>
+    </div>
+</div>
+
+@if (TempData["OrchestrationTemplateMessage"] is string message && !string.IsNullOrWhiteSpace(message))
+{
+    <div class="card" style="margin-bottom:16px;">
+        <div class="cell-primary">@message</div>
+    </div>
+}
+
+<div class="card" style="margin-bottom:16px;">
+    <div class="table-actions">
+        <form asp-action="CloneOrchestrationTemplate" asp-route-id="@Model.Id" method="post" style="display:inline;">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn">Clone as New Version</button>
+        </form>
+
+        @if (Model.IsActive)
+        {
+            <form asp-action="DeactivateOrchestrationTemplate" asp-route-id="@Model.Id" method="post" style="display:inline;">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline">Deactivate</button>
+            </form>
+        }
+        else
+        {
+            <form asp-action="ActivateOrchestrationTemplate" asp-route-id="@Model.Id" method="post" style="display:inline;">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline">Activate</button>
+            </form>
+        }
+
+        <form asp-action="NormalizeOrchestrationTemplateStepOrder" asp-route-templateId="@Model.Id" method="post" style="display:inline;">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline">Normalize Step Order</button>
+        </form>
+
+        <form asp-action="DeleteOrchestrationTemplate" asp-route-id="@Model.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete this template? This only works if no runs or profiles reference it.');">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Template Summary</h2>
+        <div class="kv-grid">
+            <div class="kv-item">
+                <span class="kv-label">Template ID</span>
+                <span class="kv-value">@Model.Id</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Version</span>
+                <span class="kv-value">v@(Model.Version)</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Device Type</span>
+                <span class="kv-value">@(string.IsNullOrWhiteSpace(Model.DeviceType) ? "-" : Model.DeviceType)</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Environment</span>
+                <span class="kv-value">@(string.IsNullOrWhiteSpace(Model.Environment) ? "-" : Model.Environment)</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Trigger Type</span>
+                <span class="kv-value">@Model.TriggerType</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Status</span>
+                <span class="kv-value"><span class="@badgeClass">@(Model.IsActive ? "Active" : "Inactive")</span></span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Created UTC</span>
+                <span class="kv-value">@Model.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Updated UTC</span>
+                <span class="kv-value">@Model.UpdatedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Description</h2>
+        @if (string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <div class="empty-state">No description provided.</div>
+        }
+        else
+        {
+            <p>@Model.Description</p>
+        }
+    </div>
+</div>
+
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Steps</h2>
+    </div>
+
+    @if (Model.Steps.Count == 0)
+    {
+        <div class="empty-state">This template has no steps yet. Add your first guided step.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Name</th>
+                        <th>Command Type</th>
+                        <th>Step Type</th>
+                        <th>Timeout</th>
+                        <th>Retries</th>
+                        <th>Failure Action</th>
+                        <th>Continue</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var step in Model.Steps.OrderBy(x => x.StepOrder))
+                    {
+                        <tr>
+                            <td>@step.StepOrder</td>
+                            <td>
+                                <div class="cell-primary">@step.Name</div>
+                                <div class="cell-secondary">@GetStepSummary(step.CommandType, step.ParametersJson)</div>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(step.CommandType) ? "-" : step.CommandType)</td>
+                            <td>@step.StepType</td>
+                            <td>@step.TimeoutSeconds s</td>
+                            <td>@step.MaxRetries</td>
+                            <td>@step.OnFailureAction</td>
+                            <td>@(step.ContinueOnFailure ? "Yes" : "No")</td>
+                            <td>
+                                <div class="table-actions">
+                                    <form asp-action="MoveOrchestrationTemplateStepUp" asp-route-id="@step.Id" method="post" style="display:inline;">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-outline btn-sm">Up</button>
+                                    </form>
+
+                                    <form asp-action="MoveOrchestrationTemplateStepDown" asp-route-id="@step.Id" method="post" style="display:inline;">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-outline btn-sm">Down</button>
+                                    </form>
+
+                                    <a asp-action="EditOrchestrationTemplateStep" asp-route-id="@step.Id" class="btn btn-outline btn-sm">Edit</a>
+
+                                    <form asp-action="DeleteOrchestrationTemplateStep" asp-route-id="@step.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete this step?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

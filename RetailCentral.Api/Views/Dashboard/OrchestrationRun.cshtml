@@ -1,0 +1,181 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.OrchestrationRunDetailViewModel
+
+@functions {
+    private static string GetStepSummary(string? commandType)
+    {
+        if (string.IsNullOrWhiteSpace(commandType))
+            return "No guided summary available.";
+
+        if (commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase))
+            return "Collect machine inventory and runtime details";
+
+        if (commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase))
+            return "Restart POS application";
+
+        if (commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
+            return "Validate configured process";
+
+        if (commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
+            return "Install selected package";
+
+        return commandType;
+    }
+}
+
+@{
+    ViewData["Title"] = $"Orchestration Run #{Model.Id}";
+    var badgeClass = Model.Status switch
+    {
+        "Completed" => "badge badge-completed",
+        "Failed" => "badge badge-failed",
+        "Cancelled" => "badge badge-danger",
+        "Running" => "badge badge-running",
+        "WaitingForRetry" => "badge badge-warning",
+        _ => "badge badge-pending"
+    };
+}
+
+<div class="page-header">
+    <div>
+        <h1>Orchestration Run #@Model.Id</h1>
+        <p>Detailed step timeline for this orchestration execution.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="OrchestrationRuns" class="btn btn-outline">Back to Runs</a>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Run Summary</h2>
+        <div class="kv-grid">
+            <div class="kv-item">
+                <span class="kv-label">Status</span>
+                <span class="kv-value"><span class="@badgeClass">@Model.Status</span></span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Current Step</span>
+                <span class="kv-value">@(Model.CurrentStepOrder?.ToString() ?? "-")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Requested By</span>
+                <span class="kv-value">@Model.RequestedBy</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Trigger Source</span>
+                <span class="kv-value">@Model.TriggerSource</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Correlation ID</span>
+                <span class="kv-value">@Model.CorrelationId</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Device ID</span>
+                <span class="kv-value">@(Model.DeviceId?.ToString() ?? "-")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Started UTC</span>
+                <span class="kv-value">@Model.StartedUtc.ToString("yyyy-MM-dd HH:mm:ss")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Completed UTC</span>
+                <span class="kv-value">@(Model.CompletedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Template</h2>
+        <div class="kv-grid">
+            <div class="kv-item">
+                <span class="kv-label">Template Name</span>
+                <span class="kv-value">@Model.TemplateName</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Template Version</span>
+                <span class="kv-value">v@(Model.TemplateVersion)</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Template ID</span>
+                <span class="kv-value">@Model.TemplateId</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Agent ID</span>
+                <span class="kv-value">@(Model.AgentId?.ToString() ?? "-")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Store ID</span>
+                <span class="kv-value">@(Model.StoreId?.ToString() ?? "-")</span>
+            </div>
+            <div class="kv-item">
+                <span class="kv-label">Register ID</span>
+                <span class="kv-value">@(Model.RegisterId?.ToString() ?? "-")</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Steps</h2>
+    </div>
+
+    @if (Model.Steps.Count == 0)
+    {
+        <div class="empty-state">
+            No steps found for this run.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Name</th>
+                        <th>Command Type</th>
+                        <th>Step Type</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Command ID</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var step in Model.Steps)
+                    {
+                        var stepBadgeClass = step.Status switch
+                        {
+                            "Succeeded" => "badge badge-completed",
+                            "Failed" => "badge badge-failed",
+                            "TimedOut" => "badge badge-danger",
+                            "Cancelled" => "badge badge-danger",
+                            "Running" => "badge badge-running",
+                            "WaitingForRetry" => "badge badge-warning",
+                            _ => "badge badge-pending"
+                        };
+
+                        <tr>
+                            <td>@step.StepOrder</td>
+                            <td>
+                                <div class="cell-primary">@step.Name</div>
+                                <div class="cell-secondary">@GetStepSummary(step.CommandType)</div>
+                            </td>
+                            <td>@step.CommandType</td>
+                            <td>@step.StepType</td>
+                            <td><span class="@stepBadgeClass">@step.Status</span></td>
+                            <td>@step.AttemptCount</td>
+                            <td>@(step.CommandId?.ToString() ?? "-")</td>
+                            <td>@(step.StartedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
+                            <td>@(step.CompletedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
+                            <td>@(string.IsNullOrWhiteSpace(step.ErrorMessage) ? "-" : step.ErrorMessage)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

@@ -1,0 +1,165 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.ProvisioningProfilesPageViewModel
+
+@{
+    ViewData["Title"] = "Provisioning Profiles";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Provisioning Profiles</h1>
+        <p>Review zero-touch targeting rules and the orchestration templates assigned to enrolled systems.</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="CreateProvisioningProfile" class="btn">New Provisioning Profile</a>
+    </div>
+</div>
+
+@if (TempData["ProvisioningProfileMessage"] is string message && !string.IsNullOrWhiteSpace(message))
+{
+    <div class="card" style="margin-bottom:16px;">
+        <div class="cell-primary">@message</div>
+    </div>
+}
+
+<div class="chips">
+    <a asp-action="ProvisioningProfiles" class="chip @(string.IsNullOrWhiteSpace(Model.FilterMode) ? "nav-active" : "")">All Profiles</a>
+    <a asp-action="ProvisioningProfiles" asp-route-filter="inactive-template" class="chip @(Model.FilterMode == "inactive-template" ? "nav-active" : "")">Profiles on Inactive Templates</a>
+</div>
+
+<div class="grid">
+    <div class="card metric-card">
+        <div class="metric-label">Total Profiles</div>
+        <div class="metric-value">@Model.TotalProfiles</div>
+    </div>
+    <div class="card metric-card success-card">
+        <div class="metric-label">Active</div>
+        <div class="metric-value">@Model.ActiveProfiles</div>
+    </div>
+    <div class="card metric-card pending-card">
+        <div class="metric-label">Default</div>
+        <div class="metric-value">@Model.DefaultProfiles</div>
+    </div>
+</div>
+
+<div class="card filters-card">
+    <form method="get" asp-action="ProvisioningProfiles" class="filters-grid">
+        <div class="field">
+            <label for="search">Search</label>
+            <input id="search" name="search" type="text" value="@Model.Search" placeholder="Profile, store group, template..." />
+        </div>
+
+        <div class="field">
+            <label for="deviceType">Device Type</label>
+            <input id="deviceType" name="deviceType" type="text" value="@Model.DeviceTypeFilter" placeholder="Register" />
+        </div>
+
+        <div class="field">
+            <label for="environment">Environment</label>
+            <input id="environment" name="environment" type="text" value="@Model.EnvironmentFilter" placeholder="Production" />
+        </div>
+
+        <div class="field">
+            <label for="isActive">Active</label>
+            <select id="isActive" name="isActive" class="dashboard-select">
+                <option value="">All</option>
+                <option value="true" selected="@(Model.ActiveFilter == true)">Active</option>
+                <option value="false" selected="@(Model.ActiveFilter == false)">Inactive</option>
+            </select>
+        </div>
+
+        <div class="filter-actions">
+            <button type="submit" class="btn">Apply Filters</button>
+            <a asp-action="ProvisioningProfiles" class="btn btn-outline">Reset</a>
+        </div>
+    </form>
+</div>
+
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Profiles</h2>
+    </div>
+
+    @if (Model.Profiles.Count == 0)
+    {
+        <div class="empty-state">No provisioning profiles matched the current filters.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Profile</th>
+                        <th>Targeting</th>
+                        <th>Template</th>
+                        <th>Default</th>
+                        <th>Status</th>
+                        <th>Parameters</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var profile in Model.Profiles)
+                    {
+                        var statusBadge = profile.IsActive ? "badge badge-completed" : "badge badge-muted";
+                        var defaultBadge = profile.IsDefault ? "badge badge-warning" : "badge badge-muted";
+
+                        <tr>
+                            <td>
+                                <div class="cell-primary">@profile.Name</div>
+                                <div class="cell-secondary">ID @profile.Id</div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@(string.IsNullOrWhiteSpace(profile.DeviceType) ? "-" : profile.DeviceType)</div>
+                                <div class="cell-secondary">
+                                    @(string.IsNullOrWhiteSpace(profile.Environment) ? "-" : profile.Environment)
+                                    @if (!string.IsNullOrWhiteSpace(profile.StoreGroup))
+                                    {
+                                        <span> • @profile.StoreGroup</span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@profile.TemplateName</div>
+                                <div class="cell-secondary">v@(profile.TemplateVersion) (ID @profile.TemplateId)</div>
+                            </td>
+                            <td><span class="@defaultBadge">@(profile.IsDefault ? "Default" : "No")</span></td>
+                            <td><span class="@statusBadge">@(profile.IsActive ? "Active" : "Inactive")</span></td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(profile.ParametersJson))
+                                {
+                                    <span>-</span>
+                                }
+                                else
+                                {
+                                    <details>
+                                        <summary>View</summary>
+                                        <pre>@profile.ParametersJson</pre>
+                                    </details>
+                                }
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <a asp-action="EditProvisioningProfile" asp-route-id="@profile.Id" class="btn btn-outline btn-sm">Edit</a>
+
+                                    @if (profile.IsActive)
+                                    {
+                                        <form asp-action="DeactivateProvisioningProfile" asp-route-id="@profile.Id" method="post" style="display:inline;">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-outline btn-sm">Deactivate</button>
+                                        </form>
+                                    }
+
+                                    <form asp-action="DeleteProvisioningProfile" asp-route-id="@profile.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete this provisioning profile?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

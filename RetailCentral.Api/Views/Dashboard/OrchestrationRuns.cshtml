@@ -1,0 +1,138 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.OrchestrationRunsPageViewModel
+
+@{
+    ViewData["Title"] = "Orchestration Runs";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Orchestration Runs</h1>
+        <p>Monitor orchestration activity across devices, enrollment-driven provisioning, and manual runs.</p>
+    </div>
+</div>
+
+<div class="grid">
+    <div class="card metric-card">
+        <div class="metric-label">Total Runs</div>
+        <div class="metric-value">@Model.TotalRuns</div>
+    </div>
+    <div class="card metric-card pending-card">
+        <div class="metric-label">Pending</div>
+        <div class="metric-value">@Model.PendingRuns</div>
+    </div>
+    <div class="card metric-card progress-card">
+        <div class="metric-label">Running</div>
+        <div class="metric-value">@Model.RunningRuns</div>
+    </div>
+    <div class="card metric-card success-card">
+        <div class="metric-label">Completed</div>
+        <div class="metric-value">@Model.CompletedRuns</div>
+    </div>
+</div>
+
+<div class="card filters-card">
+    <form method="get" asp-action="OrchestrationRuns" class="filters-grid">
+        <div class="field">
+            <label for="search">Search</label>
+            <input id="search" name="search" type="text" value="@Model.Search" placeholder="Correlation ID, template, requested by, device..." />
+        </div>
+
+        <div class="field">
+            <label for="status">Status</label>
+            <select id="status" name="status" class="dashboard-select">
+                <option value="">All</option>
+                <option value="Pending" selected="@(Model.StatusFilter == "Pending")">Pending</option>
+                <option value="Running" selected="@(Model.StatusFilter == "Running")">Running</option>
+                <option value="WaitingForRetry" selected="@(Model.StatusFilter == "WaitingForRetry")">Waiting For Retry</option>
+                <option value="Completed" selected="@(Model.StatusFilter == "Completed")">Completed</option>
+                <option value="Failed" selected="@(Model.StatusFilter == "Failed")">Failed</option>
+                <option value="Cancelled" selected="@(Model.StatusFilter == "Cancelled")">Cancelled</option>
+            </select>
+        </div>
+
+        <div class="filter-actions">
+            <button type="submit" class="btn">Apply Filters</button>
+            <a asp-action="OrchestrationRuns" class="btn btn-outline">Reset</a>
+        </div>
+    </form>
+</div>
+
+<div class="card section-card command-table-card">
+    <div class="section-header">
+        <h2>Recent Runs</h2>
+    </div>
+
+    @if (Model.Runs.Count == 0)
+    {
+        <div class="empty-state">
+            No orchestration runs matched the current filters.
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Run</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Progress</th>
+                        <th>Device</th>
+                        <th>Requested By</th>
+                        <th>Trigger</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.Runs)
+                    {
+                        var badgeClass = run.Status switch
+                        {
+                            "Completed" => "badge badge-completed",
+                            "Failed" => "badge badge-failed",
+                            "Cancelled" => "badge badge-danger",
+                            "Running" => "badge badge-running",
+                            "WaitingForRetry" => "badge badge-warning",
+                            _ => "badge badge-pending"
+                        };
+
+                        <tr>
+                            <td>
+                                <div class="cell-primary">
+                                    <a asp-action="OrchestrationRun" asp-route-id="@run.Id">Run #@run.Id</a>
+                                </div>
+                                <div class="cell-secondary">@run.CorrelationId</div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@run.TemplateName</div>
+                                <div class="cell-secondary">v@(run.TemplateVersion) (ID @run.TemplateId)</div>
+                            </td>
+                            <td>
+                                <span class="@badgeClass">@run.Status</span>
+                            </td>
+                            <td>
+                                <div class="cell-primary">Step @(run.CurrentStepOrder?.ToString() ?? "-")</div>
+                                <div class="cell-secondary">
+                                    @run.CompletedSteps / @run.TotalSteps completed
+                                    @if (run.FailedSteps > 0)
+                                    {
+                                        <span> • @run.FailedSteps failed</span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@(run.DeviceId?.ToString() ?? "-")</div>
+                            </td>
+                            <td>@run.RequestedBy</td>
+                            <td>@run.TriggerSource</td>
+                            <td>@run.StartedUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@(run.CompletedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

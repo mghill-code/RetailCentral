@@ -23,6 +23,9 @@
                 "versions" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M7 12l3 3l7 -7'/><path d='M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z'/></svg>",
                 "about" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 9h.01'/><path d='M11 12h1v4h1'/><path d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0 -18z'/></svg>",
                 "commands" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 9l-3 3l3 3'/><path d='M13 15h6'/><path d='M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z'/></svg>",
+                "orchestration-runs" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 6h16'/><path d='M4 12h16'/><path d='M4 18h16'/><path d='M8 4v4'/><path d='M16 10v4'/><path d='M12 16v4'/></svg>",
+                "orchestration-templates" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z'/><path d='M9 8h6'/><path d='M9 12h6'/><path d='M9 16h4'/></svg>",
+                "orchestration-profiles" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 12a4 4 0 1 0 0 -8a4 4 0 0 0 0 8z'/><path d='M6 21v-1a6 6 0 0 1 12 0v1'/></svg>",
                 "helpdesk" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 5h16v11h-6l-4 4v-4h-6z'/><path d='M9.5 9a2.5 2.5 0 1 1 3.8 2.1c-.75 .45 -1.3 .89 -1.3 1.9'/><path d='M12 15h.01'/></svg>",
                 "issue" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 19l7 -7l-3 -3l-7 7l-1 4z'/><path d='M16 5l3 3'/></svg>",
                 "packages" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3l8 4.5v9l-8 4.5l-8 -4.5v-9z'/><path d='M12 12l8 -4.5'/><path d='M12 12v9'/><path d='M12 12l-8 -4.5'/></svg>",
@@ -102,6 +105,18 @@
                     <a href="/Dashboard/Commands" class="@NavClass("/Dashboard/Commands")">
                         <span class="nav-icon">@SvgIcon("commands")</span>
                         <span class="nav-label">Command Center</span>
+                    </a>
+                    <a href="/Dashboard/OrchestrationRuns" class="@NavClass("/Dashboard/OrchestrationRuns")">
+                        <span class="nav-icon">@SvgIcon("orchestration-runs")</span>
+                        <span class="nav-label">Orchestration Runs</span>
+                    </a>
+                    <a href="/Dashboard/OrchestrationTemplates" class="@NavClass("/Dashboard/OrchestrationTemplates")">
+                        <span class="nav-icon">@SvgIcon("orchestration-templates")</span>
+                        <span class="nav-label">Orchestration Templates</span>
+                    </a>
+                    <a href="/Dashboard/ProvisioningProfiles" class="@NavClass("/Dashboard/ProvisioningProfiles")">
+                        <span class="nav-icon">@SvgIcon("orchestration-profiles")</span>
+                        <span class="nav-label">Provisioning Profiles</span>
                     </a>
                 }
 

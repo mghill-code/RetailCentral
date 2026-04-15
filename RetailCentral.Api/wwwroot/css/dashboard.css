@@ -338,8 +338,8 @@ img {
 .grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 18px;
-    margin-bottom: 20px;
+    gap: 14px;
+    margin-bottom: 16px;
 }
 
 .grid-2 {
@@ -382,6 +382,9 @@ img {
     position: relative;
     overflow: hidden;
     border-left: 6px solid var(--blue);
+    padding: 14px 16px;
+    border-radius: 16px;
+    min-height: 96px;
 }
 
     .metric-card.online-card,
@@ -408,23 +411,25 @@ img {
 
 .metric-label {
     color: var(--muted);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .04em;
+    letter-spacing: .05em;
+    line-height: 1.2;
 }
 
 .metric-value {
-    font-size: 34px;
+    font-size: 24px;
     font-weight: 800;
-    line-height: 1.1;
+    line-height: 1.05;
     margin-top: 10px;
 }
 
 .metric-footnote {
     margin-top: 10px;
-    font-size: 13px;
+    font-size: 11px;
     color: var(--muted);
+    line-height: 1.35;
 }
 
 .online {
@@ -2598,4 +2603,56 @@ button,
 
 .legend-panel[open] summary::before {
     transform: rotate(90deg);
+}
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.field-full {
+    grid-column: 1 / -1;
+}
+
+.checkbox-row {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.form-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.table-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.text-danger {
+    color: #b42318;
+    font-size: 12px;
+}
+
+.validation-summary-errors {
+    grid-column: 1 / -1;
+    color: #b42318;
 }

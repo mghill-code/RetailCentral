@@ -1,0 +1,235 @@
+﻿@model RetailCentral.Api.ViewModels.Orchestration.EditOrchestrationTemplateStepViewModel
+
+@{
+    ViewData["Title"] = ViewData["Title"] ?? "Orchestration Step";
+    var formAction = ViewData["FormAction"]?.ToString() ?? "CreateOrchestrationTemplateStep";
+    var submitText = ViewData["SubmitText"]?.ToString() ?? "Save";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Template: @Model.TemplateName</p>
+    </div>
+    <div class="page-actions">
+        <a asp-action="OrchestrationTemplate" asp-route-id="@Model.TemplateId" class="btn btn-outline">Back to Template</a>
+    </div>
+</div>
+
+<div class="card">
+    <form asp-action="@formAction" asp-route-id="@Model.Id" method="post" class="form-grid">
+        @Html.AntiForgeryToken()
+        <input asp-for="TemplateId" type="hidden" />
+
+        <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+        <div class="field">
+            <label asp-for="StepOrder"></label>
+            <input asp-for="StepOrder" type="number" min="1" />
+            <span asp-validation-for="StepOrder" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="Name"></label>
+            <input asp-for="Name" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="StepType"></label>
+            <select asp-for="StepType" asp-items="Model.StepTypeOptions" class="dashboard-select" id="stepTypeSelect">
+                <option value="">Select step type...</option>
+            </select>
+            <span asp-validation-for="StepType" class="text-danger"></span>
+            <div class="cell-secondary" style="margin-top:6px;" id="stepTypeDescription">
+                @Model.StepTypeDescription
+            </div>
+        </div>
+
+        <div class="field">
+            <label asp-for="CommandType"></label>
+
+            <select asp-for="CommandType" asp-items="Model.CommandTypeOptions" class="dashboard-select" id="commandTypeSelect">
+                <option value="">Select command type...</option>
+            </select>
+
+            <input asp-for="CommandType" type="hidden" id="commandTypeHidden" disabled />
+
+            <span asp-validation-for="CommandType" class="text-danger"></span>
+
+            <div class="cell-secondary" style="margin-top:6px;" id="commandTypeDescription">
+                @Model.GuidedParameterDescription
+            </div>
+        </div>
+
+        <div class="field field-full" id="validateProcessField">
+            <label asp-for="ValidateProcessName"></label>
+            <input asp-for="ValidateProcessName" placeholder="Example: bncpos" id="validateProcessNameInput" />
+            <span asp-validation-for="ValidateProcessName" class="text-danger"></span>
+        </div>
+        <div class="field field-full" id="installPackageFields">
+            <div class="grid-2">
+                <div class="field">
+                    <label asp-for="InstallPackageId"></label>
+                    <select asp-for="InstallPackageId" asp-items="Model.InstallPackageOptions" class="dashboard-select" id="installPackageIdSelect">
+                        <option value="">Select a package...</option>
+                    </select>
+                    <span asp-validation-for="InstallPackageId" class="text-danger"></span>
+                </div>
+
+                <div class="field">
+                    <label asp-for="InstallPackageExecuteMode"></label>
+                    <select asp-for="InstallPackageExecuteMode" asp-items="Model.InstallPackageExecuteModeOptions" class="dashboard-select" id="installPackageExecuteModeSelect">
+                        <option value="">Select execute mode...</option>
+                    </select>
+                    <span asp-validation-for="InstallPackageExecuteMode" class="text-danger"></span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.SelectedPackageSummary))
+            {
+                <div class="cell-secondary" style="margin-top:8px;">
+                    @Model.SelectedPackageSummary
+                </div>
+            }
+        </div>
+        <div class="field">
+            <label asp-for="TimeoutSeconds"></label>
+            <input asp-for="TimeoutSeconds" type="number" min="1" max="3600" />
+            <span asp-validation-for="TimeoutSeconds" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="MaxRetries"></label>
+            <input asp-for="MaxRetries" type="number" min="0" max="20" />
+            <span asp-validation-for="MaxRetries" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="OnFailureAction"></label>
+            <select asp-for="OnFailureAction" asp-items="Model.OnFailureActionOptions" class="dashboard-select">
+                <option value="">Select failure action...</option>
+            </select>
+            <span asp-validation-for="OnFailureAction" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label class="checkbox-label" style="margin-top:32px;">
+                <input asp-for="ContinueOnFailure" type="checkbox" />
+                <span>Continue On Failure</span>
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">@submitText</button>
+            <a asp-action="OrchestrationTemplate" asp-route-id="@Model.TemplateId" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+            const stepTypeSelect = document.getElementById('stepTypeSelect');
+            const commandTypeSelect = document.getElementById('commandTypeSelect');
+            const commandTypeHidden = document.getElementById('commandTypeHidden');
+            const stepTypeDescription = document.getElementById('stepTypeDescription');
+            const commandTypeDescription = document.getElementById('commandTypeDescription');
+            const validateProcessField = document.getElementById('validateProcessField');
+            const validateProcessNameInput = document.getElementById('validateProcessNameInput');
+            const installPackageFields = document.getElementById('installPackageFields');
+
+            function requiresCommandType(stepTypeText) {
+                if (!stepTypeText) return false;
+
+                const value = stepTypeText.toLowerCase();
+                return value.includes('command')
+                    || value.includes('validate')
+                    || value.includes('validation')
+                    || value.includes('install')
+                    || value.includes('restart')
+                    || value.includes('collect');
+            }
+
+            function getStepTypeText() {
+                const selected = stepTypeSelect.options[stepTypeSelect.selectedIndex];
+                return selected ? selected.text || '' : '';
+            }
+
+            function getCommandTypeValue() {
+                return commandTypeSelect.value || '';
+            }
+
+                    function updateUi() {
+            const stepTypeText = getStepTypeText();
+            const commandTypeValue = getCommandTypeValue();
+            const stepRequiresCommand = requiresCommandType(stepTypeText);
+
+            if (stepRequiresCommand) {
+                commandTypeSelect.disabled = false;
+                commandTypeHidden.disabled = true;
+                stepTypeDescription.textContent = 'This step type is currently treated as command-backed and requires a Command Type.';
+            } else {
+                commandTypeSelect.disabled = true;
+                commandTypeSelect.value = '';
+                commandTypeHidden.disabled = false;
+                commandTypeHidden.value = '';
+                stepTypeDescription.textContent = stepTypeText
+                    ? 'This step type is currently treated as non-command orchestration behavior. Command Type does not apply.'
+                    : 'Choose a step type to see how this step behaves.';
+            }
+
+            if (!stepRequiresCommand) {
+                commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = 'none';
+                return;
+            }
+
+            if (commandTypeValue.toLowerCase() === 'validateprocess') {
+                commandTypeDescription.textContent = 'ValidateProcess requires a process name and will store it as structured step parameters.';
+                validateProcessField.style.display = '';
+                installPackageFields.style.display = 'none';
+            } else if (commandTypeValue.toLowerCase() === 'restartpos') {
+                commandTypeDescription.textContent = 'RestartPOS does not require additional parameters.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = 'none';
+            } else if (commandTypeValue.toLowerCase() === 'collectsysteminfo') {
+                commandTypeDescription.textContent = 'CollectSystemInfo does not require additional parameters.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = 'none';
+            } else if (commandTypeValue.toLowerCase() === 'installpackage') {
+                commandTypeDescription.textContent = 'InstallPackage uses a guided package selector and generates the install payload automatically.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = '';
+            } else if (!commandTypeValue) {
+                commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = 'none';
+            } else {
+                commandTypeDescription.textContent = 'Guided parameters are not available yet for this command type.';
+                validateProcessField.style.display = 'none';
+                validateProcessNameInput.value = '';
+                installPackageFields.style.display = 'none';
+            }
+        }
+
+            if (stepTypeSelect) {
+                stepTypeSelect.addEventListener('change', updateUi);
+            }
+
+            if (commandTypeSelect) {
+                commandTypeSelect.addEventListener('change', updateUi);
+            }
+
+            updateUi();
+        })();
+    </script>
+}

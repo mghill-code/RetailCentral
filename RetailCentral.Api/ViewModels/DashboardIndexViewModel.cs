@@ -16,7 +16,7 @@ namespace RetailCentral.Api.ViewModels
 
         public List<DeviceSummaryViewModel> RecentDevices { get; set; } = new();
         public List<CommandSummaryViewModel> RecentCommands { get; set; } = new();
-
+        public List<OrchestrationHomepageRunViewModel> RecentOrchestrationRuns { get; set; } = new();
         public List<VersionSummaryViewModel> VersionSummary { get; set; } = new();
         public List<StoreSummaryTileViewModel> StoreSummary { get; set; } = new();
         public List<StoreOutageTileViewModel> StoreOutages { get; set; } = new();
@@ -27,6 +27,14 @@ namespace RetailCentral.Api.ViewModels
         public int HealthyDevices { get; set; }
         public int WarningDevices { get; set; }
         public int CriticalDevices { get; set; }
+        public int OrchestrationRunsActive { get; set; }
+        public int OrchestrationRunsFailedLast24Hours { get; set; }
+        public int OrchestrationTemplatesActive { get; set; }
+        public int OrchestrationRunsWaitingForRetry { get; set; }
+        public int ActiveProfilesUsingInactiveTemplates { get; set; }
+        public int ActiveTemplatesWithoutProfiles { get; set; }
+        public int CompletedOrchestrationRunsLast24Hours { get; set; }
+        public int ProvisioningProfilesActive { get; set; }
     }
 
     public class StoreSummaryTileViewModel
@@ -85,5 +93,17 @@ namespace RetailCentral.Api.ViewModels
         public DateTime? LastHeartbeatUtc { get; set; }
         public DateTime? InventoryUpdatedUtc { get; set; }
 
+    }
+    public class OrchestrationHomepageRunViewModel
+    {
+        public long Id { get; set; }
+        public string TemplateName { get; set; } = "";
+        public int TemplateVersion { get; set; }
+        public Guid? DeviceId { get; set; }
+        public string Status { get; set; } = "";
+        public int? CurrentStepOrder { get; set; }
+        public string RequestedBy { get; set; } = "";
+        public DateTime StartedUtc { get; set; }
+        public DateTime? CompletedUtc { get; set; }
     }
 }
