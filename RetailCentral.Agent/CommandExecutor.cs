@@ -75,7 +75,162 @@ public sealed class CommandExecutor
                         var finishedEcho = DateTime.UtcNow;
                         return ("Succeeded", 0, $"Echo: {msg}", "", started, finishedEcho);
                     }
+                case "ImportRegistryFile":
+                    {
+                        var doc = JsonDocument.Parse(payloadJson ?? "{}");
+                        var root = doc.RootElement;
 
+                        var downloadUrl = root.TryGetProperty("downloadUrl", out var downloadUrlProp)
+                            ? downloadUrlProp.GetString()
+                            : null;
+
+                        var fileName = root.TryGetProperty("fileName", out var fileNameProp)
+                            ? fileNameProp.GetString()
+                            : null;
+
+                        var sha256 = root.TryGetProperty("sha256", out var shaProp)
+                            ? shaProp.GetString()
+                            : null;
+
+                        var executeMode = root.TryGetProperty("executeMode", out var executeModeProp)
+                            ? executeModeProp.GetString()
+                            : "Immediate";
+
+                        var timeoutSeconds = root.TryGetProperty("timeoutSeconds", out var timeoutProp) && timeoutProp.TryGetInt32(out var parsedTimeout)
+                            ? parsedTimeout
+                            : _executionOptions.DefaultTimeoutSeconds;
+
+                        if (string.IsNullOrWhiteSpace(downloadUrl))
+                            throw new Exception("downloadUrl required");
+
+                        if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var packageUri))
+                            throw new Exception("downloadUrl is invalid");
+
+                        if (string.IsNullOrWhiteSpace(fileName))
+                            throw new Exception("fileName required");
+
+                        if (!fileName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase))
+                            throw new Exception("ImportRegistryFile requires a .reg file.");
+
+                        _policy.ValidateDownload(packageUri, fileName);
+
+                        var stagingFolder = Path.Combine(_downloadsOptions.StagingRootFolder, "registry-imports");
+                        Directory.CreateDirectory(stagingFolder);
+
+                        var downloadedPath = await _downloader.DownloadAsync(
+                            downloadUrl,
+                            stagingFolder,
+                            fileName,
+                            ct);
+
+                        var actualSha256 = FileDownloadService.ComputeSha256Hex(downloadedPath);
+
+                        if (!string.IsNullOrWhiteSpace(sha256) &&
+                            !string.Equals(sha256.Trim(), actualSha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var finishedHashFail = DateTime.UtcNow;
+                            return
+                            (
+                                "Failed",
+                                902,
+                                "",
+                                $"SHA256 mismatch. Expected={sha256}, Actual={actualSha256}",
+                                started,
+                                finishedHashFail
+                            );
+                        }
+
+                        if (string.Equals(executeMode, "StagedOnly", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var finishedStaged = DateTime.UtcNow;
+                            return
+                            (
+                                "Succeeded",
+                                0,
+                                $"Staged registry file: {downloadedPath}\nSHA256: {actualSha256}",
+                                "",
+                                started,
+                                finishedStaged
+                            );
+                        }
+
+                        var regExe = Path.Combine(Environment.SystemDirectory, "reg.exe");
+                        _policy.ValidateExecutablePath(regExe);
+
+                        var result = await ExecuteProcessAsync(
+                            regExe,
+                            $"import \"{downloadedPath}\"",
+                            Environment.SystemDirectory,
+                            Math.Min(Math.Max(timeoutSeconds, 1), _executionOptions.MaxTimeoutSeconds),
+                            ct);
+
+                        var finishedImport = DateTime.UtcNow;
+
+                        return
+                        (
+                            result.ExitCode == 0 ? "Succeeded" : "Failed",
+                            result.ExitCode,
+                            Trunc($"Imported registry file: {downloadedPath}\nSHA256: {actualSha256}\n{result.StdOut}", _executionOptions.MaxStdoutChars),
+                            result.StdErr,
+                            started,
+                            finishedImport
+                        );
+                    }
+                case "ValidateRegistry":
+                    {
+                        var doc = JsonDocument.Parse(payloadJson ?? "{}");
+                        var root = doc.RootElement;
+
+                        var hive = root.TryGetProperty("hive", out var hiveProp) ? hiveProp.GetString() : null;
+                        var keyPath = root.TryGetProperty("keyPath", out var keyPathProp) ? keyPathProp.GetString() : null;
+                        var valueName = root.TryGetProperty("valueName", out var valueNameProp) ? valueNameProp.GetString() : null;
+                        var expectedValue = root.TryGetProperty("expectedValue", out var expectedValueProp) ? expectedValueProp.GetString() : null;
+
+                        if (string.IsNullOrWhiteSpace(hive))
+                            throw new Exception("hive required");
+
+                        if (string.IsNullOrWhiteSpace(keyPath))
+                            throw new Exception("keyPath required");
+
+                        if (string.IsNullOrWhiteSpace(valueName))
+                            throw new Exception("valueName required");
+
+                        using var baseKey = hive.ToUpperInvariant() switch
+                        {
+                            "HKEY_LOCAL_MACHINE" => Microsoft.Win32.Registry.LocalMachine,
+                            "HKEY_CURRENT_USER" => Microsoft.Win32.Registry.CurrentUser,
+                            "HKEY_USERS" => Microsoft.Win32.Registry.Users,
+                            "HKEY_CLASSES_ROOT" => Microsoft.Win32.Registry.ClassesRoot,
+                            "HKEY_CURRENT_CONFIG" => Microsoft.Win32.Registry.CurrentConfig,
+                            _ => throw new Exception($"Unsupported hive '{hive}'")
+                        };
+
+                        using var subKey = baseKey.OpenSubKey(keyPath);
+                        if (subKey == null)
+                        {
+                            var finishedMissingKey = DateTime.UtcNow;
+                            return ("Failed", 1001, "", $"Registry key not found: {hive}\\{keyPath}", started, finishedMissingKey);
+                        }
+
+                        var actualValue = subKey.GetValue(valueName);
+                        if (actualValue == null)
+                        {
+                            var finishedMissingValue = DateTime.UtcNow;
+                            return ("Failed", 1002, "", $"Registry value not found: {hive}\\{keyPath}\\{valueName}", started, finishedMissingValue);
+                        }
+
+                        var actualText = actualValue.ToString() ?? string.Empty;
+                        var expectedText = expectedValue ?? string.Empty;
+
+                        var finished = DateTime.UtcNow;
+
+                        if (!string.Equals(actualText, expectedText, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ("Failed", 1003, $"Actual value: {actualText}", $"Expected '{expectedText}' but found '{actualText}'", started, finished);
+                        }
+
+                        return ("Succeeded", 0, $"Validated registry value: {hive}\\{keyPath}\\{valueName} = {actualText}", "", started, finished);
+                    }
                 case "WriteFile":
                     {
                         var doc = JsonDocument.Parse(payloadJson ?? "{}");

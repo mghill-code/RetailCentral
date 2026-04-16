@@ -17,7 +17,7 @@
 </div>
 
 <div class="card">
-    <form asp-action="@formAction" asp-route-id="@Model.Id" method="post" class="form-grid">
+    <form asp-action="@formAction" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data" class="form-grid">
         @Html.AntiForgeryToken()
         <input asp-for="TemplateId" type="hidden" />
 
@@ -68,6 +68,40 @@
             <span asp-validation-for="ValidateProcessName" class="text-danger"></span>
         </div>
 
+        <div class="field field-full" id="validateRegistryFields">
+            <div class="grid-2">
+                <div class="field">
+                    <label asp-for="ValidateRegistryHive"></label>
+                    <select asp-for="ValidateRegistryHive" asp-items="Model.ValidateRegistryHiveOptions" class="dashboard-select" id="validateRegistryHiveSelect">
+                        <option value="">Select hive...</option>
+                    </select>
+                    <span asp-validation-for="ValidateRegistryHive" class="text-danger"></span>
+                </div>
+
+                <div class="field">
+                    <label asp-for="ValidateRegistryValueName"></label>
+                    <input asp-for="ValidateRegistryValueName" id="validateRegistryValueNameInput" />
+                    <span asp-validation-for="ValidateRegistryValueName" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="field field-full">
+                <label asp-for="ValidateRegistryKeyPath"></label>
+                <input asp-for="ValidateRegistryKeyPath" placeholder="SOFTWARE\RetailCentral\Test" id="validateRegistryKeyPathInput" />
+                <span asp-validation-for="ValidateRegistryKeyPath" class="text-danger"></span>
+            </div>
+
+            <div class="field field-full">
+                <label asp-for="ValidateRegistryExpectedValue"></label>
+                <input asp-for="ValidateRegistryExpectedValue" id="validateRegistryExpectedValueInput" />
+                <span asp-validation-for="ValidateRegistryExpectedValue" class="text-danger"></span>
+            </div>
+
+            <div class="cell-secondary" style="margin-top:8px;">
+                ValidateRegistry checks that a registry value exists and matches the expected value.
+            </div>
+        </div>
+
         <div class="field field-full" id="installPackageFields">
             <div class="grid-2">
                 <div class="field">
@@ -95,6 +129,72 @@
             }
         </div>
 
+        <div class="field field-full" id="importRegistryFields">
+            <div class="grid-2">
+                <div class="field">
+                    <label asp-for="ImportRegistrySourceMode"></label>
+                    <select asp-for="ImportRegistrySourceMode" asp-items="Model.ImportRegistrySourceModeOptions" class="dashboard-select" id="importRegistrySourceModeSelect">
+                        <option value="">Select source mode...</option>
+                    </select>
+                    <span asp-validation-for="ImportRegistrySourceMode" class="text-danger"></span>
+                </div>
+
+                <div class="field">
+                    <label asp-for="ImportRegistryExecuteMode"></label>
+                    <select asp-for="ImportRegistryExecuteMode" asp-items="Model.ImportRegistryExecuteModeOptions" class="dashboard-select" id="importRegistryExecuteModeSelect">
+                        <option value="">Select execute mode...</option>
+                    </select>
+                    <span asp-validation-for="ImportRegistryExecuteMode" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div id="importRegistryPackageField">
+                <div class="field">
+                    <label asp-for="ImportRegistryPackageId"></label>
+                    <select asp-for="ImportRegistryPackageId" asp-items="Model.ImportRegistryPackageOptions" class="dashboard-select" id="importRegistryPackageIdSelect">
+                        <option value="">Select a .reg package...</option>
+                    </select>
+                    <span asp-validation-for="ImportRegistryPackageId" class="text-danger"></span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.SelectedRegistryPackageSummary))
+                {
+                    <div class="cell-secondary" style="margin-top:8px;">
+                        @Model.SelectedRegistryPackageSummary
+                    </div>
+                }
+            </div>
+
+            <div id="importRegistryUploadField">
+                <div class="field">
+                    <label asp-for="ImportRegistryUploadFile"></label>
+                    <input asp-for="ImportRegistryUploadFile" type="file" accept=".reg" />
+                    <span asp-validation-for="ImportRegistryUploadFile" class="text-danger"></span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.UploadedRegistryFileName))
+                {
+                    <div class="cell-secondary" style="margin-top:8px;">
+                        Current uploaded file: @Model.UploadedRegistryFileName
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(Model.UploadedRegistryDownloadUrl))
+                    {
+                        <div class="cell-secondary" style="margin-top:6px;">
+                            Current source:
+                            <a href="@Model.UploadedRegistryDownloadUrl" target="_blank" rel="noopener noreferrer">
+                                @Model.UploadedRegistryDownloadUrl
+                            </a>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="cell-secondary" style="margin-top:8px;">
+                ImportRegistryFile can use an existing .reg package or upload a .reg file directly to the server distro.
+            </div>
+        </div>
+
         <div class="field field-full" id="writeFileFields">
             <div class="grid-2">
                 <div class="field">
@@ -104,18 +204,12 @@
                 </div>
 
                 <div class="field">
-                    <label asp-for="WriteFileEncoding"></label>
-                    <select asp-for="WriteFileEncoding" asp-items="Model.WriteFileEncodingOptions" class="dashboard-select" id="writeFileEncodingSelect">
-                        <option value="">Select encoding...</option>
+                    <label asp-for="WriteFileSourceMode"></label>
+                    <select asp-for="WriteFileSourceMode" asp-items="Model.WriteFileSourceModeOptions" class="dashboard-select" id="writeFileSourceModeSelect">
+                        <option value="">Select source mode...</option>
                     </select>
-                    <span asp-validation-for="WriteFileEncoding" class="text-danger"></span>
+                    <span asp-validation-for="WriteFileSourceMode" class="text-danger"></span>
                 </div>
-            </div>
-
-            <div class="field field-full">
-                <label asp-for="WriteFileContent"></label>
-                <textarea asp-for="WriteFileContent" rows="8" id="writeFileContentInput"></textarea>
-                <span asp-validation-for="WriteFileContent" class="text-danger"></span>
             </div>
 
             <div class="field">
@@ -125,8 +219,51 @@
                 </label>
             </div>
 
+            <div id="writeFileInlineFields">
+                <div class="grid-2">
+                    <div class="field">
+                        <label asp-for="WriteFileEncoding"></label>
+                        <select asp-for="WriteFileEncoding" asp-items="Model.WriteFileEncodingOptions" class="dashboard-select" id="writeFileEncodingSelect">
+                            <option value="">Select encoding...</option>
+                        </select>
+                        <span asp-validation-for="WriteFileEncoding" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="field field-full">
+                    <label asp-for="WriteFileContent"></label>
+                    <textarea asp-for="WriteFileContent" rows="8" id="writeFileContentInput"></textarea>
+                    <span asp-validation-for="WriteFileContent" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div id="writeFileUploadField">
+                <div class="field">
+                    <label asp-for="WriteFileUploadFile"></label>
+                    <input asp-for="WriteFileUploadFile" type="file" />
+                    <span asp-validation-for="WriteFileUploadFile" class="text-danger"></span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.UploadedWriteFileName))
+                {
+                    <div class="cell-secondary" style="margin-top:8px;">
+                        Current uploaded file: @Model.UploadedWriteFileName
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(Model.UploadedWriteFileDownloadUrl))
+                    {
+                        <div class="cell-secondary" style="margin-top:6px;">
+                            Current source:
+                            <a href="@Model.UploadedWriteFileDownloadUrl" target="_blank" rel="noopener noreferrer">
+                                @Model.UploadedWriteFileDownloadUrl
+                            </a>
+                        </div>
+                    }
+                }
+            </div>
+
             <div class="cell-secondary" style="margin-top:8px;">
-                WriteFile is restricted to trusted local paths and controlled encodings.
+                WriteFile can use inline content or upload a file directly to the server distro before writing it to the target path.
             </div>
         </div>
 
@@ -176,8 +313,16 @@
             const commandTypeDescription = document.getElementById('commandTypeDescription');
             const validateProcessField = document.getElementById('validateProcessField');
             const validateProcessNameInput = document.getElementById('validateProcessNameInput');
+            const validateRegistryFields = document.getElementById('validateRegistryFields');
             const installPackageFields = document.getElementById('installPackageFields');
             const writeFileFields = document.getElementById('writeFileFields');
+            const importRegistryFields = document.getElementById('importRegistryFields');
+            const importRegistrySourceModeSelect = document.getElementById('importRegistrySourceModeSelect');
+            const importRegistryPackageField = document.getElementById('importRegistryPackageField');
+            const importRegistryUploadField = document.getElementById('importRegistryUploadField');
+            const writeFileSourceModeSelect = document.getElementById('writeFileSourceModeSelect');
+            const writeFileInlineFields = document.getElementById('writeFileInlineFields');
+            const writeFileUploadField = document.getElementById('writeFileUploadField');
 
             function requiresCommandType(stepTypeText) {
                 if (!stepTypeText) return false;
@@ -200,9 +345,40 @@
                 const selected = stepTypeSelect.options[stepTypeSelect.selectedIndex];
                 return selected ? selected.text || '' : '';
             }
+            function getWriteFileSourceMode() {
+                return writeFileSourceModeSelect ? (writeFileSourceModeSelect.value || '') : '';
+            }
+
+            function updateWriteFileSourceUi() {
+                const sourceMode = getWriteFileSourceMode().toLowerCase();
+
+                if (sourceMode === 'upload') {
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = '';
+                } else {
+                    writeFileInlineFields.style.display = '';
+                    writeFileUploadField.style.display = 'none';
+                }
+            }
 
             function getCommandTypeValue() {
                 return commandTypeSelect.value || '';
+            }
+
+            function getImportRegistrySourceMode() {
+                return importRegistrySourceModeSelect ? (importRegistrySourceModeSelect.value || '') : '';
+            }
+
+            function updateImportRegistrySourceUi() {
+                const sourceMode = getImportRegistrySourceMode().toLowerCase();
+
+                if (sourceMode === 'upload') {
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = '';
+                } else {
+                    importRegistryPackageField.style.display = '';
+                    importRegistryUploadField.style.display = 'none';
+                }
             }
 
             function updateUi() {
@@ -234,61 +410,146 @@
                     commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
                     return;
                 }
 
                 if (commandTypeValue.toLowerCase() === 'validateprocess') {
                     commandTypeDescription.textContent = 'ValidateProcess requires a process name and will store it as structured step parameters.';
                     validateProcessField.style.display = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
+                } else if (commandTypeValue.toLowerCase() === 'validateregistry') {
+                    commandTypeDescription.textContent = 'ValidateRegistry checks that a registry value exists and matches the expected value.';
+                    validateProcessField.style.display = 'none';
+                    validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = '';
+                    installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
+                    writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
                 } else if (commandTypeValue.toLowerCase() === 'restartpos') {
                     commandTypeDescription.textContent = 'RestartPOS does not require additional parameters.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
                 } else if (commandTypeValue.toLowerCase() === 'collectsysteminfo') {
                     commandTypeDescription.textContent = 'CollectSystemInfo does not require additional parameters.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
                 } else if (commandTypeValue.toLowerCase() === 'installpackage') {
                     commandTypeDescription.textContent = 'InstallPackage uses a guided package selector and generates the install payload automatically.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = '';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
+                } else if (commandTypeValue.toLowerCase() === 'importregistryfile') {
+                    commandTypeDescription.textContent = 'ImportRegistryFile can use an existing .reg package or upload a .reg file directly to the server distro.';
+                    validateProcessField.style.display = 'none';
+                    validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
+                    installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = '';
+                    updateImportRegistrySourceUi();
+                    writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
                 } else if (commandTypeValue.toLowerCase() === 'writefile') {
                     commandTypeDescription.textContent = 'WriteFile writes controlled content to a trusted local path using the selected encoding.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = '';
+                    updateWriteFileSourceUi();
+
                 } else if (!commandTypeValue) {
                     commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
+
                 } else {
                     commandTypeDescription.textContent = 'This command type is recognized, but guided parameter support is not implemented yet.';
                     validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
+                    validateRegistryFields.style.display = 'none';
                     installPackageFields.style.display = 'none';
+                    importRegistryFields.style.display = 'none';
+                    importRegistryPackageField.style.display = 'none';
+                    importRegistryUploadField.style.display = 'none';
                     writeFileFields.style.display = 'none';
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = 'none';
                 }
             }
 
+            if (writeFileSourceModeSelect) {
+                writeFileSourceModeSelect.addEventListener('change', updateUi);
+            }
             if (stepTypeSelect) {
                 stepTypeSelect.addEventListener('change', updateUi);
             }
 
             if (commandTypeSelect) {
                 commandTypeSelect.addEventListener('change', updateUi);
+            }
+
+            if (importRegistrySourceModeSelect) {
+                importRegistrySourceModeSelect.addEventListener('change', updateUi);
             }
 
             updateUi();

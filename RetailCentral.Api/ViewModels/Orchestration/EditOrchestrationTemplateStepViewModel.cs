@@ -36,6 +36,18 @@ namespace RetailCentral.Api.ViewModels.Orchestration
         [Display(Name = "Max Retries")]
         public int MaxRetries { get; set; } = 1;
 
+        [Display(Name = "Write File Source Mode")]
+        [StringLength(20)]
+        public string? WriteFileSourceMode { get; set; }
+
+        [Display(Name = "Upload File")]
+        public IFormFile? WriteFileUploadFile { get; set; }
+
+        public string? UploadedWriteFileName { get; set; }
+
+        public string? UploadedWriteFileDownloadUrl { get; set; }
+
+        public List<SelectListItem> WriteFileSourceModeOptions { get; set; } = new();
         [Required]
         [Display(Name = "On Failure Action")]
         public int? OnFailureAction { get; set; }
@@ -64,6 +76,44 @@ namespace RetailCentral.Api.ViewModels.Orchestration
 
         public string? SelectedPackageSummary { get; set; }
 
+        [Display(Name = "Registry File Package")]
+        public int? ImportRegistryPackageId { get; set; }
+
+        [Display(Name = "Import Execute Mode")]
+        [StringLength(50)]
+        public string? ImportRegistryExecuteMode { get; set; }
+
+        public string? SelectedRegistryPackageSummary { get; set; }
+
+        [Display(Name = "Registry Hive")]
+        [StringLength(100)]
+        public string? ValidateRegistryHive { get; set; }
+
+        [Display(Name = "Registry Key Path")]
+        [StringLength(500)]
+        public string? ValidateRegistryKeyPath { get; set; }
+
+        [Display(Name = "Registry Value Name")]
+        [StringLength(255)]
+        public string? ValidateRegistryValueName { get; set; }
+
+        [Display(Name = "Expected Value")]
+        [StringLength(2000)]
+        public string? ValidateRegistryExpectedValue { get; set; }
+
+        public List<SelectListItem> ValidateRegistryHiveOptions { get; set; } = new();
+
+        [Display(Name = "Registry Source Mode")]
+        [StringLength(20)]
+        public string? ImportRegistrySourceMode { get; set; }
+
+        public string? UploadedRegistryDownloadUrl { get; set; }
+
+        [Display(Name = "Upload Registry File")]
+        public IFormFile? ImportRegistryUploadFile { get; set; }
+
+        public string? UploadedRegistryFileName { get; set; }
+
         [Display(Name = "Destination Path")]
         [StringLength(500)]
         public string? WriteFilePath { get; set; }
@@ -84,5 +134,8 @@ namespace RetailCentral.Api.ViewModels.Orchestration
         public List<SelectListItem> InstallPackageOptions { get; set; } = new();
         public List<SelectListItem> InstallPackageExecuteModeOptions { get; set; } = new();
         public List<SelectListItem> WriteFileEncodingOptions { get; set; } = new();
+        public List<SelectListItem> ImportRegistryPackageOptions { get; set; } = new();
+        public List<SelectListItem> ImportRegistryExecuteModeOptions { get; set; } = new();
+        public List<SelectListItem> ImportRegistrySourceModeOptions { get; set; } = new();
     }
 }

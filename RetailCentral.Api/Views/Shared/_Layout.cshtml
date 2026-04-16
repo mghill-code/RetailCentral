@@ -106,18 +106,6 @@
                         <span class="nav-icon">@SvgIcon("commands")</span>
                         <span class="nav-label">Command Center</span>
                     </a>
-                    <a href="/Dashboard/OrchestrationRuns" class="@NavClass("/Dashboard/OrchestrationRuns")">
-                        <span class="nav-icon">@SvgIcon("orchestration-runs")</span>
-                        <span class="nav-label">Orchestration Runs</span>
-                    </a>
-                    <a href="/Dashboard/OrchestrationTemplates" class="@NavClass("/Dashboard/OrchestrationTemplates")">
-                        <span class="nav-icon">@SvgIcon("orchestration-templates")</span>
-                        <span class="nav-label">Orchestration Templates</span>
-                    </a>
-                    <a href="/Dashboard/ProvisioningProfiles" class="@NavClass("/Dashboard/ProvisioningProfiles")">
-                        <span class="nav-icon">@SvgIcon("orchestration-profiles")</span>
-                        <span class="nav-label">Provisioning Profiles</span>
-                    </a>
                 }
 
                 @if (canHelpdesk)
@@ -135,18 +123,30 @@
                         <span class="nav-label">Issue Command</span>
                     </a>
 
-                    <div class="sidebar-section-label">Deployments</div>
+                    <div class="sidebar-section-label">Deployments &amp; Orchestration</div>
                     <a href="/Dashboard/Packages" class="@NavClass("/Dashboard/Packages")">
                         <span class="nav-icon">@SvgIcon("packages")</span>
                         <span class="nav-label">Packages</span>
+                    </a>
+                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")">
+                        <span class="nav-icon">@SvgIcon("deployment-center")</span>
+                        <span class="nav-label">Deployment Center</span>
                     </a>
                     <a href="/Dashboard/CreateDeployment" class="@NavClass("/Dashboard/CreateDeployment")">
                         <span class="nav-icon">@SvgIcon("new-deployment")</span>
                         <span class="nav-label">New Deployment</span>
                     </a>
-                    <a href="/Dashboard/Deployments" class="@NavClass("/Dashboard/Deployments")">
-                        <span class="nav-icon">@SvgIcon("deployment-center")</span>
-                        <span class="nav-label">Deployment Center</span>
+                    <a href="/Dashboard/OrchestrationTemplates" class="@NavClass("/Dashboard/OrchestrationTemplates")">
+                        <span class="nav-icon">@SvgIcon("orchestration-templates")</span>
+                        <span class="nav-label">Orchestration Templates</span>
+                    </a>
+                    <a href="/Dashboard/ProvisioningProfiles" class="@NavClass("/Dashboard/ProvisioningProfiles")">
+                        <span class="nav-icon">@SvgIcon("orchestration-profiles")</span>
+                        <span class="nav-label">Provisioning Profiles</span>
+                    </a>
+                    <a href="/Dashboard/OrchestrationRuns" class="@NavClass("/Dashboard/OrchestrationRuns")">
+                        <span class="nav-icon">@SvgIcon("orchestration-runs")</span>
+                        <span class="nav-label">Orchestration Runs</span>
                     </a>
                 }
 

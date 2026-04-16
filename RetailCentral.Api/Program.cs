@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using RetailCentral.Api.BackgroundServices;
@@ -15,6 +16,7 @@ using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using static RetailCentral.Api.Services.CommandTimeoutWorker;
+
 
 /*
 ===============================================================================
@@ -275,7 +277,16 @@ try
     }
 
     // Serves static files (CSS, JS, images for dashboard)
-    app.UseStaticFiles();
+    //app.UseStaticFiles();
+    
+
+    var contentTypeProvider = new FileExtensionContentTypeProvider();
+    contentTypeProvider.Mappings[".reg"] = "text/plain";
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        ContentTypeProvider = contentTypeProvider
+    });
 
     // HMAC auth for agent endpoints ONLY
     app.UseMiddleware<HmacAuthMiddleware>();

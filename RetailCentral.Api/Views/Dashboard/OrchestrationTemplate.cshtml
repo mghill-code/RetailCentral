@@ -238,10 +238,21 @@
 
                                     <a asp-action="EditOrchestrationTemplateStep" asp-route-id="@step.Id" class="btn btn-outline btn-sm">Edit</a>
 
-                                    <form asp-action="DeleteOrchestrationTemplateStep" asp-route-id="@step.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete this step?');">
-                                        @Html.AntiForgeryToken()
-                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                    </form>
+                                    @if (!step.HasRunHistory)
+                                    {
+                                        <form asp-action="DeleteOrchestrationTemplateStep" asp-route-id="@step.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete this step?');">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-danger btn-sm" disabled title="This step is referenced by orchestration run history.">
+                                            Delete
+                                        </button>
+
+                                        <div class="cell-secondary" style="margin-top:4px;">Used by run history</div>
+                                    }
                                 </div>
                             </td>
                         </tr>

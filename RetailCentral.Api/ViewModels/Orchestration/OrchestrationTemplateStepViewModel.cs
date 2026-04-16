@@ -14,5 +14,6 @@
         public string OnFailureAction { get; set; } = "";
         public bool ContinueOnFailure { get; set; }
         public int? RollbackTemplateStepId { get; set; }
+        public bool HasRunHistory { get; set; }
     }
 }

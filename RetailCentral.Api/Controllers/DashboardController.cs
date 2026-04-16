@@ -1760,6 +1760,14 @@ namespace RetailCentral.Api.Controllers
             if (template == null)
                 return NotFound();
 
+            var referencedStepIds = await _db.OrchestrationRunSteps
+                .AsNoTracking()
+                .Select(x => x.TemplateStepId)
+                .Distinct()
+                .ToListAsync();
+
+            var referencedStepIdSet = referencedStepIds.ToHashSet();
+
             var model = new OrchestrationTemplateDetailViewModel
             {
                 Id = template.Id,
@@ -1787,7 +1795,8 @@ namespace RetailCentral.Api.Controllers
                         MaxRetries = step.MaxRetries,
                         OnFailureAction = step.OnFailureAction.ToString(),
                         ContinueOnFailure = step.ContinueOnFailure,
-                        RollbackTemplateStepId = step.RollbackTemplateStepId
+                        RollbackTemplateStepId = step.RollbackTemplateStepId,
+                        HasRunHistory = referencedStepIdSet.Contains(step.Id)
                     })
                     .ToList()
             };
@@ -4424,7 +4433,9 @@ namespace RetailCentral.Api.Controllers
                 || commandType.Equals("RestartPOS", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("CollectSystemInfo", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase)
-                || commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase);
+                || commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                || commandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetGuidedParameterDescription(string? commandType)
@@ -4445,7 +4456,13 @@ namespace RetailCentral.Api.Controllers
                 return "InstallPackage uses a guided package selector and generates the install payload automatically.";
 
             if (commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
-                return "WriteFile writes controlled content to a trusted local path using the selected encoding.";
+                return "WriteFile writes content to a trusted local path using either inline content or an uploaded file.";
+
+            if (commandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+                return "ImportRegistryFile uses a guided package selector and imports a trusted .reg file on the endpoint.";
+
+            if (commandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+                return "ValidateRegistry checks that a registry value exists and matches the expected value.";
 
             if (IsRecognizedButNotYetImplementedCommandType(commandType))
                 return "This command type is recognized, but guided parameter support is not implemented yet.";
@@ -4469,9 +4486,7 @@ namespace RetailCentral.Api.Controllers
             if (string.IsNullOrWhiteSpace(commandType))
                 return false;
 
-            return commandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
-                || commandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase)
-                || commandType.Equals("ApplyConfiguration", StringComparison.OrdinalIgnoreCase)
+            return commandType.Equals("ApplyConfiguration", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("ValidateFile", StringComparison.OrdinalIgnoreCase)
                 || commandType.Equals("RunScript", StringComparison.OrdinalIgnoreCase);
         }
@@ -4479,6 +4494,20 @@ namespace RetailCentral.Api.Controllers
         {
             model.SupportsGuidedParameters = SupportsGuidedParameters(model.CommandType);
             model.GuidedParameterDescription = GetGuidedParameterDescription(model.CommandType);
+
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.ImportRegistrySourceMode))
+            {
+                model.ImportRegistrySourceMode = "Package";
+            }
+
+            if (!string.Equals(model.CommandType, "ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            {
+                model.ValidateRegistryHive = null;
+                model.ValidateRegistryKeyPath = null;
+                model.ValidateRegistryValueName = null;
+                model.ValidateRegistryExpectedValue = null;
+            }
 
             if (!string.Equals(model.CommandType, "ValidateProcess", StringComparison.OrdinalIgnoreCase))
             {
@@ -4498,12 +4527,33 @@ namespace RetailCentral.Api.Controllers
                 model.InstallPackageExecuteMode = "Immediate";
             }
 
+            if (!string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                model.ImportRegistryPackageId = null;
+                model.ImportRegistryExecuteMode = null;
+                model.SelectedRegistryPackageSummary = null;
+            }
+
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode))
+            {
+                model.ImportRegistryExecuteMode = "Immediate";
+            }
+
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(model.WriteFileSourceMode))
+            {
+                model.WriteFileSourceMode = "Inline";
+            }
             if (!string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase))
             {
                 model.WriteFilePath = null;
                 model.WriteFileContent = null;
                 model.WriteFileEncoding = null;
                 model.WriteFileOverwrite = false;
+                model.WriteFileSourceMode = null;
+                model.UploadedWriteFileName = null;
+                model.UploadedWriteFileDownloadUrl = null;
             }
 
             if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase)
@@ -4551,16 +4601,64 @@ namespace RetailCentral.Api.Controllers
                 return System.Text.Json.JsonSerializer.Serialize(payload);
             }
 
-            if (model.CommandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+            if (model.CommandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
             {
-                if (string.IsNullOrWhiteSpace(model.WriteFilePath))
+                if (selectedPackage == null)
                     return null;
+
+                var payload = new
+                {
+                    sourceMode = "Package",
+                    packageId = selectedPackage.Id,
+                    downloadUrl = selectedPackage.StoragePath ?? string.Empty,
+                    fileName = selectedPackage.FileName ?? string.Empty,
+                    sha256 = selectedPackage.Sha256 ?? string.Empty,
+                    timeoutSeconds = model.TimeoutSeconds,
+                    executeMode = string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode)
+                        ? "Immediate"
+                        : model.ImportRegistryExecuteMode.Trim()
+                };
+
+                return System.Text.Json.JsonSerializer.Serialize(payload);
+            }
+
+            if (model.CommandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryHive)
+                    || string.IsNullOrWhiteSpace(model.ValidateRegistryKeyPath)
+                    || string.IsNullOrWhiteSpace(model.ValidateRegistryValueName))
+                {
+                    return null;
+                }
 
                 return System.Text.Json.JsonSerializer.Serialize(new
                 {
+                    hive = model.ValidateRegistryHive.Trim(),
+                    keyPath = model.ValidateRegistryKeyPath.Trim(),
+                    valueName = model.ValidateRegistryValueName.Trim(),
+                    expectedValue = model.ValidateRegistryExpectedValue ?? string.Empty
+                });
+            }
+
+            if (model.CommandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(model.WriteFileSourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(model.WriteFilePath)
+                    || string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                {
+                    return null;
+                }
+
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceMode = "Inline",
                     path = model.WriteFilePath.Trim(),
                     content = model.WriteFileContent ?? string.Empty,
-                    encoding = string.IsNullOrWhiteSpace(model.WriteFileEncoding) ? "utf-8" : model.WriteFileEncoding.Trim(),
+                    encoding = model.WriteFileEncoding.Trim(),
                     overwrite = model.WriteFileOverwrite
                 });
             }
@@ -4611,8 +4709,68 @@ namespace RetailCentral.Api.Controllers
                     return;
                 }
 
+                if (model.CommandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (root.TryGetProperty("sourceMode", out var sourceModeProp))
+                    {
+                        model.ImportRegistrySourceMode = sourceModeProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("packageId", out var packageId) && packageId.TryGetInt32(out var parsedPackageId))
+                    {
+                        model.ImportRegistryPackageId = parsedPackageId;
+                    }
+
+                    if (root.TryGetProperty("fileName", out var fileNameProp))
+                    {
+                        model.UploadedRegistryFileName = fileNameProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("downloadUrl", out var downloadUrlProp))
+                    {
+                        model.UploadedRegistryDownloadUrl = downloadUrlProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("executeMode", out var executeMode))
+                    {
+                        model.ImportRegistryExecuteMode = executeMode.GetString();
+                    }
+
+                    return;
+                }
+
+                if (model.CommandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (root.TryGetProperty("hive", out var hiveProp))
+                    {
+                        model.ValidateRegistryHive = hiveProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("keyPath", out var keyPathProp))
+                    {
+                        model.ValidateRegistryKeyPath = keyPathProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("valueName", out var valueNameProp))
+                    {
+                        model.ValidateRegistryValueName = valueNameProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("expectedValue", out var expectedValueProp))
+                    {
+                        model.ValidateRegistryExpectedValue = expectedValueProp.GetString();
+                    }
+
+                    return;
+                }
+
                 if (model.CommandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (root.TryGetProperty("sourceMode", out var sourceModeProp))
+                    {
+                        model.WriteFileSourceMode = sourceModeProp.GetString();
+                    }
+
                     if (root.TryGetProperty("path", out var pathProp))
                     {
                         model.WriteFilePath = pathProp.GetString();
@@ -4631,6 +4789,16 @@ namespace RetailCentral.Api.Controllers
                     if (root.TryGetProperty("overwrite", out var overwriteProp))
                     {
                         model.WriteFileOverwrite = overwriteProp.GetBoolean();
+                    }
+
+                    if (root.TryGetProperty("fileName", out var fileNameProp))
+                    {
+                        model.UploadedWriteFileName = fileNameProp.GetString();
+                    }
+
+                    if (root.TryGetProperty("downloadUrl", out var downloadUrlProp))
+                    {
+                        model.UploadedWriteFileDownloadUrl = downloadUrlProp.GetString();
                     }
 
                     return;
@@ -4688,6 +4856,17 @@ namespace RetailCentral.Api.Controllers
         }
         private async Task PopulateOrchestrationTemplateStepLists(EditOrchestrationTemplateStepViewModel model, CancellationToken cancellationToken = default)
         {
+            model.ImportRegistrySourceModeOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "Package", Text = "Existing Package" },
+                new SelectListItem { Value = "Upload", Text = "Upload .reg File" }
+            };
+            model.WriteFileSourceModeOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "Inline", Text = "Inline Content" },
+                new SelectListItem { Value = "Upload", Text = "Upload File" }
+            };
+
             model.StepTypeOptions = Enum.GetValues(typeof(OrchestrationStepType))
                 .Cast<OrchestrationStepType>()
                 .Select(x => new SelectListItem
@@ -4726,19 +4905,46 @@ namespace RetailCentral.Api.Controllers
                 })
                 .ToList();
 
+            model.ImportRegistryPackageOptions = installPackages
+                .Where(x => !string.IsNullOrWhiteSpace(x.FileName) &&
+                            x.FileName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase))
+                .Select(x => new SelectListItem
+                {
+                    Value = x.Id.ToString(),
+                    Text = string.IsNullOrWhiteSpace(x.Version)
+                        ? $"{x.Name} ({x.FileName ?? "no file"})"
+                        : $"{x.Name} {x.Version} ({x.FileName ?? "no file"})"
+                })
+                .ToList();
+
+            model.ImportRegistryExecuteModeOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "Immediate", Text = "Immediate" },
+                new SelectListItem { Value = "StagedOnly", Text = "Staged Only" }
+            };
+            
+            model.ValidateRegistryHiveOptions = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "HKEY_LOCAL_MACHINE", Text = "HKEY_LOCAL_MACHINE" },
+                new SelectListItem { Value = "HKEY_CURRENT_USER", Text = "HKEY_CURRENT_USER" },
+                new SelectListItem { Value = "HKEY_USERS", Text = "HKEY_USERS" },
+                new SelectListItem { Value = "HKEY_CLASSES_ROOT", Text = "HKEY_CLASSES_ROOT" },
+                new SelectListItem { Value = "HKEY_CURRENT_CONFIG", Text = "HKEY_CURRENT_CONFIG" }
+            };
+
             model.InstallPackageExecuteModeOptions = new List<SelectListItem>
-    {
-        new SelectListItem { Value = "Immediate", Text = "Immediate" },
-        new SelectListItem { Value = "StagedOnly", Text = "Staged Only" }
-    };
+            {
+                new SelectListItem { Value = "Immediate", Text = "Immediate" },
+                new SelectListItem { Value = "StagedOnly", Text = "Staged Only" }
+            };
 
             model.WriteFileEncodingOptions = new List<SelectListItem>
-    {
-        new SelectListItem { Value = "utf-8", Text = "UTF-8" },
-        new SelectListItem { Value = "utf-8-bom", Text = "UTF-8 with BOM" },
-        new SelectListItem { Value = "ascii", Text = "ASCII" },
-        new SelectListItem { Value = "unicode", Text = "Unicode (UTF-16 LE)" }
-    };
+            {
+                new SelectListItem { Value = "utf-8", Text = "UTF-8" },
+                new SelectListItem { Value = "utf-8-bom", Text = "UTF-8 with BOM" },
+                new SelectListItem { Value = "ascii", Text = "ASCII" },
+                new SelectListItem { Value = "unicode", Text = "Unicode (UTF-16 LE)" }
+            };
 
             if (model.InstallPackageId.HasValue)
             {
@@ -4750,6 +4956,27 @@ namespace RetailCentral.Api.Controllers
                         $"Source: {selectedPackage.StoragePath ?? "-"} | " +
                         $"Install Command: {selectedPackage.ExecutionCommand ?? "-"}";
                 }
+            }
+
+            if (model.ImportRegistryPackageId.HasValue)
+            {
+                var selectedRegistryPackage = installPackages.FirstOrDefault(x => x.Id == model.ImportRegistryPackageId.Value);
+                if (selectedRegistryPackage != null)
+                {
+                    model.SelectedRegistryPackageSummary =
+                        $"File: {selectedRegistryPackage.FileName ?? "-"} | " +
+                        $"Source: {selectedRegistryPackage.StoragePath ?? "-"}";
+                }
+            }
+
+            if (string.Equals(model.ImportRegistrySourceMode, "Upload", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(model.UploadedRegistryFileName)
+                && string.IsNullOrWhiteSpace(model.SelectedRegistryPackageSummary))
+            {
+                model.SelectedRegistryPackageSummary =
+                    !string.IsNullOrWhiteSpace(model.UploadedRegistryDownloadUrl)
+                        ? $"Uploaded file: {model.UploadedRegistryFileName} | Source: {model.UploadedRegistryDownloadUrl}"
+                        : $"Uploaded file: {model.UploadedRegistryFileName}";
             }
 
             ApplyStepTypeMetadata(model);
@@ -5375,6 +5602,66 @@ namespace RetailCentral.Api.Controllers
                     }
                 }
             }
+
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ImportRegistrySourceMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistrySourceMode), "Registry source mode is required.");
+                }
+                else if (string.Equals(model.ImportRegistrySourceMode, "Package", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!model.ImportRegistryPackageId.HasValue)
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Package selection is required for ImportRegistryFile.");
+                    }
+                    else
+                    {
+                        selectedPackage = installPackages.FirstOrDefault(x => x.Id == model.ImportRegistryPackageId.Value);
+
+                        if (selectedPackage == null)
+                        {
+                            ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Selected registry package was not found.");
+                        }
+                        else if (string.IsNullOrWhiteSpace(selectedPackage.StoragePath)
+                            || string.IsNullOrWhiteSpace(selectedPackage.FileName)
+                            || !selectedPackage.FileName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Selected package must be a valid .reg package.");
+                        }
+                    }
+                }
+                else if (string.Equals(model.ImportRegistrySourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (model.ImportRegistryUploadFile == null || model.ImportRegistryUploadFile.Length == 0)
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), "A .reg file upload is required.");
+                    }
+                    else if (!Path.GetExtension(model.ImportRegistryUploadFile.FileName).Equals(".reg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), "Only .reg files are supported.");
+                    }
+                }
+            }
+
+            if (string.Equals(model.CommandType, "ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryHive))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryHive), "Registry hive is required for ValidateRegistry.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryKeyPath))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryKeyPath), "Registry key path is required for ValidateRegistry.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryValueName))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryValueName), "Registry value name is required for ValidateRegistry.");
+                }
+            }
+
             if (!model.StepType.HasValue)
             {
                 ModelState.AddModelError(nameof(model.StepType), "Step type is required.");
@@ -5407,9 +5694,35 @@ namespace RetailCentral.Api.Controllers
                     ModelState.AddModelError(nameof(model.WriteFilePath), "Destination path is required for WriteFile.");
                 }
 
-                if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                if (string.IsNullOrWhiteSpace(model.WriteFileSourceMode))
                 {
-                    ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile.");
+                    ModelState.AddModelError(nameof(model.WriteFileSourceMode), "Source mode is required for WriteFile.");
+                }
+                else if (string.Equals(model.WriteFileSourceMode, "Inline", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                    {
+                        ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile inline mode.");
+                    }
+                }
+                else if (string.Equals(model.WriteFileSourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (model.WriteFileUploadFile == null || model.WriteFileUploadFile.Length == 0)
+                    {
+                        ModelState.AddModelError(nameof(model.WriteFileUploadFile), "A file upload is required for WriteFile upload mode.");
+                    }
+                }
+            }
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ImportRegistrySourceMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistrySourceMode), "Registry source mode is required for ImportRegistryFile.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistryExecuteMode), "Execute mode is required for ImportRegistryFile.");
                 }
             }
 
@@ -5446,6 +5759,72 @@ namespace RetailCentral.Api.Controllers
                 ? model.CommandType?.Trim()
                 : null;
 
+            string? parametersJson = null;
+
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(model.WriteFileSourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+            {
+                var uploadValidationError = ValidateDistroUpload(model.WriteFileUploadFile!);
+                if (uploadValidationError != null)
+                {
+                    ModelState.AddModelError(nameof(model.WriteFileUploadFile), uploadValidationError);
+
+                    await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                    ViewData["Title"] = $"Add Step to {model.TemplateName}";
+                    ViewData["FormAction"] = nameof(CreateOrchestrationTemplateStep);
+                    ViewData["SubmitText"] = "Add Step";
+                    return View("EditOrchestrationTemplateStep", model);
+                }
+
+                var distroResult = await SaveFileToDistroAsync(model.WriteFileUploadFile!, cancellationToken);
+                model.UploadedWriteFileName = distroResult.FileName;
+                model.UploadedWriteFileDownloadUrl = BuildDistroUrl(distroResult.FileName);
+
+                parametersJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceMode = "Upload",
+                    downloadUrl = model.UploadedWriteFileDownloadUrl,
+                    fileName = distroResult.FileName,
+                    path = model.WriteFilePath?.Trim() ?? string.Empty,
+                    overwrite = model.WriteFileOverwrite
+                });
+            }
+            else if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(model.ImportRegistrySourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+            {
+                var uploadValidationError = ValidateDistroUpload(model.ImportRegistryUploadFile!);
+                if (uploadValidationError != null)
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), uploadValidationError);
+
+                    await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                    ViewData["Title"] = $"Add Step to {model.TemplateName}";
+                    ViewData["FormAction"] = nameof(CreateOrchestrationTemplateStep);
+                    ViewData["SubmitText"] = "Add Step";
+                    return View("EditOrchestrationTemplateStep", model);
+                }
+
+                var distroResult = await SaveFileToDistroAsync(model.ImportRegistryUploadFile!, cancellationToken);
+                model.UploadedRegistryFileName = distroResult.FileName;
+                model.UploadedRegistryDownloadUrl = BuildDistroUrl(distroResult.FileName);
+
+                parametersJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceMode = "Upload",
+                    downloadUrl = model.UploadedRegistryDownloadUrl,
+                    fileName = distroResult.FileName,
+                    sha256 = distroResult.Sha256,
+                    timeoutSeconds = model.TimeoutSeconds,
+                    executeMode = string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode)
+                        ? "Immediate"
+                        : model.ImportRegistryExecuteMode.Trim()
+                });
+            }
+            else
+            {
+                parametersJson = BuildParametersJson(model, selectedPackage);
+            }
+
             var entity = new OrchestrationTemplateStep
             {
                 TemplateId = model.TemplateId,
@@ -5453,7 +5832,7 @@ namespace RetailCentral.Api.Controllers
                 Name = model.Name.Trim(),
                 StepType = selectedStepType,
                 CommandType = normalizedCommandType,
-                ParametersJson = BuildParametersJson(model, selectedPackage),
+                ParametersJson = parametersJson,
                 SuccessCriteriaJson = null,
                 TimeoutSeconds = model.TimeoutSeconds,
                 MaxRetries = model.MaxRetries,
@@ -5536,6 +5915,65 @@ namespace RetailCentral.Api.Controllers
                 }
             }
 
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ImportRegistrySourceMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistrySourceMode), "Registry source mode is required.");
+                }
+                else if (string.Equals(model.ImportRegistrySourceMode, "Package", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!model.ImportRegistryPackageId.HasValue)
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Package selection is required for ImportRegistryFile.");
+                    }
+                    else
+                    {
+                        selectedPackage = installPackages.FirstOrDefault(x => x.Id == model.ImportRegistryPackageId.Value);
+
+                        if (selectedPackage == null)
+                        {
+                            ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Selected registry package was not found.");
+                        }
+                        else if (string.IsNullOrWhiteSpace(selectedPackage.StoragePath)
+                            || string.IsNullOrWhiteSpace(selectedPackage.FileName)
+                            || !selectedPackage.FileName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ModelState.AddModelError(nameof(model.ImportRegistryPackageId), "Selected package must be a valid .reg package.");
+                        }
+                    }
+                }
+                else if (string.Equals(model.ImportRegistrySourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (model.ImportRegistryUploadFile == null || model.ImportRegistryUploadFile.Length == 0)
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), "A .reg file upload is required.");
+                    }
+                    else if (!Path.GetExtension(model.ImportRegistryUploadFile.FileName).Equals(".reg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), "Only .reg files are supported.");
+                    }
+                }
+            }
+
+            if (string.Equals(model.CommandType, "ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryHive))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryHive), "Registry hive is required for ValidateRegistry.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryKeyPath))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryKeyPath), "Registry key path is required for ValidateRegistry.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ValidateRegistryValueName))
+                {
+                    ModelState.AddModelError(nameof(model.ValidateRegistryValueName), "Registry value name is required for ValidateRegistry.");
+                }
+            }
+
             if (!model.StepType.HasValue)
             {
                 ModelState.AddModelError(nameof(model.StepType), "Step type is required.");
@@ -5568,9 +6006,36 @@ namespace RetailCentral.Api.Controllers
                     ModelState.AddModelError(nameof(model.WriteFilePath), "Destination path is required for WriteFile.");
                 }
 
-                if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                if (string.IsNullOrWhiteSpace(model.WriteFileSourceMode))
                 {
-                    ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile.");
+                    ModelState.AddModelError(nameof(model.WriteFileSourceMode), "Source mode is required for WriteFile.");
+                }
+                else if (string.Equals(model.WriteFileSourceMode, "Inline", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(model.WriteFileEncoding))
+                    {
+                        ModelState.AddModelError(nameof(model.WriteFileEncoding), "Encoding is required for WriteFile inline mode.");
+                    }
+                }
+                else if (string.Equals(model.WriteFileSourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (model.WriteFileUploadFile == null || model.WriteFileUploadFile.Length == 0)
+                    {
+                        ModelState.AddModelError(nameof(model.WriteFileUploadFile), "A file upload is required for WriteFile upload mode.");
+                    }
+                }
+            }
+
+            if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(model.ImportRegistrySourceMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistrySourceMode), "Registry source mode is required for ImportRegistryFile.");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode))
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistryExecuteMode), "Execute mode is required for ImportRegistryFile.");
                 }
             }
 
@@ -5607,11 +6072,76 @@ namespace RetailCentral.Api.Controllers
                 ? model.CommandType?.Trim()
                 : null;
 
+            string? parametersJson = null;
+
+            if (string.Equals(model.CommandType, "WriteFile", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(model.WriteFileSourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+            {
+                var uploadValidationError = ValidateDistroUpload(model.WriteFileUploadFile!);
+                if (uploadValidationError != null)
+                {
+                    ModelState.AddModelError(nameof(model.WriteFileUploadFile), uploadValidationError);
+
+                    await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                    ViewData["Title"] = $"Edit Step: {model.Name}";
+                    ViewData["FormAction"] = nameof(EditOrchestrationTemplateStep);
+                    ViewData["SubmitText"] = "Save Step Changes";
+                    return View("EditOrchestrationTemplateStep", model);
+                }
+
+                var distroResult = await SaveFileToDistroAsync(model.WriteFileUploadFile!, cancellationToken);
+                model.UploadedWriteFileName = distroResult.FileName;
+                model.UploadedWriteFileDownloadUrl = BuildDistroUrl(distroResult.FileName);
+
+                parametersJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceMode = "Upload",
+                    downloadUrl = model.UploadedWriteFileDownloadUrl,
+                    fileName = distroResult.FileName,
+                    path = model.WriteFilePath?.Trim() ?? string.Empty,
+                    overwrite = model.WriteFileOverwrite
+                });
+            }
+            else if (string.Equals(model.CommandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(model.ImportRegistrySourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+            {
+                var uploadValidationError = ValidateDistroUpload(model.ImportRegistryUploadFile!);
+                if (uploadValidationError != null)
+                {
+                    ModelState.AddModelError(nameof(model.ImportRegistryUploadFile), uploadValidationError);
+
+                    await PopulateOrchestrationTemplateStepLists(model, cancellationToken);
+                    ViewData["Title"] = $"Edit Step: {model.Name}";
+                    ViewData["FormAction"] = nameof(EditOrchestrationTemplateStep);
+                    ViewData["SubmitText"] = "Save Step Changes";
+                    return View("EditOrchestrationTemplateStep", model);
+                }
+
+                var distroResult = await SaveFileToDistroAsync(model.ImportRegistryUploadFile!, cancellationToken);
+                model.UploadedRegistryFileName = distroResult.FileName;
+                model.UploadedRegistryDownloadUrl = BuildDistroUrl(distroResult.FileName);
+
+                parametersJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sourceMode = "Upload",
+                    downloadUrl = model.UploadedRegistryDownloadUrl,
+                    fileName = distroResult.FileName,
+                    sha256 = distroResult.Sha256,
+                    timeoutSeconds = model.TimeoutSeconds,
+                    executeMode = string.IsNullOrWhiteSpace(model.ImportRegistryExecuteMode)
+                        ? "Immediate"
+                        : model.ImportRegistryExecuteMode.Trim()
+                });
+            }
+            else
+            {
+                parametersJson = BuildParametersJson(model, selectedPackage);
+            }
             entity.StepOrder = model.StepOrder;
             entity.Name = model.Name.Trim();
             entity.StepType = selectedStepType;
             entity.CommandType = normalizedCommandType;
-            entity.ParametersJson = BuildParametersJson(model, selectedPackage);
+            entity.ParametersJson = parametersJson;
             entity.TimeoutSeconds = model.TimeoutSeconds;
             entity.MaxRetries = model.MaxRetries;
             entity.OnFailureAction = (OrchestrationFailureAction)model.OnFailureAction.GetValueOrDefault();
@@ -5666,6 +6196,32 @@ namespace RetailCentral.Api.Controllers
             var templateId = entity.TemplateId;
             var stepName = entity.Name ?? $"Step {entity.StepOrder}";
 
+            var isReferencedByRuns = await _db.OrchestrationRunSteps
+                .AnyAsync(x => x.TemplateStepId == id, cancellationToken);
+
+            if (isReferencedByRuns)
+            {
+                TempData["OrchestrationTemplateMessage"] =
+                    $"Step '{stepName}' cannot be deleted because it is referenced by existing orchestration runs.";
+
+                await AuditAsync(
+                    "DeleteOrchestrationTemplateStepBlocked",
+                    "OrchestrationTemplateStep",
+                    id.ToString(),
+                    new
+                    {
+                        Id = id,
+                        TemplateId = templateId,
+                        Name = stepName,
+                        Reason = "Referenced by orchestration run history"
+                    },
+                    false,
+                    "Step is referenced by orchestration run history.",
+                    cancellationToken);
+
+                return RedirectToAction(nameof(OrchestrationTemplate), new { id = templateId });
+            }
+
             _db.OrchestrationTemplateSteps.Remove(entity);
 
             if (entity.Template != null)
@@ -5676,21 +6232,22 @@ namespace RetailCentral.Api.Controllers
             await _db.SaveChangesAsync(cancellationToken);
 
             await AuditAsync(
-                "DeleteOrchestrationTemplateStep",
-                "OrchestrationTemplateStep",
-                id.ToString(),
-                new
-                {
-                    Id = id,
-                    TemplateId = templateId,
-                    Name = stepName
-                },
-                true,
-                cancellationToken: cancellationToken);
+                 "DeleteOrchestrationTemplateStep",
+                 "OrchestrationTemplateStep",
+                 id.ToString(),
+                 new
+                 {
+                     Id = id,
+                     TemplateId = templateId,
+                     Name = stepName
+                 },
+                 true,
+                 cancellationToken: cancellationToken);
 
             TempData["OrchestrationTemplateMessage"] = $"Step '{stepName}' deleted.";
             return RedirectToAction(nameof(OrchestrationTemplate), new { id = templateId });
         }
+
         [Authorize(Policy = "DashboardEngineer")]
         [HttpGet]
         public async Task<IActionResult> CreateOrchestrationTemplateStep(int templateId)
@@ -6104,15 +6661,22 @@ namespace RetailCentral.Api.Controllers
         {
             var extension = Path.GetExtension(file.FileName);
             var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ".msi",
-            ".exe",
-            ".zip"
-        };
+            {
+                ".msi",
+                ".exe",
+                ".zip",
+                ".reg",
+                ".txt",
+                ".json",
+                ".xml",
+                ".ini",
+                ".config",
+                ".csv"
+            };
 
             if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
             {
-                return "Only .msi, .exe, and .zip files are supported for distro uploads.";
+                return "Only .msi, .exe, .zip, and .reg files are supported for distro uploads.";
             }
 
             return null;

@@ -1,0 +1,531 @@
+Folder PATH listing
+Volume serial number is 2E80-D5C8
+C:.
+¦   appsettings.Development.json
+¦   appsettings.json
+¦   Program.cs
+¦   RetailCentral.Api.csproj
+¦   RetailCentral.Api.csproj.user
+¦   RetailCentral.Api.http
+¦   
++---bin
+¦   +---Debug
+¦   ¦   +---net8.0
+¦   ¦       ¦   appsettings.Development.json
+¦   ¦       ¦   appsettings.json
+¦   ¦       ¦   Azure.Core.dll
+¦   ¦       ¦   Azure.Identity.dll
+¦   ¦       ¦   Humanizer.dll
+¦   ¦       ¦   Microsoft.AspNetCore.Authentication.Negotiate.dll
+¦   ¦       ¦   Microsoft.Bcl.AsyncInterfaces.dll
+¦   ¦       ¦   Microsoft.CodeAnalysis.CSharp.dll
+¦   ¦       ¦   Microsoft.CodeAnalysis.CSharp.Workspaces.dll
+¦   ¦       ¦   Microsoft.CodeAnalysis.dll
+¦   ¦       ¦   Microsoft.CodeAnalysis.Workspaces.dll
+¦   ¦       ¦   Microsoft.Data.SqlClient.dll
+¦   ¦       ¦   Microsoft.EntityFrameworkCore.Abstractions.dll
+¦   ¦       ¦   Microsoft.EntityFrameworkCore.Design.dll
+¦   ¦       ¦   Microsoft.EntityFrameworkCore.dll
+¦   ¦       ¦   Microsoft.EntityFrameworkCore.Relational.dll
+¦   ¦       ¦   Microsoft.EntityFrameworkCore.SqlServer.dll
+¦   ¦       ¦   Microsoft.Extensions.Caching.Memory.dll
+¦   ¦       ¦   Microsoft.Extensions.Configuration.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.Configuration.Binder.dll
+¦   ¦       ¦   Microsoft.Extensions.Configuration.dll
+¦   ¦       ¦   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.DependencyInjection.dll
+¦   ¦       ¦   Microsoft.Extensions.DependencyModel.dll
+¦   ¦       ¦   Microsoft.Extensions.Diagnostics.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.FileProviders.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.Hosting.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.Logging.Abstractions.dll
+¦   ¦       ¦   Microsoft.Extensions.Logging.dll
+¦   ¦       ¦   Microsoft.Extensions.Options.dll
+¦   ¦       ¦   Microsoft.Extensions.Primitives.dll
+¦   ¦       ¦   Microsoft.Identity.Client.dll
+¦   ¦       ¦   Microsoft.Identity.Client.Extensions.Msal.dll
+¦   ¦       ¦   Microsoft.IdentityModel.Abstractions.dll
+¦   ¦       ¦   Microsoft.IdentityModel.JsonWebTokens.dll
+¦   ¦       ¦   Microsoft.IdentityModel.Logging.dll
+¦   ¦       ¦   Microsoft.IdentityModel.Protocols.dll
+¦   ¦       ¦   Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+¦   ¦       ¦   Microsoft.IdentityModel.Tokens.dll
+¦   ¦       ¦   Microsoft.OpenApi.dll
+¦   ¦       ¦   Microsoft.SqlServer.Server.dll
+¦   ¦       ¦   Microsoft.Win32.SystemEvents.dll
+¦   ¦       ¦   Mono.TextTemplating.dll
+¦   ¦       ¦   RetailCentral.Api.deps.json
+¦   ¦       ¦   RetailCentral.Api.dll
+¦   ¦       ¦   RetailCentral.Api.exe
+¦   ¦       ¦   RetailCentral.Api.pdb
+¦   ¦       ¦   RetailCentral.Api.runtimeconfig.json
+¦   ¦       ¦   RetailCentral.Api.staticwebassets.endpoints.json
+¦   ¦       ¦   RetailCentral.Api.staticwebassets.runtime.json
+¦   ¦       ¦   Serilog.AspNetCore.dll
+¦   ¦       ¦   Serilog.dll
+¦   ¦       ¦   Serilog.Extensions.Hosting.dll
+¦   ¦       ¦   Serilog.Extensions.Logging.dll
+¦   ¦       ¦   Serilog.Formatting.Compact.dll
+¦   ¦       ¦   Serilog.Settings.Configuration.dll
+¦   ¦       ¦   Serilog.Sinks.Console.dll
+¦   ¦       ¦   Serilog.Sinks.Debug.dll
+¦   ¦       ¦   Serilog.Sinks.File.dll
+¦   ¦       ¦   Swashbuckle.AspNetCore.Swagger.dll
+¦   ¦       ¦   Swashbuckle.AspNetCore.SwaggerGen.dll
+¦   ¦       ¦   Swashbuckle.AspNetCore.SwaggerUI.dll
+¦   ¦       ¦   System.ClientModel.dll
+¦   ¦       ¦   System.CodeDom.dll
+¦   ¦       ¦   System.Composition.AttributedModel.dll
+¦   ¦       ¦   System.Composition.Convention.dll
+¦   ¦       ¦   System.Composition.Hosting.dll
+¦   ¦       ¦   System.Composition.Runtime.dll
+¦   ¦       ¦   System.Composition.TypedParts.dll
+¦   ¦       ¦   System.Configuration.ConfigurationManager.dll
+¦   ¦       ¦   System.Diagnostics.DiagnosticSource.dll
+¦   ¦       ¦   System.DirectoryServices.Protocols.dll
+¦   ¦       ¦   System.Drawing.Common.dll
+¦   ¦       ¦   System.IdentityModel.Tokens.Jwt.dll
+¦   ¦       ¦   System.IO.Pipelines.dll
+¦   ¦       ¦   System.Memory.Data.dll
+¦   ¦       ¦   System.Runtime.Caching.dll
+¦   ¦       ¦   System.Security.Cryptography.ProtectedData.dll
+¦   ¦       ¦   System.Security.Permissions.dll
+¦   ¦       ¦   System.Text.Encodings.Web.dll
+¦   ¦       ¦   System.Text.Json.dll
+¦   ¦       ¦   System.Windows.Extensions.dll
+¦   ¦       ¦   
+¦   ¦       +---cs
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---de
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---es
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---fr
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---it
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---ja
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---ko
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---logs
+¦   ¦       ¦       api-20260320.log
+¦   ¦       ¦       
+¦   ¦       +---pl
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---pt-BR
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---ru
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---runtimes
+¦   ¦       ¦   +---browser
+¦   ¦       ¦   ¦   +---lib
+¦   ¦       ¦   ¦       +---net8.0
+¦   ¦       ¦   ¦               System.Text.Encodings.Web.dll
+¦   ¦       ¦   ¦               
+¦   ¦       ¦   +---linux
+¦   ¦       ¦   ¦   +---lib
+¦   ¦       ¦   ¦       +---net8.0
+¦   ¦       ¦   ¦               System.DirectoryServices.Protocols.dll
+¦   ¦       ¦   ¦               
+¦   ¦       ¦   +---osx
+¦   ¦       ¦   ¦   +---lib
+¦   ¦       ¦   ¦       +---net8.0
+¦   ¦       ¦   ¦               System.DirectoryServices.Protocols.dll
+¦   ¦       ¦   ¦               
+¦   ¦       ¦   +---unix
+¦   ¦       ¦   ¦   +---lib
+¦   ¦       ¦   ¦       +---net6.0
+¦   ¦       ¦   ¦               Microsoft.Data.SqlClient.dll
+¦   ¦       ¦   ¦               System.Drawing.Common.dll
+¦   ¦       ¦   ¦               
+¦   ¦       ¦   +---win
+¦   ¦       ¦   ¦   +---lib
+¦   ¦       ¦   ¦       +---net6.0
+¦   ¦       ¦   ¦       ¦       Microsoft.Data.SqlClient.dll
+¦   ¦       ¦   ¦       ¦       Microsoft.Win32.SystemEvents.dll
+¦   ¦       ¦   ¦       ¦       System.Drawing.Common.dll
+¦   ¦       ¦   ¦       ¦       System.Runtime.Caching.dll
+¦   ¦       ¦   ¦       ¦       System.Security.Cryptography.ProtectedData.dll
+¦   ¦       ¦   ¦       ¦       System.Windows.Extensions.dll
+¦   ¦       ¦   ¦       ¦       
+¦   ¦       ¦   ¦       +---net8.0
+¦   ¦       ¦   ¦               System.DirectoryServices.Protocols.dll
+¦   ¦       ¦   ¦               
+¦   ¦       ¦   +---win-arm
+¦   ¦       ¦   ¦   +---native
+¦   ¦       ¦   ¦           Microsoft.Data.SqlClient.SNI.dll
+¦   ¦       ¦   ¦           
+¦   ¦       ¦   +---win-arm64
+¦   ¦       ¦   ¦   +---native
+¦   ¦       ¦   ¦           Microsoft.Data.SqlClient.SNI.dll
+¦   ¦       ¦   ¦           
+¦   ¦       ¦   +---win-x64
+¦   ¦       ¦   ¦   +---native
+¦   ¦       ¦   ¦           Microsoft.Data.SqlClient.SNI.dll
+¦   ¦       ¦   ¦           
+¦   ¦       ¦   +---win-x86
+¦   ¦       ¦       +---native
+¦   ¦       ¦               Microsoft.Data.SqlClient.SNI.dll
+¦   ¦       ¦               
+¦   ¦       +---tr
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---zh-Hans
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.resources.dll
+¦   ¦       ¦       Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦       ¦       
+¦   ¦       +---zh-Hant
+¦   ¦               Microsoft.CodeAnalysis.CSharp.resources.dll
+¦   ¦               Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll
+¦   ¦               Microsoft.CodeAnalysis.resources.dll
+¦   ¦               Microsoft.CodeAnalysis.Workspaces.resources.dll
+¦   ¦               
+¦   +---Release
+¦       +---net8.0
++---Configuration
+¦       ApiCommandPolicyOptions.cs
+¦       CommandPolicyOptions.cs
+¦       
++---Controllers
+¦       AdminCommandsController.cs
+¦       AdminDeviceGroupsController.cs
+¦       AdminDevicesController.cs
+¦       AgentController.cs
+¦       DashboardController.cs
+¦       DashboardDeploymentsController.cs
+¦       DeploymentsController.cs
+¦       HomeController.cs
+¦       
++---Data
+¦   ¦   RetailCentralDbContext.cs
+¦   ¦   
+¦   +---Entities
+¦   ¦       Deployment.cs
+¦   ¦       DeploymentDevice.cs
+¦   ¦       InstalledSoftware.cs
+¦   ¦       InstalledWindowsUpdate.cs
+¦   ¦       Package.cs
+¦   ¦       
+¦   +---Enums
+¦           DeploymentDeviceStatus.cs
+¦           DeploymentDownloadStatus.cs
+¦           DeploymentExecuteMode.cs
+¦           DeploymentExecuteStatus.cs
+¦           DeploymentStatus.cs
+¦           DeploymentTargetType.cs
+¦           PackageType.cs
+¦           
++---dp_keys
+¦       key-685b851c-fff9-47ce-a798-37b9a3ec9852.xml
+¦       
++---Dtos
+¦       AddDeviceToGroupRequest.cs
+¦       CommandDto.cs
+¦       CommandResultRequest.cs
+¦       CreateCommandRequest.cs
+¦       CreateDeviceGroupRequest.cs
+¦       EnrollRequest.cs
+¦       EnrollResponse.cs
+¦       HeartbeatRequest.cs
+¦       
++---logs
+¦       api-20260324.original.log
+¦       api-20260327.log
+¦       api-20260328.log
+¦       api-20260329.log
+¦       api-20260330.log
+¦       api-20260331.log
+¦       api-20260401.log
+¦       api-20260402.log
+¦       
++---Migrations
+¦       20260302183631_InitialCreate.cs
+¦       20260302183631_InitialCreate.Designer.cs
+¦       20260303175817_AddCommands.cs
+¦       20260303175817_AddCommands.Designer.cs
+¦       20260303194650_AddDeviceSecret.cs
+¦       20260303194650_AddDeviceSecret.Designer.cs
+¦       20260304161431_AddLastAuthTimestampUnix.cs
+¦       20260304161431_AddLastAuthTimestampUnix.Designer.cs
+¦       20260304192510_AddCommandAttemptTracking.cs
+¦       20260304192510_AddCommandAttemptTracking.Designer.cs
+¦       20260304202039_CommandResultUniquePerCommand.cs
+¦       20260304202039_CommandResultUniquePerCommand.Designer.cs
+¦       20260304222837_Day4_CommandAttempts.cs
+¦       20260304222837_Day4_CommandAttempts.Designer.cs
+¦       20260305014307_Day4_CommandResultUnique.cs
+¦       20260305014307_Day4_CommandResultUnique.Designer.cs
+¦       20260306171901_Day6_CommandAudit.cs
+¦       20260306171901_Day6_CommandAudit.Designer.cs
+¦       20260308234234_Day7_DeviceBootstrapFields.cs
+¦       20260308234234_Day7_DeviceBootstrapFields.Designer.cs
+¦       20260309135520_Day8_DeviceGroups.cs
+¦       20260309135520_Day8_DeviceGroups.Designer.cs
+¦       20260311160553_AddRegisterInventory.cs
+¦       20260311160553_AddRegisterInventory.Designer.cs
+¦       20260316151625_Day9_FileDistribution.cs
+¦       20260316151625_Day9_FileDistribution.Designer.cs
+¦       20260316165048_Day9_FileDistribution1.cs
+¦       20260316165048_Day9_FileDistribution1.Designer.cs
+¦       20260320183626_AddSoftwareInventory.cs
+¦       20260320183626_AddSoftwareInventory.Designer.cs
+¦       20260322010245_AddProcessStatusInventory.cs
+¦       20260322010245_AddProcessStatusInventory.Designer.cs
+¦       20260323173656_AddAuditLogs.cs
+¦       20260323173656_AddAuditLogs.Designer.cs
+¦       20260324192549_Fix_ProcessStatus_Precision.cs
+¦       20260324192549_Fix_ProcessStatus_Precision.Designer.cs
+¦       20260325162411_CommandTimeoutCleanup.cs
+¦       20260325162411_CommandTimeoutCleanup.Designer.cs
+¦       20260325211053_UserActivityPhase1.cs
+¦       20260325211053_UserActivityPhase1.Designer.cs
+¦       20260326145217_HeartbeatDeviceTimestampIndex.cs
+¦       20260326145217_HeartbeatDeviceTimestampIndex.Designer.cs
+¦       20260401154558_AddCommandNextAttemptUtc.cs
+¦       20260401154558_AddCommandNextAttemptUtc.Designer.cs
+¦       RetailCentralDbContextModelSnapshot.cs
+¦       
++---Models
+¦   ¦   AgentPollingHintsOptions.cs
+¦   ¦   AuditLog.cs
+¦   ¦   Command.cs
+¦   ¦   CommandResult.cs
+¦   ¦   Device.cs
+¦   ¦   DeviceGroup.cs
+¦   ¦   DeviceGroupMember.cs
+¦   ¦   Heartbeat.cs
+¦   ¦   ProcessStatusInventory.cs
+¦   ¦   RegisterInventory.cs
+¦   ¦   UserActivityHistory.cs
+¦   ¦   UserActivityInventory.cs
+¦   ¦   
+¦   +---Deployments
+¦           CreateDeploymentInputModel.cs
+¦           CreateDeploymentPageViewModel.cs
+¦           CreateDeploymentRequest.cs
+¦           CreatePackageRequest.cs
+¦           DeploymentDetailResponse.cs
+¦           DeploymentDetailsViewModel.cs
+¦           DeploymentDeviceRowViewModel.cs
+¦           DeploymentListItemViewModel.cs
+¦           PackageOptionViewModel.cs
+¦           
++---obj
+¦   ¦   project.assets.json
+¦   ¦   project.nuget.cache
+¦   ¦   RetailCentral.Api.csproj.nuget.dgspec.json
+¦   ¦   RetailCentral.Api.csproj.nuget.g.props
+¦   ¦   RetailCentral.Api.csproj.nuget.g.targets
+¦   ¦   
+¦   +---Debug
+¦   ¦   +---net8.0
+¦   ¦       ¦   .NETCoreApp,Version=v8.0.AssemblyAttributes.cs
+¦   ¦       ¦   ApiEndpoints.json
+¦   ¦       ¦   apphost.exe
+¦   ¦       ¦   RetailCe.60A4A159.Up2Date
+¦   ¦       ¦   RetailCentral.Api.AssemblyInfo.cs
+¦   ¦       ¦   RetailCentral.Api.AssemblyInfoInputs.cache
+¦   ¦       ¦   RetailCentral.Api.assets.cache
+¦   ¦       ¦   RetailCentral.Api.csproj.AssemblyReference.cache
+¦   ¦       ¦   RetailCentral.Api.csproj.BuildWithSkipAnalyzers
+¦   ¦       ¦   RetailCentral.Api.csproj.CoreCompileInputs.cache
+¦   ¦       ¦   RetailCentral.Api.csproj.FileListAbsolute.txt
+¦   ¦       ¦   RetailCentral.Api.dll
+¦   ¦       ¦   RetailCentral.Api.GeneratedMSBuildEditorConfig.editorconfig
+¦   ¦       ¦   RetailCentral.Api.genruntimeconfig.cache
+¦   ¦       ¦   RetailCentral.Api.GlobalUsings.g.cs
+¦   ¦       ¦   RetailCentral.Api.MvcApplicationPartsAssemblyInfo.cache
+¦   ¦       ¦   RetailCentral.Api.MvcApplicationPartsAssemblyInfo.cs
+¦   ¦       ¦   RetailCentral.Api.pdb
+¦   ¦       ¦   RetailCentral.Api.RazorAssemblyInfo.cache
+¦   ¦       ¦   RetailCentral.Api.RazorAssemblyInfo.cs
+¦   ¦       ¦   RetailCentral.Api.sourcelink.json
+¦   ¦       ¦   rjimswa.dswa.cache.json
+¦   ¦       ¦   rjsmcshtml.dswa.cache.json
+¦   ¦       ¦   rjsmrazor.dswa.cache.json
+¦   ¦       ¦   rpswa.dswa.cache.json
+¦   ¦       ¦   staticwebassets.build.endpoints.json
+¦   ¦       ¦   staticwebassets.build.json
+¦   ¦       ¦   staticwebassets.build.json.cache
+¦   ¦       ¦   staticwebassets.development.json
+¦   ¦       ¦   staticwebassets.references.upToDateCheck.txt
+¦   ¦       ¦   staticwebassets.removed.txt
+¦   ¦       ¦   swae.build.ex.cache
+¦   ¦       ¦   
+¦   ¦       +---EndpointInfo
+¦   ¦       ¦       RetailCentral.Api.json
+¦   ¦       ¦       RetailCentral.Api.OpenApiFiles.cache
+¦   ¦       ¦       
+¦   ¦       +---ref
+¦   ¦       ¦       RetailCentral.Api.dll
+¦   ¦       ¦       
+¦   ¦       +---refint
+¦   ¦       ¦       RetailCentral.Api.dll
+¦   ¦       ¦       
+¦   ¦       +---staticwebassets
+¦   +---Release
+¦       +---net8.0
+¦           ¦   .NETCoreApp,Version=v8.0.AssemblyAttributes.cs
+¦           ¦   RetailCentral.Api.AssemblyInfo.cs
+¦           ¦   RetailCentral.Api.AssemblyInfoInputs.cache
+¦           ¦   RetailCentral.Api.assets.cache
+¦           ¦   RetailCentral.Api.csproj.AssemblyReference.cache
+¦           ¦   RetailCentral.Api.GeneratedMSBuildEditorConfig.editorconfig
+¦           ¦   RetailCentral.Api.GlobalUsings.g.cs
+¦           ¦   RetailCentral.Api.RazorAssemblyInfo.cache
+¦           ¦   RetailCentral.Api.RazorAssemblyInfo.cs
+¦           ¦   
+¦           +---ref
+¦           +---refint
++---Properties
+¦       launchSettings.json
+¦       
++---Security
+¦       CustomAuthorizationMiddlewareResultHandler.cs
+¦       DeviceSecretProtection.cs
+¦       HmacAuthMiddleware.cs
+¦       
++---Services
+¦   ¦   AuditService.cs
+¦   ¦   CommandTimeoutWorker.cs
+¦   ¦   CommandValidationService.cs
+¦   ¦   DataRetentionService.cs
+¦   ¦   ProcessStatusScheduleWorker.cs
+¦   ¦   RegisterInventoryRefreshWorker.cs
+¦   ¦   RetryBackoffOptions.cs
+¦   ¦   RetryBackoffService.cs
+¦   ¦   SoftwareInventoryScheduleWorker.cs
+¦   ¦   
+¦   +---Deployments
+¦           DeploymentService.cs
+¦           IDeploymentService.cs
+¦           
++---ViewModels
+¦   ¦   AboutPageConfig.cs
+¦   ¦   AuditViewModel.cs
+¦   ¦   CommandCenterViewModel.cs
+¦   ¦   CommandDetailViewModel.cs
+¦   ¦   CommandResultDetailViewModel.cs
+¦   ¦   CommandSummaryViewModel.cs
+¦   ¦   DashboardIndexViewModel.cs
+¦   ¦   DeviceDetailViewModel.cs
+¦   ¦   DevicesFilterViewModel.cs
+¦   ¦   DeviceSummaryViewModel.cs
+¦   ¦   GroupDetailViewModel.cs
+¦   ¦   GroupSummaryViewModel.cs
+¦   ¦   HeartbeatSummaryViewModel.cs
+¦   ¦   HelpdeskCommandViewModel.cs
+¦   ¦   InstalledSoftwareViewModel.cs
+¦   ¦   InstalledWindowsUpdateViewModel.cs
+¦   ¦   IssueCommandViewModel.cs
+¦   ¦   LogsDashboardViewModel.cs
+¦   ¦   ProcessStatusInventoryViewModel.cs
+¦   ¦   RegisterInventoryPageViewModel.cs
+¦   ¦   RegisterInventoryRowViewModel.cs
+¦   ¦   VersionSummaryViewModel.cs
+¦   ¦   
+¦   +---Deployments
+¦           CreateDeploymentViewModel.cs
+¦           CreatePackageViewModel.cs
+¦           DeploymentIndexViewModel.cs
+¦           PackageListViewModel.cs
+¦           
++---Views
+¦   ¦   _ViewImports.cshtml
+¦   ¦   _ViewStart.cshtml
+¦   ¦   
+¦   +---Dashboard
+¦   ¦       About.cshtml
+¦   ¦       Audit.cshtml
+¦   ¦       Command.cshtml
+¦   ¦       Commands.cshtml
+¦   ¦       CreateDeployment.cshtml
+¦   ¦       CreatePackage.cshtml
+¦   ¦       DeploymentDetail.cshtml
+¦   ¦       Deployments.cshtml
+¦   ¦       Device.cshtml
+¦   ¦       Devices.cshtml
+¦   ¦       Group.cshtml
+¦   ¦       Groups.cshtml
+¦   ¦       HelpdeskCommands.cshtml
+¦   ¦       Index.cshtml
+¦   ¦       IssueCommand.cshtml
+¦   ¦       LogsDashboard.cshtml
+¦   ¦       Packages.cshtml
+¦   ¦       RegisterInventory.cshtml
+¦   ¦       Versions.cshtml
+¦   ¦       _CommandDetailModal.cshtml
+¦   ¦       
+¦   +---DashboardDeployments
+¦   ¦       Create.cshtml
+¦   ¦       Details.cshtml
+¦   ¦       Index.cshtml
+¦   ¦       
+¦   +---Home
+¦   ¦       AccessDenied.cshtml
+¦   ¦       
+¦   +---Shared
+¦           _Layout.cshtml
+¦           _ValidationScriptsPartial.cshtml
+¦           
++---wwwroot
+    +---css
+    ¦       dashboard.css
+    ¦       
+    +---distro
+    ¦       Cherry_Tools_59_EN.msi
+    ¦       SciTE4AutoIt3.exe
+    ¦       
+    +---downloads
+    ¦       RetailShadowHelper.msi
+    ¦       
+    +---images
+            access_denied.png
+            logo.png
+            
