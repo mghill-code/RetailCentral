@@ -16,5 +16,6 @@
     RunScript = 14,
     LaunchPos = 15,
     RestartPos = 16,
-    SendNamedPipeCommand = 17
+    SendNamedPipeCommand = 17,
+    ImportRegistryFile = 18
 }

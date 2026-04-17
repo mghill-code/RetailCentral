@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿
+using Microsoft.Extensions.Options;
 using RetailCentral.Agent.Configuration;
 using RetailCentral.Agent.Services;
 using RetailCentral.ShellContracts;
@@ -236,6 +237,10 @@ public sealed class CommandExecutor
                         var doc = JsonDocument.Parse(payloadJson ?? "{}");
                         var root = doc.RootElement;
 
+                        var sourceMode = root.TryGetProperty("sourceMode", out var sourceModeProp)
+                            ? sourceModeProp.GetString()
+                            : "Inline";
+
                         var path = root.TryGetProperty("path", out var pathProp)
                             ? pathProp.GetString()
                             : null;
@@ -266,14 +271,6 @@ public sealed class CommandExecutor
                                 throw new Exception($"Path is under a blocked write prefix: '{fullPath}'");
                         }
 
-                        var content = root.TryGetProperty("content", out var contentProp)
-                            ? contentProp.GetString() ?? string.Empty
-                            : string.Empty;
-
-                        var encodingName = root.TryGetProperty("encoding", out var encodingProp)
-                            ? encodingProp.GetString()
-                            : "utf-8";
-
                         var overwrite = root.TryGetProperty("overwrite", out var overwriteProp) && overwriteProp.GetBoolean();
 
                         if (File.Exists(fullPath) && !overwrite)
@@ -296,23 +293,75 @@ public sealed class CommandExecutor
 
                         Directory.CreateDirectory(directory);
 
+                        if (string.Equals(sourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var downloadUrl = root.TryGetProperty("downloadUrl", out var downloadUrlProp)
+                                ? downloadUrlProp.GetString()
+                                : null;
+
+                            var fileName = root.TryGetProperty("fileName", out var fileNameProp)
+                                ? fileNameProp.GetString()
+                                : null;
+
+                            if (string.IsNullOrWhiteSpace(downloadUrl))
+                                throw new Exception("downloadUrl required for WriteFile upload mode");
+
+                            if (string.IsNullOrWhiteSpace(fileName))
+                                throw new Exception("fileName required for WriteFile upload mode");
+
+                            var uri = new Uri(downloadUrl, UriKind.Absolute);
+                            _policy.ValidateDownload(uri, fileName);
+
+                            var stagingFolder = Path.Combine(_downloadsOptions.StagingRootFolder, "write-file");
+                            Directory.CreateDirectory(stagingFolder);
+
+                            var downloadedPath = await _downloader.DownloadAsync(
+                                downloadUrl,
+                                stagingFolder,
+                                fileName,
+                                ct);
+
+                            File.Copy(downloadedPath, fullPath, overwrite: true);
+
+                            var fileInfo = new FileInfo(fullPath);
+                            var finishedUploadWrite = DateTime.UtcNow;
+
+                            return
+                            (
+                                "Succeeded",
+                                0,
+                                $"Wrote uploaded file: {fullPath}\nSource: {downloadUrl}\nBytes: {fileInfo.Length}\nOverwrite: {overwrite}",
+                                "",
+                                started,
+                                finishedUploadWrite
+                            );
+                        }
+
+                        var content = root.TryGetProperty("content", out var contentProp)
+                            ? contentProp.GetString() ?? string.Empty
+                            : string.Empty;
+
+                        var encodingName = root.TryGetProperty("encoding", out var encodingProp)
+                            ? encodingProp.GetString()
+                            : "utf-8";
+
                         var encoding = ResolveTextEncoding(encodingName);
                         File.WriteAllText(fullPath, content, encoding);
 
-                        var fileInfo = new FileInfo(fullPath);
+                        var inlineFileInfo = new FileInfo(fullPath);
                         var finishedWrite = DateTime.UtcNow;
 
                         return
                         (
                             "Succeeded",
                             0,
-                            $"Wrote file: {fullPath}\nEncoding: {encodingName}\nBytes: {fileInfo.Length}\nOverwrite: {overwrite}",
+                            $"Wrote file: {fullPath}\nEncoding: {encodingName}\nBytes: {inlineFileInfo.Length}\nOverwrite: {overwrite}",
                             "",
                             started,
                             finishedWrite
                         );
                     }
-                
+
                 case "RunProcess":
                     {
                         if (!_executionOptions.AllowRunProcess)

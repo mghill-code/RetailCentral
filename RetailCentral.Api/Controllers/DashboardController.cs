@@ -4811,17 +4811,33 @@ namespace RetailCentral.Api.Controllers
         }
         private static string GetStepTypeDescription(OrchestrationStepType stepType)
         {
-            if (RequiresCommandType(stepType))
+            return stepType switch
             {
-                if (IsRecognizedButNotYetImplementedStepType(stepType))
-                    return "This step type is recognized as executable, but guided command mapping is not fully implemented yet.";
-
-                return "This step type is currently treated as command-backed and requires a Command Type.";
-            }
-
-            return "This step type is currently treated as non-command orchestration behavior. Command Type does not apply.";
+                OrchestrationStepType.InstallPackage => "This step installs a package using the guided package selector.",
+                OrchestrationStepType.WriteFile => "This step writes inline content or an uploaded file to a trusted local path.",
+                OrchestrationStepType.ImportRegistryFile => "This step imports a trusted .reg file from a package or uploaded file.",
+                OrchestrationStepType.ValidateRegistry => "This step validates that a registry value exists and matches the expected value.",
+                OrchestrationStepType.ValidateProcess => "This step validates that a configured process is running.",
+                _ when RequiresCommandType(stepType) => "This step type is command-backed and requires a Command Type.",
+                _ => "This step type is currently treated as non-command orchestration behavior. Command Type does not apply."
+            };
         }
 
+        private static string? GetDefaultCommandTypeForStepType(OrchestrationStepType? stepType)
+        {
+            if (!stepType.HasValue)
+                return null;
+
+            return stepType.Value switch
+            {
+                OrchestrationStepType.InstallPackage => "InstallPackage",
+                OrchestrationStepType.WriteFile => "WriteFile",
+                OrchestrationStepType.ImportRegistryFile => "ImportRegistryFile",
+                OrchestrationStepType.ValidateRegistry => "ValidateRegistry",
+                OrchestrationStepType.ValidateProcess => "ValidateProcess",
+                _ => null
+            };
+        }
         private static void ApplyStepTypeMetadata(EditOrchestrationTemplateStepViewModel model)
         {
             if (!model.StepType.HasValue)
@@ -4835,7 +4851,12 @@ namespace RetailCentral.Api.Controllers
             model.RequiresCommandType = RequiresCommandType(selectedStepType);
             model.StepTypeDescription = GetStepTypeDescription(selectedStepType);
 
-            if (!model.RequiresCommandType)
+            var mappedCommandType = GetDefaultCommandTypeForStepType(selectedStepType);
+            if (!string.IsNullOrWhiteSpace(mappedCommandType))
+            {
+                model.CommandType = mappedCommandType;
+            }
+            else if (!model.RequiresCommandType)
             {
                 model.CommandType = null;
             }

@@ -285,6 +285,15 @@
                 <option value="">Select failure action...</option>
             </select>
             <span asp-validation-for="OnFailureAction" class="text-danger"></span>
+
+            <div class="cell-secondary" style="margin-top:8px;">
+                <strong>Failure action guide:</strong><br />
+                <strong>FailRun</strong> - Stop the orchestration and mark the run as failed.<br />
+                <strong>RetryStep</strong> - Retry the current step up to the allowed retry count.<br />
+                <strong>Continue</strong> - Continue to the next step even if this step fails.<br />
+                <strong>Rollback</strong> - Attempt defined rollback behavior, if available.<br />
+                <strong>Escalate</strong> - Mark the failure for operator attention or escalation.
+            </div>
         </div>
 
         <div class="field">
@@ -345,20 +354,17 @@
                 const selected = stepTypeSelect.options[stepTypeSelect.selectedIndex];
                 return selected ? selected.text || '' : '';
             }
-            function getWriteFileSourceMode() {
-                return writeFileSourceModeSelect ? (writeFileSourceModeSelect.value || '') : '';
-            }
 
-            function updateWriteFileSourceUi() {
-                const sourceMode = getWriteFileSourceMode().toLowerCase();
+            function getMappedCommandTypeForStepType(stepTypeText) {
+                const value = (stepTypeText || '').toLowerCase();
 
-                if (sourceMode === 'upload') {
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = '';
-                } else {
-                    writeFileInlineFields.style.display = '';
-                    writeFileUploadField.style.display = 'none';
-                }
+                if (value === 'installpackage') return 'InstallPackage';
+                if (value === 'writefile') return 'WriteFile';
+                if (value === 'importregistryfile') return 'ImportRegistryFile';
+                if (value === 'validateregistry') return 'ValidateRegistry';
+                if (value === 'validateprocess') return 'ValidateProcess';
+
+                return '';
             }
 
             function getCommandTypeValue() {
@@ -381,18 +387,63 @@
                 }
             }
 
+            function getWriteFileSourceMode() {
+                return writeFileSourceModeSelect ? (writeFileSourceModeSelect.value || '') : '';
+            }
+
+            function updateWriteFileSourceUi() {
+                const sourceMode = getWriteFileSourceMode().toLowerCase();
+
+                if (sourceMode === 'upload') {
+                    writeFileInlineFields.style.display = 'none';
+                    writeFileUploadField.style.display = '';
+                } else {
+                    writeFileInlineFields.style.display = '';
+                    writeFileUploadField.style.display = 'none';
+                }
+            }
+
+            function hideAllGuidedFields() {
+                validateProcessField.style.display = 'none';
+                validateRegistryFields.style.display = 'none';
+                installPackageFields.style.display = 'none';
+                importRegistryFields.style.display = 'none';
+                importRegistryPackageField.style.display = 'none';
+                importRegistryUploadField.style.display = 'none';
+                writeFileFields.style.display = 'none';
+                writeFileInlineFields.style.display = 'none';
+                writeFileUploadField.style.display = 'none';
+            }
+
             function updateUi() {
                 const stepTypeText = getStepTypeText();
-                const commandTypeValue = getCommandTypeValue();
-                const stepRequiresCommand = requiresCommandType(stepTypeText);
                 const loweredStepType = (stepTypeText || '').toLowerCase();
+                const stepRequiresCommand = requiresCommandType(stepTypeText);
+                const mappedCommandType = getMappedCommandTypeForStepType(stepTypeText);
+
+                if (mappedCommandType) {
+                    commandTypeSelect.value = mappedCommandType;
+                }
+
+                const commandTypeValue = getCommandTypeValue();
 
                 if (stepRequiresCommand) {
-                    commandTypeSelect.disabled = false;
-                    commandTypeHidden.disabled = true;
+                    if (mappedCommandType) {
+                        commandTypeSelect.disabled = true;
+                        commandTypeHidden.disabled = false;
+                        commandTypeHidden.value = mappedCommandType;
+                    } else {
+                        commandTypeSelect.disabled = false;
+                        commandTypeHidden.disabled = true;
+                        commandTypeHidden.value = '';
+                    }
 
-                    if (loweredStepType.includes('write') || loweredStepType.includes('apply') || loweredStepType.includes('import') || loweredStepType.includes('registry') || loweredStepType.includes('script')) {
-                        stepTypeDescription.textContent = 'This step type is recognized as executable, but guided command mapping is not fully implemented yet.';
+                    if (loweredStepType.includes('write')
+                        || loweredStepType.includes('apply')
+                        || loweredStepType.includes('import')
+                        || loweredStepType.includes('registry')
+                        || loweredStepType.includes('script')) {
+                        stepTypeDescription.textContent = 'This step type is recognized as executable and maps to a guided command flow.';
                     } else {
                         stepTypeDescription.textContent = 'This step type is currently treated as command-backed and requires a Command Type.';
                     }
@@ -408,138 +459,52 @@
 
                 if (!stepRequiresCommand) {
                     commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
-                    validateProcessField.style.display = 'none';
                     validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
+                    hideAllGuidedFields();
                     return;
                 }
 
                 if (commandTypeValue.toLowerCase() === 'validateprocess') {
                     commandTypeDescription.textContent = 'ValidateProcess requires a process name and will store it as structured step parameters.';
+                    hideAllGuidedFields();
                     validateProcessField.style.display = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
                 } else if (commandTypeValue.toLowerCase() === 'validateregistry') {
                     commandTypeDescription.textContent = 'ValidateRegistry checks that a registry value exists and matches the expected value.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
+                    hideAllGuidedFields();
                     validateRegistryFields.style.display = '';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
                 } else if (commandTypeValue.toLowerCase() === 'restartpos') {
                     commandTypeDescription.textContent = 'RestartPOS does not require additional parameters.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
+                    hideAllGuidedFields();
                 } else if (commandTypeValue.toLowerCase() === 'collectsysteminfo') {
                     commandTypeDescription.textContent = 'CollectSystemInfo does not require additional parameters.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
+                    hideAllGuidedFields();
                 } else if (commandTypeValue.toLowerCase() === 'installpackage') {
                     commandTypeDescription.textContent = 'InstallPackage uses a guided package selector and generates the install payload automatically.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
+                    hideAllGuidedFields();
                     installPackageFields.style.display = '';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
                 } else if (commandTypeValue.toLowerCase() === 'importregistryfile') {
                     commandTypeDescription.textContent = 'ImportRegistryFile can use an existing .reg package or upload a .reg file directly to the server distro.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
+                    hideAllGuidedFields();
                     importRegistryFields.style.display = '';
                     updateImportRegistrySourceUi();
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
                 } else if (commandTypeValue.toLowerCase() === 'writefile') {
-                    commandTypeDescription.textContent = 'WriteFile writes controlled content to a trusted local path using the selected encoding.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
+                    commandTypeDescription.textContent = 'WriteFile writes controlled content to a trusted local path using inline content or an uploaded file.';
+                    hideAllGuidedFields();
                     writeFileFields.style.display = '';
                     updateWriteFileSourceUi();
-
                 } else if (!commandTypeValue) {
                     commandTypeDescription.textContent = 'Choose a command type to see guided parameter options.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
-
+                    hideAllGuidedFields();
                 } else {
                     commandTypeDescription.textContent = 'This command type is recognized, but guided parameter support is not implemented yet.';
-                    validateProcessField.style.display = 'none';
-                    validateProcessNameInput.value = '';
-                    validateRegistryFields.style.display = 'none';
-                    installPackageFields.style.display = 'none';
-                    importRegistryFields.style.display = 'none';
-                    importRegistryPackageField.style.display = 'none';
-                    importRegistryUploadField.style.display = 'none';
-                    writeFileFields.style.display = 'none';
-                    writeFileInlineFields.style.display = 'none';
-                    writeFileUploadField.style.display = 'none';
+                    hideAllGuidedFields();
                 }
             }
 
             if (writeFileSourceModeSelect) {
                 writeFileSourceModeSelect.addEventListener('change', updateUi);
             }
+
             if (stepTypeSelect) {
                 stepTypeSelect.addEventListener('change', updateUi);
             }
