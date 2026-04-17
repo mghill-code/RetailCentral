@@ -96,8 +96,35 @@ namespace RetailCentral.Api.Services.Orchestration
                     .OrderBy(x => x.StepOrder)
                     .ToListAsync(cancellationToken);
 
+                var hasBlockingFailure = run.Steps.Any(x =>
+                    x.Status == OrchestrationRunStepStatus.Failed ||
+                    x.Status == OrchestrationRunStepStatus.TimedOut);
+
+                if (hasBlockingFailure)
+                {
+                    run.Status = OrchestrationRunStatus.Failed;
+                    if (!run.CompletedUtc.HasValue)
+                    {
+                        run.CompletedUtc = DateTime.UtcNow;
+                    }
+
+                    continue;
+                }
+
+                var activeRunStep = run.Steps
+                    .Where(x =>
+                        x.Status == OrchestrationRunStepStatus.Dispatched ||
+                        x.Status == OrchestrationRunStepStatus.Running)
+                    .OrderBy(x => x.StepOrder)
+                    .FirstOrDefault();
+
+                if (activeRunStep != null)
+                {
+                    continue;
+                }
+
                 var nextRunStep = run.Steps
-                    .Where(x => x.Status == OrchestrationRunStepStatus.Pending || x.Status == OrchestrationRunStepStatus.Ready)
+                                .Where(x => x.Status == OrchestrationRunStepStatus.Pending || x.Status == OrchestrationRunStepStatus.Ready)
                     .OrderBy(x => x.StepOrder)
                     .FirstOrDefault();
 
@@ -127,7 +154,9 @@ namespace RetailCentral.Api.Services.Orchestration
                 {
                     nextRunStep.Status = OrchestrationRunStepStatus.Failed;
                     nextRunStep.ErrorMessage = "Template step definition could not be found.";
+                    nextRunStep.CompletedUtc = DateTime.UtcNow;
                     run.Status = OrchestrationRunStatus.Failed;
+                    run.CompletedUtc = DateTime.UtcNow;
                     continue;
                 }
 
@@ -188,19 +217,50 @@ namespace RetailCentral.Api.Services.Orchestration
             }
             else if (string.Equals(command.Status, "Failed", StringComparison.OrdinalIgnoreCase))
             {
-                runStep.Status = runStep.TemplateStep.ContinueOnFailure
-                    ? OrchestrationRunStepStatus.Skipped
-                    : OrchestrationRunStepStatus.Failed;
+                var failureAction = runStep.TemplateStep.OnFailureAction;
+                var continueOnFailure = runStep.TemplateStep.ContinueOnFailure;
 
-                runStep.CompletedUtc = DateTime.UtcNow;
-                runStep.ErrorMessage = command.LastError ?? result?.StdErr ?? "Command failed.";
-            }
-            else
-            {
-                return;
+                if (continueOnFailure || failureAction == OrchestrationFailureAction.Continue)
+                {
+                    runStep.Status = OrchestrationRunStepStatus.Skipped;
+                    runStep.ErrorMessage = command.LastError ?? result?.StdErr ?? "Command failed, but step was allowed to continue.";
+                    runStep.CompletedUtc = DateTime.UtcNow;
+                }
+                else if (failureAction == OrchestrationFailureAction.RetryStep)
+                {
+                    if (runStep.AttemptCount <= runStep.TemplateStep.MaxRetries)
+                    {
+                        runStep.Status = OrchestrationRunStepStatus.Ready;
+                        runStep.CommandId = null;
+                        runStep.ErrorMessage = command.LastError ?? result?.StdErr ?? "Command failed. Step reset for retry.";
+                        runStep.CompletedUtc = null;
+                        runStep.StartedUtc = null;
+                    }
+                    else
+                    {
+                        runStep.Status = OrchestrationRunStepStatus.Failed;
+                        runStep.ErrorMessage = command.LastError ?? result?.StdErr ?? "Command failed and max retries were reached.";
+                        runStep.CompletedUtc = DateTime.UtcNow;
+                    }
+                }
+                else
+                {
+                    // FailRun and any not-yet-special-cased actions end the step as Failed.
+                    runStep.Status = OrchestrationRunStepStatus.Failed;
+                    runStep.ErrorMessage = command.LastError ?? result?.StdErr ?? "Command failed.";
+                    runStep.CompletedUtc = DateTime.UtcNow;
+                }
             }
 
             var run = runStep.Run;
+            if (run.Status == OrchestrationRunStatus.Failed ||
+                run.Status == OrchestrationRunStatus.Completed ||
+                run.Status == OrchestrationRunStatus.Cancelled ||
+                run.Status == OrchestrationRunStatus.RolledBack)
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+                return;
+            }
 
             var hasRemaining = await _db.OrchestrationRunSteps
                 .AnyAsync(x =>
@@ -217,6 +277,7 @@ namespace RetailCentral.Api.Services.Orchestration
             if (hasFailures)
             {
                 run.Status = OrchestrationRunStatus.Failed;
+                run.CompletedUtc = DateTime.UtcNow;
             }
             else if (hasRemaining)
             {

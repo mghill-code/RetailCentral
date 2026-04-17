@@ -30,19 +30,19 @@ namespace RetailCentral.Api.BackgroundServices
                     var db = scope.ServiceProvider.GetRequiredService<RetailCentralDbContext>();
                     var engine = scope.ServiceProvider.GetRequiredService<IOrchestrationEngine>();
 
-                    var advanced = await engine.AdvancePendingRunsAsync(stoppingToken);
-
                     var unprocessedCommandIds = await db.OrchestrationRunSteps
-                        .Where(x => x.CommandId != null &&
-                                    (x.Status == OrchestrationRunStepStatus.Dispatched ||
-                                     x.Status == OrchestrationRunStepStatus.Running))
-                        .Select(x => x.CommandId!.Value)
-                        .ToListAsync(stoppingToken);
+                         .Where(x => x.CommandId != null &&
+                                     (x.Status == OrchestrationRunStepStatus.Dispatched ||
+                                      x.Status == OrchestrationRunStepStatus.Running))
+                         .Select(x => x.CommandId!.Value)
+                         .ToListAsync(stoppingToken);
 
                     foreach (var commandId in unprocessedCommandIds)
                     {
                         await engine.ProcessCommandResultAsync(commandId, stoppingToken);
                     }
+
+                    var advanced = await engine.AdvancePendingRunsAsync(stoppingToken);
 
                     if (advanced > 0)
                     {

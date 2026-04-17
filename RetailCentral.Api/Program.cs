@@ -15,6 +15,7 @@ using RetailCentral.Api.Services.Orchestration;
 using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using System.Collections.Generic;
 using static RetailCentral.Api.Services.CommandTimeoutWorker;
 
 
@@ -278,10 +279,24 @@ try
 
     // Serves static files (CSS, JS, images for dashboard)
     //app.UseStaticFiles();
-    
 
     var contentTypeProvider = new FileExtensionContentTypeProvider();
-    contentTypeProvider.Mappings[".reg"] = "text/plain";
+
+    var staticDistroMappings = builder.Configuration
+        .GetSection("StaticDistroFiles:Mappings")
+        .Get<Dictionary<string, string>>();
+
+    if (staticDistroMappings != null)
+    {
+        foreach (var mapping in staticDistroMappings)
+        {
+            if (!string.IsNullOrWhiteSpace(mapping.Key) &&
+                !string.IsNullOrWhiteSpace(mapping.Value))
+            {
+                contentTypeProvider.Mappings[mapping.Key] = mapping.Value;
+            }
+        }
+    }
 
     app.UseStaticFiles(new StaticFileOptions
     {
