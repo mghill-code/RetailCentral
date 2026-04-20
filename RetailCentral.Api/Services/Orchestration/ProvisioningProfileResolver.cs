@@ -23,20 +23,60 @@ namespace RetailCentral.Api.Services.Orchestration
             var query = _db.ProvisioningProfiles
                 .Where(x => x.IsActive);
 
-            if (!string.IsNullOrWhiteSpace(deviceType))
+            List<string> deviceGroups = new();
+
+            if (deviceId.HasValue)
             {
-                var exact = await query
-                    .Where(x => x.DeviceType == deviceType && x.Environment == environment)
-                    .OrderByDescending(x => x.IsDefault)
+                deviceGroups = await _db.Set<RetailCentral.Api.Models.DeviceGroupMember>()
+                    .Where(m => m.DeviceId == deviceId.Value)
+                    .Join(
+                        _db.Set<RetailCentral.Api.Models.DeviceGroup>(),
+                        m => m.DeviceGroupId,
+                        g => g.DeviceGroupId,
+                        (m, g) => g.GroupName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+            }
+
+            if (!string.IsNullOrWhiteSpace(deviceType) && !string.IsNullOrWhiteSpace(environment))
+            {
+                if (deviceGroups.Count > 0)
+                {
+                    var groupMatch = await query
+                        .Where(x =>
+                            x.DeviceType == deviceType &&
+                            x.Environment == environment &&
+                            !string.IsNullOrWhiteSpace(x.StoreGroup) &&
+                            deviceGroups.Contains(x.StoreGroup!))
+                            .OrderByDescending(x => x.Priority)
+                            .ThenByDescending(x => x.IsDefault)
+                            .ThenByDescending(x => x.Id)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (groupMatch != null)
+                        return groupMatch;
+                }
+
+                var exactNoGroup = await query
+                    .Where(x =>
+                        x.DeviceType == deviceType &&
+                        x.Environment == environment &&
+                        (x.StoreGroup == null || x.StoreGroup == ""))
+                        .OrderByDescending(x => x.Priority)
+                        .ThenByDescending(x => x.IsDefault)
+                        .ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(cancellationToken);
 
-                if (exact != null)
-                    return exact;
+                if (exactNoGroup != null)
+                    return exactNoGroup;
             }
 
             return await query
                 .Where(x => x.IsDefault)
-                .OrderBy(x => x.Id)
+                .OrderByDescending(x => x.Priority)
+                .ThenByDescending(x => x.IsDefault)
+                .ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync(cancellationToken);
         }
     }

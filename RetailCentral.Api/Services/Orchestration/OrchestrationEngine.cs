@@ -278,6 +278,12 @@ namespace RetailCentral.Api.Services.Orchestration
             {
                 run.Status = OrchestrationRunStatus.Failed;
                 run.CompletedUtc = DateTime.UtcNow;
+
+                await MarkRemainingStepsSkippedAsync(
+                    run.Id,
+                    runStep.StepOrder,
+                    "Not executed because an earlier step failed and the run was stopped.",
+                    cancellationToken);
             }
             else if (hasRemaining)
             {
@@ -291,5 +297,28 @@ namespace RetailCentral.Api.Services.Orchestration
 
             await _db.SaveChangesAsync(cancellationToken);
         }
+
+        private async Task MarkRemainingStepsSkippedAsync(
+            long runId,
+            int failedStepOrder,
+            string reason,
+            CancellationToken cancellationToken)
+        {
+            var remainingSteps = await _db.OrchestrationRunSteps
+                .Where(x =>
+                    x.RunId == runId &&
+                    x.StepOrder > failedStepOrder &&
+                    (x.Status == OrchestrationRunStepStatus.Pending ||
+                     x.Status == OrchestrationRunStepStatus.Ready))
+                .ToListAsync(cancellationToken);
+
+            foreach (var step in remainingSteps)
+            {
+                step.Status = OrchestrationRunStepStatus.Skipped;
+                step.ErrorMessage = reason;
+                step.CompletedUtc = DateTime.UtcNow;
+            }
+        }
+
     }
 }

@@ -100,7 +100,7 @@ builder.Services.AddSingleton(sp =>
         Hostname = config["Agent:Hostname"] ?? Environment.MachineName,
         RegisterNumber = config["Agent:RegisterNumber"] ?? "",
         RegisterMetadataPath = config["Agent:RegisterMetadataPath"]
-            ?? @"C:\RetailCentral\Agent\register-metadata.json",
+        ?? @"C:\RetailCentral\Agent\register-metadata.json",
 
         AgentVersion = config["Agent:AgentVersion"] ?? "0.0.0",
         DeviceId = config["Agent:DeviceId"] ?? "",
@@ -110,6 +110,9 @@ builder.Services.AddSingleton(sp =>
         PollSeconds = config.GetValue<int>("Agent:PollSeconds", 10),
         HeartbeatSeconds = config.GetValue<int>("Agent:HeartbeatSeconds", 30),
         MaxPendingFetch = config.GetValue<int>("Agent:MaxPendingFetch", 1),
+
+        DeviceType = config["Provisioning:DeviceType"] ?? "Register",
+        Environment = config["Provisioning:Environment"] ?? "Production",
 
         // Kept here for compatibility with existing downloader/package services
         DownloadRootFolder = downloads.RootFolder,
@@ -121,7 +124,7 @@ builder.Services.AddSingleton(sp =>
 
         UserActivityEnabled = config.GetValue<bool>("UserActivity:Enabled"),
         UserActivitySnapshotPath = config["UserActivity:SnapshotPath"]
-            ?? @"C:\ProgramData\RetailCentral\Shared\UserActivity.json"
+        ?? @"C:\ProgramData\RetailCentral\Shared\UserActivity.json"
     };
 
     Directory.CreateDirectory(cfg.DownloadRootFolder);
@@ -173,6 +176,9 @@ public sealed class AgentConfig
     public int PollSeconds { get; set; } = 10;
     public int HeartbeatSeconds { get; set; } = 30;
     public int MaxPendingFetch { get; set; } = 1;
+
+    public string DeviceType { get; set; } = "Register";
+    public string Environment { get; set; } = "Production";
 
     // Kept for compatibility with existing download/package services
     public string DownloadRootFolder { get; set; } = "";

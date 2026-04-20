@@ -7,6 +7,10 @@
         public string? AgentVersion { get; set; }
         public string? OsVersion { get; set; }
 
+        // Enrollment classification fields used for provisioning profile resolution
+        public string? DeviceType { get; set; }
+        public string? Environment { get; set; }
+
         // Day 7 bootstrap fields
         public string? BootstrapKey { get; set; }
         public string? MachineName { get; set; }

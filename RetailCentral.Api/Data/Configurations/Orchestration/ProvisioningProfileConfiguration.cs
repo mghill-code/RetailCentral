@@ -28,6 +28,10 @@ namespace RetailCentral.Api.Data.Configurations.Orchestration
             builder.Property(x => x.ParametersJson)
                 .HasColumnType("nvarchar(max)");
 
+            builder.Property(x => x.Priority)
+                .IsRequired()
+                .HasDefaultValue(0);
+
             builder.Property(x => x.CreatedUtc)
                 .IsRequired();
 
@@ -38,6 +42,8 @@ namespace RetailCentral.Api.Data.Configurations.Orchestration
             builder.HasIndex(x => x.IsDefault);
             builder.HasIndex(x => x.DeviceType);
             builder.HasIndex(x => x.Environment);
+            builder.HasIndex(x => x.StoreGroup);
+            builder.HasIndex(x => x.Priority);
 
             builder.HasOne(x => x.Template)
                 .WithMany(x => x.ProvisioningProfiles)

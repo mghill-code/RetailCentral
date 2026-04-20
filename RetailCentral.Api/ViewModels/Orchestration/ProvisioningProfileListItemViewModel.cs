@@ -7,6 +7,7 @@
         public string DeviceType { get; set; } = "";
         public string StoreGroup { get; set; } = "";
         public string Environment { get; set; } = "";
+        public int Priority { get; set; }
         public int TemplateId { get; set; }
         public string TemplateName { get; set; } = "";
         public int TemplateVersion { get; set; }

@@ -50,12 +50,18 @@
 
         <div class="field">
             <label for="deviceType">Device Type</label>
-            <input id="deviceType" name="deviceType" type="text" value="@Model.DeviceTypeFilter" placeholder="Register" />
+            <select id="deviceType" name="deviceType" asp-items="Model.DeviceTypeOptions" class="dashboard-select"></select>
         </div>
 
         <div class="field">
             <label for="environment">Environment</label>
-            <input id="environment" name="environment" type="text" value="@Model.EnvironmentFilter" placeholder="Production" />
+            <select id="environment" name="environment" asp-items="Model.EnvironmentOptions" class="dashboard-select"></select>
+        </div>
+        <div class="field">
+            <label for="storeGroup">Store Group</label>
+            <select id="storeGroup" name="storeGroup" asp-items="Model.StoreGroupOptions" class="dashboard-select">
+                <option value="">All</option>
+            </select>
         </div>
 
         <div class="field">
@@ -91,6 +97,7 @@
                     <tr>
                         <th>Profile</th>
                         <th>Targeting</th>
+                        <th>Priority</th>
                         <th>Template</th>
                         <th>Default</th>
                         <th>Status</th>
@@ -118,6 +125,10 @@
                                         <span> • @profile.StoreGroup</span>
                                     }
                                 </div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@profile.Priority</div>
+                                <div class="cell-secondary">Higher wins</div>
                             </td>
                             <td>
                                 <div class="cell-primary">@profile.TemplateName</div>

@@ -15,8 +15,17 @@
         if (commandType.Equals("ValidateProcess", StringComparison.OrdinalIgnoreCase))
             return "Validate configured process";
 
+        if (commandType.Equals("ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            return "Validate registry value";
+
         if (commandType.Equals("InstallPackage", StringComparison.OrdinalIgnoreCase))
             return "Install selected package";
+
+        if (commandType.Equals("ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            return "Import registry file";
+
+        if (commandType.Equals("WriteFile", StringComparison.OrdinalIgnoreCase))
+            return "Write file or deploy uploaded content";
 
         return commandType;
     }
@@ -141,6 +150,7 @@
                         <th>Command ID</th>
                         <th>Started</th>
                         <th>Completed</th>
+                        <th>Reason</th>
                         <th>Error</th>
                     </tr>
                 </thead>
@@ -155,6 +165,7 @@
                             "Cancelled" => "badge badge-danger",
                             "Running" => "badge badge-running",
                             "WaitingForRetry" => "badge badge-warning",
+                            "Skipped" => "badge badge-warning",
                             _ => "badge badge-pending"
                         };
 
@@ -171,7 +182,28 @@
                             <td>@(step.CommandId?.ToString() ?? "-")</td>
                             <td>@(step.StartedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
                             <td>@(step.CompletedUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td>
-                            <td>@(string.IsNullOrWhiteSpace(step.ErrorMessage) ? "-" : step.ErrorMessage)</td>
+                            <td>
+                                @if (string.Equals(step.Status, "Skipped", StringComparison.OrdinalIgnoreCase) &&
+                                                        !string.IsNullOrWhiteSpace(step.ErrorMessage))
+                                {
+                                    <div class="cell-secondary">@step.ErrorMessage</div>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.Equals(step.Status, "Skipped", StringComparison.OrdinalIgnoreCase) &&
+                                                        !string.IsNullOrWhiteSpace(step.ErrorMessage))
+                                {
+                                    <span>@step.ErrorMessage</span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>

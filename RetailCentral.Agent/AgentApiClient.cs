@@ -41,7 +41,9 @@ public sealed class AgentApiClient
             osVersion = Environment.OSVersion.VersionString,
             bootstrapKey = _cfg.BootstrapKey,
             machineName = Environment.MachineName,
-            machineGuid = GetMachineGuid()
+            machineGuid = GetMachineGuid(),
+            deviceType = _cfg.DeviceType,
+            environment = _cfg.Environment
         };
 
         var resp = await client.PostAsJsonAsync("/api/agent/v1/enroll", body, ct);

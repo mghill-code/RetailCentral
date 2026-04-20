@@ -50,6 +50,21 @@ namespace RetailCentral.Api.Services.Orchestration
                 ValidateInstallPackagePayload(step.ParametersJson, errors);
             }
 
+            if (string.Equals(commandType, "ValidateRegistry", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateValidateRegistryPayload(step.ParametersJson, errors);
+            }
+
+            if (string.Equals(commandType, "ImportRegistryFile", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateImportRegistryFilePayload(step.ParametersJson, errors);
+            }
+
+            if (string.Equals(commandType, "WriteFile", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateWriteFilePayload(step.ParametersJson, errors);
+            }
+
             return errors;
         }
 
@@ -79,6 +94,45 @@ namespace RetailCentral.Api.Services.Orchestration
             catch (JsonException ex)
             {
                 errors.Add($"ValidateProcess parametersJson is not valid JSON: {ex.Message}");
+            }
+        }
+
+        private void ValidateValidateRegistryPayload(string? parametersJson, List<string> errors)
+        {
+            if (string.IsNullOrWhiteSpace(parametersJson))
+            {
+                errors.Add("ValidateRegistry requires parametersJson.");
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(parametersJson);
+
+                if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    errors.Add("ValidateRegistry parametersJson must be a JSON object.");
+                    return;
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "hive", out _))
+                {
+                    errors.Add("ValidateRegistry parametersJson requires 'hive'.");
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "keyPath", out _))
+                {
+                    errors.Add("ValidateRegistry parametersJson requires 'keyPath'.");
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "valueName", out _))
+                {
+                    errors.Add("ValidateRegistry parametersJson requires 'valueName'.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                errors.Add($"ValidateRegistry parametersJson is not valid JSON: {ex.Message}");
             }
         }
 
@@ -150,14 +204,152 @@ namespace RetailCentral.Api.Services.Orchestration
             }
         }
 
+        private void ValidateImportRegistryFilePayload(string? parametersJson, List<string> errors)
+        {
+            if (string.IsNullOrWhiteSpace(parametersJson))
+            {
+                errors.Add("ImportRegistryFile requires parametersJson.");
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(parametersJson);
+
+                if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    errors.Add("ImportRegistryFile parametersJson must be a JSON object.");
+                    return;
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "downloadUrl", out var downloadUrl))
+                {
+                    errors.Add("ImportRegistryFile parametersJson requires 'downloadUrl'.");
+                }
+                else if (Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
+                {
+                    if (_policy.RequireHttpsDownloads &&
+                        !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                    {
+                        errors.Add("ImportRegistryFile downloadUrl must use HTTPS.");
+                    }
+
+                    if (_policy.AllowedDownloadHosts.Count > 0 &&
+                        !_policy.AllowedDownloadHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+                    {
+                        errors.Add($"ImportRegistryFile host '{uri.Host}' is not allowed.");
+                    }
+                }
+                else
+                {
+                    errors.Add("ImportRegistryFile downloadUrl is invalid.");
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "fileName", out var fileName))
+                {
+                    errors.Add("ImportRegistryFile parametersJson requires 'fileName'.");
+                }
+                else if (!fileName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add("ImportRegistryFile fileName must end with '.reg'.");
+                }
+                if (!TryGetRequiredString(doc.RootElement, "sha256", out _))
+                {
+                    errors.Add("ImportRegistryFile parametersJson requires 'sha256'.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                errors.Add($"ImportRegistryFile parametersJson is not valid JSON: {ex.Message}");
+            }
+        }
+
+        private void ValidateWriteFilePayload(string? parametersJson, List<string> errors)
+        {
+            if (string.IsNullOrWhiteSpace(parametersJson))
+            {
+                errors.Add("WriteFile requires parametersJson.");
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(parametersJson);
+
+                if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    errors.Add("WriteFile parametersJson must be a JSON object.");
+                    return;
+                }
+
+                if (!TryGetRequiredString(doc.RootElement, "path", out _))
+                {
+                    errors.Add("WriteFile parametersJson requires 'path'.");
+                }
+
+                var sourceMode = "Inline";
+                if (doc.RootElement.TryGetProperty("sourceMode", out var sourceModeProp) &&
+                    sourceModeProp.ValueKind == JsonValueKind.String)
+                {
+                    sourceMode = sourceModeProp.GetString() ?? "Inline";
+                }
+
+                if (string.Equals(sourceMode, "Upload", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryGetRequiredString(doc.RootElement, "downloadUrl", out var downloadUrl))
+                    {
+                        errors.Add("WriteFile upload mode requires 'downloadUrl'.");
+                    }
+                    else if (Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
+                    {
+                        if (_policy.RequireHttpsDownloads &&
+                            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        {
+                            errors.Add("WriteFile downloadUrl must use HTTPS.");
+                        }
+
+                        if (_policy.AllowedDownloadHosts.Count > 0 &&
+                            !_policy.AllowedDownloadHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+                        {
+                            errors.Add($"WriteFile host '{uri.Host}' is not allowed.");
+                        }
+                    }
+                    else
+                    {
+                        errors.Add("WriteFile downloadUrl is invalid.");
+                    }
+
+                    if (!TryGetRequiredString(doc.RootElement, "fileName", out _))
+                    {
+                        errors.Add("WriteFile upload mode requires 'fileName'.");
+                    }
+                }
+                else
+                {
+                    if (!TryGetRequiredString(doc.RootElement, "encoding", out _))
+                    {
+                        errors.Add("WriteFile inline mode requires 'encoding'.");
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                errors.Add($"WriteFile parametersJson is not valid JSON: {ex.Message}");
+            }
+        }
+
         private static string ResolveFallbackCommandType(OrchestrationStepType stepType)
         {
             return stepType switch
             {
                 OrchestrationStepType.CollectInventory => "CollectSystemInfo",
+                OrchestrationStepType.InstallPackage => "InstallPackage",
+                OrchestrationStepType.WriteFile => "WriteFile",
+                OrchestrationStepType.ImportRegistryFile => "ImportRegistryFile",
                 OrchestrationStepType.RestartPos => "RestartPOS",
                 OrchestrationStepType.RebootMachine => "RebootDevice",
                 OrchestrationStepType.ValidateProcess => "ValidateProcess",
+                OrchestrationStepType.ValidateRegistry => "ValidateRegistry",
                 _ => "RunCommand"
             };
         }

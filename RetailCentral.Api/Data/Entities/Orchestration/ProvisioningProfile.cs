@@ -12,6 +12,8 @@
 
     public string? ParametersJson { get; set; }
 
+    public int Priority { get; set; } = 0;
+
     public bool IsDefault { get; set; }
     public bool IsActive { get; set; } = true;
 

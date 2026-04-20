@@ -36,7 +36,9 @@
 
         <div class="field">
             <label asp-for="StoreGroup"></label>
-            <input asp-for="StoreGroup" placeholder="Optional store group" />
+            <select asp-for="StoreGroup" asp-items="Model.StoreGroupOptions" class="dashboard-select">
+                <option value="">Optional store group</option>
+            </select>
             <span asp-validation-for="StoreGroup" class="text-danger"></span>
         </div>
 
@@ -44,6 +46,12 @@
             <label asp-for="Environment"></label>
             <select asp-for="Environment" asp-items="Model.EnvironmentOptions" class="dashboard-select"></select>
             <span asp-validation-for="Environment" class="text-danger"></span>
+        </div>
+
+        <div class="field">
+            <label asp-for="Priority"></label>
+            <input asp-for="Priority" type="number" min="0" step="1" />
+            <span asp-validation-for="Priority" class="text-danger"></span>
         </div>
 
         <div class="field field-full">

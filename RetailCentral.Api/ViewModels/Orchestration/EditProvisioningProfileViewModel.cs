@@ -28,6 +28,10 @@ namespace RetailCentral.Api.ViewModels.Orchestration
         [Display(Name = "Template")]
         public int? TemplateId { get; set; }
 
+        [Display(Name = "Priority")]
+        [Range(0, 100000)]
+        public int Priority { get; set; } = 0;
+
         [Display(Name = "Default Profile")]
         public bool IsDefault { get; set; }
 
@@ -37,5 +41,6 @@ namespace RetailCentral.Api.ViewModels.Orchestration
         public List<SelectListItem> TemplateOptions { get; set; } = new();
         public List<SelectListItem> DeviceTypeOptions { get; set; } = new();
         public List<SelectListItem> EnvironmentOptions { get; set; } = new();
+        public List<SelectListItem> StoreGroupOptions { get; set; } = new();
     }
 }

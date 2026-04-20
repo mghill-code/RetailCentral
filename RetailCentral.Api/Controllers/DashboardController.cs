@@ -893,7 +893,8 @@ namespace RetailCentral.Api.Controllers
             {
                 IsActive = true,
                 DeviceType = "Register",
-                Environment = "Production"
+                Environment = "Production",
+                Priority = 0
             };
 
             await PopulateProvisioningProfileLists(model);
@@ -960,6 +961,7 @@ namespace RetailCentral.Api.Controllers
                 DeviceType = string.IsNullOrWhiteSpace(model.DeviceType) ? null : model.DeviceType.Trim(),
                 StoreGroup = string.IsNullOrWhiteSpace(model.StoreGroup) ? null : model.StoreGroup.Trim(),
                 Environment = string.IsNullOrWhiteSpace(model.Environment) ? null : model.Environment.Trim(),
+                Priority = model.Priority,
                 TemplateId = selectedTemplateId,
                 IsDefault = model.IsDefault,
                 IsActive = model.IsActive,
@@ -982,6 +984,7 @@ namespace RetailCentral.Api.Controllers
                     entity.DeviceType,
                     entity.StoreGroup,
                     entity.Environment,
+                    entity.Priority,
                     entity.TemplateId,
                     entity.IsDefault,
                     entity.IsActive
@@ -1011,6 +1014,7 @@ namespace RetailCentral.Api.Controllers
                 DeviceType = entity.DeviceType,
                 StoreGroup = entity.StoreGroup,
                 Environment = entity.Environment,
+                Priority = entity.Priority,
                 TemplateId = entity.TemplateId,
                 IsDefault = entity.IsDefault,
                 IsActive = entity.IsActive
@@ -1084,6 +1088,7 @@ namespace RetailCentral.Api.Controllers
             entity.DeviceType = string.IsNullOrWhiteSpace(model.DeviceType) ? null : model.DeviceType.Trim();
             entity.StoreGroup = string.IsNullOrWhiteSpace(model.StoreGroup) ? null : model.StoreGroup.Trim();
             entity.Environment = string.IsNullOrWhiteSpace(model.Environment) ? null : model.Environment.Trim();
+            entity.Priority = model.Priority;
             entity.TemplateId = selectedTemplateId;
             entity.IsDefault = model.IsDefault;
             entity.IsActive = model.IsActive;
@@ -1102,6 +1107,7 @@ namespace RetailCentral.Api.Controllers
                     entity.DeviceType,
                     entity.StoreGroup,
                     entity.Environment,
+                    entity.Priority,
                     entity.TemplateId,
                     entity.IsDefault,
                     entity.IsActive
@@ -1807,12 +1813,13 @@ namespace RetailCentral.Api.Controllers
         [Authorize(Policy = "DashboardViewer")]
         [HttpGet]
         public async Task<IActionResult> ProvisioningProfiles(
-    string? search,
-    string? deviceType,
-    string? environment,
-    bool? isActive,
-    string? filter,
-    int take = 200)
+            string? search,
+            string? deviceType,
+            string? environment,
+            string? storeGroup,
+            bool? isActive,
+            string? filter,
+            int take = 200)
         {
             take = Math.Clamp(take, 25, 500);
 
@@ -1842,6 +1849,11 @@ namespace RetailCentral.Api.Controllers
                 query = query.Where(x => (x.Environment ?? string.Empty) == env);
             }
 
+            if (!string.IsNullOrWhiteSpace(storeGroup))
+            {
+                var sg = storeGroup.Trim();
+                query = query.Where(x => (x.StoreGroup ?? string.Empty) == sg);
+            }
             if (isActive.HasValue)
             {
                 query = query.Where(x => x.IsActive == isActive.Value);
@@ -1853,8 +1865,9 @@ namespace RetailCentral.Api.Controllers
             }
 
             var profiles = await query
-                .OrderBy(x => x.Name)
-                .Take(take)
+             .OrderByDescending(x => x.Priority)
+             .ThenBy(x => x.Name)
+             .Take(take)
                 .Select(x => new ProvisioningProfileListItemViewModel
                 {
                     Id = x.Id,
@@ -1862,6 +1875,7 @@ namespace RetailCentral.Api.Controllers
                     DeviceType = x.DeviceType ?? string.Empty,
                     StoreGroup = x.StoreGroup ?? string.Empty,
                     Environment = x.Environment ?? string.Empty,
+                    Priority = x.Priority,
                     TemplateId = x.TemplateId,
                     TemplateName = x.Template != null ? (x.Template.Name ?? $"Template {x.TemplateId}") : $"Template {x.TemplateId}",
                     TemplateVersion = x.Template != null ? x.Template.Version : 0,
@@ -1878,14 +1892,55 @@ namespace RetailCentral.Api.Controllers
                 Search = search,
                 DeviceTypeFilter = deviceType,
                 EnvironmentFilter = environment,
+                StoreGroupFilter = storeGroup,
                 ActiveFilter = isActive,
                 FilterMode = filter,
                 TotalProfiles = await allProfiles.CountAsync(),
                 ActiveProfiles = await allProfiles.CountAsync(x => x.IsActive),
                 DefaultProfiles = await allProfiles.CountAsync(x => x.IsDefault),
-                Profiles = profiles
+                DeviceTypeOptions = new List<SelectListItem>
+                {
+                    new SelectListItem { Value = "", Text = "All" },
+                    new SelectListItem { Value = "Register", Text = "Register" },
+                    new SelectListItem { Value = "Server", Text = "Server" },
+                    new SelectListItem { Value = "Kiosk", Text = "Kiosk" },
+                    new SelectListItem { Value = "Mobile", Text = "Mobile" }
+                },
+                EnvironmentOptions = new List<SelectListItem>
+                {
+                    new SelectListItem { Value = "", Text = "All" },
+                    new SelectListItem { Value = "Production", Text = "Production" },
+                    new SelectListItem { Value = "Staging", Text = "Staging" },
+                    new SelectListItem { Value = "QA", Text = "QA" },
+                    new SelectListItem { Value = "Dev", Text = "Dev" },
+                    new SelectListItem { Value = "Lab", Text = "Lab" }
+                },
+                StoreGroupOptions = await _db.DeviceGroups
+                 .AsNoTracking()
+                 .OrderBy(g => g.GroupName)
+                 .Select(g => new SelectListItem
+                 {
+                     Value = g.GroupName,
+                     Text = g.GroupName
+                 })
+                 .ToListAsync(),
+               Profiles = profiles
             };
 
+            foreach (var item in model.DeviceTypeOptions)
+            {
+                item.Selected = string.Equals(item.Value, model.DeviceTypeFilter, StringComparison.OrdinalIgnoreCase);
+            }
+
+            foreach (var item in model.EnvironmentOptions)
+            {
+                item.Selected = string.Equals(item.Value, model.EnvironmentFilter, StringComparison.OrdinalIgnoreCase);
+            }
+
+            foreach (var item in model.StoreGroupOptions)
+            {
+                item.Selected = string.Equals(item.Value, model.StoreGroupFilter, StringComparison.OrdinalIgnoreCase);
+            }
             return View(model);
         }
 
@@ -5122,7 +5177,7 @@ namespace RetailCentral.Api.Controllers
                 new SelectListItem { Value = "Mobile", Text = "Mobile" }
             };
 
-                    model.EnvironmentOptions = new List<SelectListItem>
+            model.EnvironmentOptions = new List<SelectListItem>
             {
                 new SelectListItem { Value = "", Text = "Select environment..." },
                 new SelectListItem { Value = "Production", Text = "Production" },
@@ -5131,6 +5186,15 @@ namespace RetailCentral.Api.Controllers
                 new SelectListItem { Value = "Dev", Text = "Dev" },
                 new SelectListItem { Value = "Lab", Text = "Lab" }
             };
+            model.StoreGroupOptions = await _db.DeviceGroups
+                .AsNoTracking()
+                .OrderBy(g => g.GroupName)
+                .Select(g => new SelectListItem
+                {
+                    Value = g.GroupName,
+                    Text = g.GroupName
+                })
+                .ToListAsync();
         }
 
         /// <summary>

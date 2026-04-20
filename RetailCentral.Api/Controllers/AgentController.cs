@@ -197,11 +197,13 @@ namespace RetailCentral.Api.Controllers
 
                 try
                 {
+                    var provisioningValues = ResolveEnrollmentProvisioningValues(req);
+
                     await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
                         existing.DeviceId,
                         null,
-                        "Register",
-                        "Production",
+                        provisioningValues.DeviceType,
+                        provisioningValues.Environment,
                         HttpContext.RequestAborted);
                 }
                 catch (Exception ex)
@@ -255,11 +257,13 @@ namespace RetailCentral.Api.Controllers
 
             try
             {
+                var provisioningValues = ResolveEnrollmentProvisioningValues(req);
+
                 await _enrollmentOrchestrationService.StartProvisioningForEnrollmentAsync(
                     device.DeviceId,
                     null,
-                    "Register",
-                    "Production",
+                    provisioningValues.DeviceType,
+                    provisioningValues.Environment,
                     HttpContext.RequestAborted);
             }
             catch (Exception ex)
@@ -706,6 +710,28 @@ namespace RetailCentral.Api.Controllers
                    status == (int)DeploymentDeviceStatus.Cancelled;
         }
 
+        
+        private (string DeviceType, string Environment) ResolveEnrollmentProvisioningValues(EnrollRequest req)
+        {
+            var defaultDeviceType = _config["EnrollmentProvisioning:DefaultDeviceType"];
+            var defaultEnvironment = _config["EnrollmentProvisioning:DefaultEnvironment"];
+
+            if (string.IsNullOrWhiteSpace(defaultDeviceType))
+                defaultDeviceType = "Register";
+
+            if (string.IsNullOrWhiteSpace(defaultEnvironment))
+                defaultEnvironment = "Production";
+
+            var resolvedDeviceType = !string.IsNullOrWhiteSpace(req.DeviceType)
+                ? req.DeviceType.Trim()
+                : defaultDeviceType;
+
+            var resolvedEnvironment = !string.IsNullOrWhiteSpace(req.Environment)
+                ? req.Environment.Trim()
+                : defaultEnvironment;
+
+            return (resolvedDeviceType, resolvedEnvironment);
+        }
         private async Task EnsureCollectSystemInfoQueuedAsync(Device device, string issuedBy, int priority)
         {
             var exists = await _db.Commands.AnyAsync(c =>
