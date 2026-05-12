@@ -185,6 +185,28 @@
                     </div>
 
                     <div class="utility-right">
+                        @if (User?.Identity?.IsAuthenticated == true)
+                        {
+                            <div class="toolbar-group toolbar-meta">
+                                User: @User.Identity.Name
+                                @if (canAdmin)
+                                {
+                                    <span class="badge badge-completed">Admin</span>
+                                }
+                                else if (canEngineer)
+                                {
+                                    <span class="badge badge-warning">Engineer</span>
+                                }
+                                else if (canHelpdesk)
+                                {
+                                    <span class="badge badge-warning">Helpdesk</span>
+                                }
+                                else if (canView)
+                                {
+                                    <span class="badge badge-muted">Viewer</span>
+                                }
+                            </div>
+                        }
                         <div class="auto-refresh toolbar-group utility-refresh-group">
                             <label for="autoRefreshSelect">Auto Refresh</label>
                             <select id="autoRefreshSelect" class="compact-select">
