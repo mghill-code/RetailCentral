@@ -18,6 +18,7 @@ namespace RetailCentral.Api.Data
         public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
         public DbSet<DeviceGroupMember> DeviceGroupMembers => Set<DeviceGroupMember>();
         public DbSet<RegisterInventory> RegisterInventories => Set<RegisterInventory>();
+        public DbSet<StoreLocation> StoreLocations => Set<StoreLocation>();
         public DbSet<Package> Packages => Set<Package>();
         public DbSet<Deployment> Deployments => Set<Deployment>();
         public DbSet<DeploymentDevice> DeploymentDevices => Set<DeploymentDevice>();
@@ -300,6 +301,29 @@ namespace RetailCentral.Api.Data
                 entity.HasIndex(x => x.DeploymentId);
                 entity.HasIndex(x => x.DeviceId);
                 entity.HasIndex(x => x.Status);
+            });
+
+            modelBuilder.Entity<StoreLocation>(entity =>
+            {
+                entity.HasKey(x => x.StoreLocationId);
+
+                entity.HasIndex(x => x.StoreNumber)
+                    .IsUnique();
+
+                entity.Property(x => x.StoreNumber)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(x => x.StoreName).HasMaxLength(200);
+                entity.Property(x => x.StoreAddress).HasMaxLength(200);
+                entity.Property(x => x.StoreCity).HasMaxLength(100);
+                entity.Property(x => x.StoreState).HasMaxLength(50);
+                entity.Property(x => x.StoreZipCode).HasMaxLength(30);
+
+                entity.Property(x => x.Latitude).HasPrecision(9, 6);
+                entity.Property(x => x.Longitude).HasPrecision(9, 6);
+
+                entity.Property(x => x.CoordinatesSource).HasMaxLength(100);
             });
 
             modelBuilder.ApplyConfiguration(new OrchestrationTemplateConfiguration());

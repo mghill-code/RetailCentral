@@ -472,6 +472,56 @@ namespace RetailCentral.Api.Controllers
                 .ThenByDescending(x => x.OfflineDevices)
                 .Take(20)
                 .ToList();
+            var storeLocations = await _db.StoreLocations
+                .AsNoTracking()
+                .ToListAsync();
+
+            var storeLocationsByStore = storeLocations
+                .Where(x => !string.IsNullOrWhiteSpace(x.StoreNumber))
+                .ToDictionary(x => x.StoreNumber, StringComparer.OrdinalIgnoreCase);
+
+            var dashboardFleetMapStores = allDevices
+                .Where(d => d.IsEnabled && !string.IsNullOrWhiteSpace(d.StoreNumber))
+                .GroupBy(d => d.StoreNumber!)
+                .Select(g =>
+                {
+                    storeLocationsByStore.TryGetValue(g.Key, out var location);
+
+                    var total = g.Count();
+                    var online = g.Count(d => d.LastSeenUtc >= cutoff);
+                    var offline = total - online;
+
+                    var severity =
+                        total > 0 && offline == total ? "Critical" :
+                        offline > 0 ? "Warning" :
+                        "Healthy";
+
+                    return new FleetMapStoreViewModel
+                    {
+                        StoreNumber = g.Key,
+                        StoreName = location?.StoreName ?? "",
+                        StoreAddress = location?.StoreAddress ?? "",
+                        StoreCity = location?.StoreCity ?? "",
+                        StoreState = location?.StoreState ?? "",
+                        StoreZipCode = location?.StoreZipCode ?? "",
+
+                        TotalDevices = total,
+                        OnlineDevices = online,
+                        OfflineDevices = offline,
+                        Severity = severity,
+                        LastSeenUtc = g.Max(d => d.LastSeenUtc),
+
+                        HasCoordinates = location?.Latitude.HasValue == true && location?.Longitude.HasValue == true,
+                        Latitude = location?.Latitude,
+                        Longitude = location?.Longitude
+                    };
+                })
+                .Where(s => s.HasCoordinates)
+                .OrderByDescending(s => s.Severity == "Critical")
+                .ThenByDescending(s => s.Severity == "Warning")
+                .ThenBy(s => s.StoreState)
+                .ThenBy(s => s.StoreNumber)
+                .ToList();
 
             var heatmap = allDevices
                  .OrderBy(d => d.StoreNumber)
@@ -597,6 +647,7 @@ namespace RetailCentral.Api.Controllers
                 StoreSummary = storeSummary,
                 StoreOutages = storeOutages,
                 DeviceHeatmap = heatmap,
+                FleetMapStores = dashboardFleetMapStores,
                 CommandProgress = commandProgress,
                 DeviceHealth = deviceHealth,
                 HealthyDevices = healthyDevices,
@@ -4008,6 +4059,152 @@ namespace RetailCentral.Api.Controllers
 
             TempData["GroupMessage"] = $"Created {createdCommands.Count} device command(s).";
             return RedirectToAction(nameof(Commands));
+        }
+
+        [Authorize(Policy = "DashboardViewer")]
+        [HttpGet]
+        public async Task<IActionResult> FleetMap(string mode = "All")
+        {
+            var now = DateTime.UtcNow;
+            var cutoff = now.AddMinutes(-5);
+
+            var normalizedMode = string.IsNullOrWhiteSpace(mode)
+                ? "All"
+                : mode.Trim();
+
+            var devices = await _db.Devices
+                .AsNoTracking()
+                .Where(d => d.IsEnabled)
+                .ToListAsync();
+
+            var inventoryRows = await _db.RegisterInventories
+                .AsNoTracking()
+                .Where(x => x.Store != null && x.Store != "")
+                .ToListAsync();
+
+            var latestInventoryByStore = inventoryRows
+                .GroupBy(x => x.Store!)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(x => x.UpdatedUtc).First());
+
+            var locations = await _db.StoreLocations
+                .AsNoTracking()
+                .ToListAsync();
+
+            var locationsByStore = locations
+                .Where(x => !string.IsNullOrWhiteSpace(x.StoreNumber))
+                .ToDictionary(x => x.StoreNumber, StringComparer.OrdinalIgnoreCase);
+
+            var stores = devices
+                .Where(d => !string.IsNullOrWhiteSpace(d.StoreNumber))
+                .GroupBy(d => d.StoreNumber)
+                .Select(g =>
+                {
+                    latestInventoryByStore.TryGetValue(g.Key!, out var inv);
+                    locationsByStore.TryGetValue(g.Key!, out var location);
+
+                    var total = g.Count();
+                    var online = g.Count(d => d.LastSeenUtc >= cutoff);
+                    var offline = total - online;
+
+                    var severity =
+                        total > 0 && offline == total ? "Critical" :
+                        offline > 0 ? "Warning" :
+                        "Healthy";
+
+                    var latitude = location?.Latitude;
+                    var longitude = location?.Longitude;
+                    var hasCoordinates = latitude.HasValue && longitude.HasValue;
+
+                    return new FleetMapStoreViewModel
+                    {
+                        StoreNumber = g.Key ?? "",
+
+                        StoreName = location?.StoreName
+                            ?? inv?.StoreName
+                            ?? "",
+
+                        StoreAddress = location?.StoreAddress
+                            ?? inv?.StoreAddress
+                            ?? "",
+
+                        StoreCity = location?.StoreCity
+                            ?? inv?.StoreCity
+                            ?? "",
+
+                        StoreState = location?.StoreState
+                            ?? inv?.StoreState
+                            ?? "",
+
+                        StoreZipCode = location?.StoreZipCode
+                            ?? inv?.StoreZipCode
+                            ?? "",
+
+                        TotalDevices = total,
+                        OnlineDevices = online,
+                        OfflineDevices = offline,
+                        Severity = severity,
+                        LastSeenUtc = g.Max(d => d.LastSeenUtc),
+
+                        HasCoordinates = hasCoordinates,
+                        Latitude = latitude,
+                        Longitude = longitude
+                    };
+                })
+                .Where(s =>
+                    normalizedMode.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+                    normalizedMode.Equals("Online", StringComparison.OrdinalIgnoreCase) && s.OnlineDevices > 0 ||
+                    normalizedMode.Equals("Offline", StringComparison.OrdinalIgnoreCase) && s.OfflineDevices > 0 ||
+                    normalizedMode.Equals("Critical", StringComparison.OrdinalIgnoreCase) && s.Severity == "Critical" ||
+                    normalizedMode.Equals("Warning", StringComparison.OrdinalIgnoreCase) && s.Severity == "Warning")
+                .OrderByDescending(s => s.Severity == "Critical")
+                .ThenByDescending(s => s.Severity == "Warning")
+                .ThenBy(s => s.StoreState)
+                .ThenBy(s => s.StoreNumber)
+                .ToList();
+
+            var states = stores
+                .Where(s => !string.IsNullOrWhiteSpace(s.StoreState))
+                .GroupBy(s => s.StoreState)
+                .Select(g =>
+                {
+                    var totalDevices = g.Sum(x => x.TotalDevices);
+                    var onlineDevices = g.Sum(x => x.OnlineDevices);
+                    var offlineDevices = g.Sum(x => x.OfflineDevices);
+
+                    var severity =
+                        totalDevices > 0 && offlineDevices == totalDevices ? "Critical" :
+                        offlineDevices > 0 ? "Warning" :
+                        "Healthy";
+
+                    return new FleetMapStateSummaryViewModel
+                    {
+                        State = g.Key ?? "",
+                        StoreCount = g.Count(),
+                        TotalDevices = totalDevices,
+                        OnlineDevices = onlineDevices,
+                        OfflineDevices = offlineDevices,
+                        Severity = severity
+                    };
+                })
+                .OrderByDescending(s => s.Severity == "Critical")
+                .ThenByDescending(s => s.Severity == "Warning")
+                .ThenBy(s => s.State)
+                .ToList();
+
+            var model = new FleetMapViewModel
+            {
+                Mode = normalizedMode,
+                TotalStores = stores.Count,
+                TotalDevices = stores.Sum(s => s.TotalDevices),
+                OnlineDevices = stores.Sum(s => s.OnlineDevices),
+                OfflineDevices = stores.Sum(s => s.OfflineDevices),
+                Stores = stores,
+                States = states
+            };
+
+            return View(model);
         }
 
         [HttpGet]

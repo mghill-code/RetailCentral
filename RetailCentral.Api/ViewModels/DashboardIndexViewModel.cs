@@ -22,7 +22,7 @@ namespace RetailCentral.Api.ViewModels
         public List<StoreOutageTileViewModel> StoreOutages { get; set; } = new();
         public List<DeviceHeatmapTileViewModel> DeviceHeatmap { get; set; } = new();
         public List<CommandProgressViewModel> CommandProgress { get; set; } = new();
-
+        public List<FleetMapStoreViewModel> FleetMapStores { get; set; } = new();
         public List<DeviceHealthViewModel> DeviceHealth { get; set; } = new();
         public int HealthyDevices { get; set; }
         public int WarningDevices { get; set; }

@@ -1,0 +1,392 @@
+﻿@model RetailCentral.Api.ViewModels.FleetMapViewModel
+
+@{
+    ViewData["Title"] = "Fleet Map";
+
+    string Active(string mode) =>
+        string.Equals(Model.Mode, mode, StringComparison.OrdinalIgnoreCase) ? "active-filter" : "";
+}
+
+@section Scripts {
+  
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin="">
+    </script>
+
+    <script>
+        const fleetMapStores = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+                    Model.Stores
+                            .Where(s => s.HasCoordinates && s.Latitude.HasValue && s.Longitude.HasValue)
+                            .Select(s => new
+                            {
+                                    storeNumber = s.StoreNumber,
+                                    storeName = s.StoreName,
+                                    address = s.StoreAddress,
+                                    city = s.StoreCity,
+                                    state = s.StoreState,
+                                    zip = s.StoreZipCode,
+                                    latitude = s.Latitude,
+                                    longitude = s.Longitude,
+                                    totalDevices = s.TotalDevices,
+                                    onlineDevices = s.OnlineDevices,
+                                    offlineDevices = s.OfflineDevices,
+                                    severity = s.Severity
+                            })
+                            .ToList()
+            ));
+
+    function markerColor(severity) {
+        if (severity === "Critical") return "#ef4444";
+        if (severity === "Warning") return "#f59e0b";
+        return "#22c55e";
+    }
+
+        function createMarkerIcon(store) {
+            const color = markerColor(store.severity);
+
+            return L.divIcon({
+                className: "fleet-map-marker",
+                html: `
+                    <div class="fleet-map-marker-dot" style="background:${color};">
+                        ${store.totalDevices}
+                    </div>
+                `,
+                iconSize: [34, 34],
+                iconAnchor: [17, 17],
+                popupAnchor: [0, -24]
+            });
+        }
+
+        function getAdjustedCoordinate(store, allStores) {
+            const lat = Number(store.latitude);
+            const lng = Number(store.longitude);
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                return null;
+            }
+
+            const duplicateGroup = allStores.filter(other =>
+                Number(other.latitude) === lat &&
+                Number(other.longitude) === lng
+            );
+
+            if (duplicateGroup.length <= 1) {
+                return [lat, lng];
+            }
+
+            const duplicateIndex = duplicateGroup.findIndex(other =>
+                other.storeNumber === store.storeNumber
+            );
+
+            const angle = (2 * Math.PI * duplicateIndex) / duplicateGroup.length;
+            const offset = 0.0015;
+
+            return [
+                lat + Math.sin(angle) * offset,
+                lng + Math.cos(angle) * offset
+            ];
+        }
+
+        function invalidateFleetMapSize(map) {
+            if (!map) return;
+
+            requestAnimationFrame(() => {
+                map.invalidateSize(true);
+                setTimeout(() => map.invalidateSize(true), 250);
+                setTimeout(() => map.invalidateSize(true), 750);
+                setTimeout(() => map.invalidateSize(true), 1250);
+            });
+        }
+
+        function initFleetMap() {
+            const mapElement = document.getElementById("fleetMapCanvas");
+            const emptyElement = document.getElementById("fleetMapEmpty");
+
+            if (!mapElement) return;
+
+            if (!fleetMapStores.length) {
+                mapElement.style.display = "none";
+                if (emptyElement) emptyElement.style.display = "block";
+                return;
+            }
+
+            mapElement.style.display = "block";
+            if (emptyElement) emptyElement.style.display = "none";
+
+            if (window.fleetMapInstance) {
+                window.fleetMapInstance.remove();
+                window.fleetMapInstance = null;
+            }
+
+            const map = L.map("fleetMapCanvas", {
+                scrollWheelZoom: true,
+                zoomControl: true
+            });
+
+            window.fleetMapInstance = map;
+
+            map.whenReady(function () {
+                invalidateFleetMapSize(map);
+            });
+
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                maxZoom: 18,
+                attribution: "&copy; OpenStreetMap contributors"
+            }).addTo(map);
+
+            const bounds = [];
+
+            fleetMapStores.forEach(store => {
+                const adjusted = getAdjustedCoordinate(store, fleetMapStores);
+                if (!adjusted) return;
+
+                const lat = adjusted[0];
+                const lng = adjusted[1];
+
+                const marker = L.marker([lat, lng], {
+                    icon: createMarkerIcon(store)
+                }).addTo(map);
+
+                       marker.bindPopup(`
+            <div class="fleet-map-popup">
+                <div class="fleet-map-popup-title">Store ${store.storeNumber}</div>
+                <div class="fleet-map-popup-name">${store.storeName || ""}</div>
+                <div class="fleet-map-popup-address">
+                    ${store.address || ""}<br />
+                    ${store.city || ""}, ${store.state || ""} ${store.zip || ""}
+                </div>
+
+                <div class="fleet-map-popup-divider"></div>
+
+                <div class="fleet-map-popup-grid">
+                    <span>Total devices</span>
+                    <strong>${store.totalDevices}</strong>
+
+                    <span>Online</span>
+                    <strong class="popup-online">${store.onlineDevices}</strong>
+
+                    <span>Offline</span>
+                    <strong class="popup-offline">${store.offlineDevices}</strong>
+
+                    <span>Health</span>
+                    <strong>${store.severity}</strong>
+                </div>
+            </div>
+        `, {
+            closeButton: true,
+            autoPan: true,
+            keepInView: true,
+            offset: L.point(0, -12),
+            maxWidth: 280,
+            minWidth: 230,
+            className: "fleet-map-popup-shell"
+        });
+
+                bounds.push([lat, lng]);
+            });
+
+            if (bounds.length === 0) {
+                mapElement.style.display = "none";
+                if (emptyElement) emptyElement.style.display = "block";
+                return;
+            }
+
+            if (bounds.length === 1) {
+                map.setView(bounds[0], 10);
+            } else {
+                const leafletBounds = L.latLngBounds(bounds);
+
+                map.fitBounds(leafletBounds, {
+                    paddingTopLeft: [80, 60],
+                    paddingBottomRight: [80, 60],
+                    maxZoom: 8
+                });
+
+                setTimeout(() => {
+                    map.panTo(leafletBounds.getCenter(), {
+                        animate: false
+                    });
+                }, 300);
+            }
+
+            invalidateFleetMapSize(map);
+        }
+
+        function waitForFleetMapSizeAndInit(attempt) {
+            const mapElement = document.getElementById("fleetMapCanvas");
+
+            if (!mapElement) return;
+
+            const rect = mapElement.getBoundingClientRect();
+
+            if ((rect.width < 100 || rect.height < 100) && attempt < 20) {
+                setTimeout(() => waitForFleetMapSizeAndInit(attempt + 1), 100);
+                return;
+            }
+
+            initFleetMap();
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            setTimeout(() => waitForFleetMapSizeAndInit(0), 250);
+        });
+
+        window.addEventListener("load", function () {
+            invalidateFleetMapSize(window.fleetMapInstance);
+        });
+
+        window.addEventListener("resize", function () {
+            invalidateFleetMapSize(window.fleetMapInstance);
+        });
+    </script>
+}
+
+<div class="page-header">
+    <div class="page-heading-copy">
+        <h1>Fleet Map</h1>
+        <p>Store-level fleet health by state, address, and online/offline status.</p>
+    </div>
+</div>
+
+<div class="grid grid-4">
+    <div class="card metric-card">
+        <div class="metric-label">Stores</div>
+        <div class="metric-value">@Model.TotalStores</div>
+    </div>
+
+    <div class="card metric-card">
+        <div class="metric-label">Devices</div>
+        <div class="metric-value">@Model.TotalDevices</div>
+    </div>
+
+    <div class="card metric-card success-card">
+        <div class="metric-label">Online</div>
+        <div class="metric-value online">@Model.OnlineDevices</div>
+    </div>
+
+    <div class="card metric-card failed-card">
+        <div class="metric-label">Offline</div>
+        <div class="metric-value offline">@Model.OfflineDevices</div>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="section-header">
+        <h2>Fleet Map</h2>
+        <p class="section-subtitle">Store device health by location.</p>
+    </div>
+
+    <div id="fleetMapCanvas" class="fleet-map-canvas"></div>
+
+    <div id="fleetMapEmpty" class="empty-state" style="display:none;">
+        No stores with coordinates are available for the selected mode.
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="section-header">
+        <h2>Map Mode</h2>
+    </div>
+
+    <div class="fleet-map-toggle-row">
+        <a class="btn btn-secondary @Active("All")" href="@Url.Action("FleetMap", "Dashboard", new { mode = "All" })">All</a>
+        <a class="btn btn-secondary @Active("Online")" href="@Url.Action("FleetMap", "Dashboard", new { mode = "Online" })">Devices Online</a>
+        <a class="btn btn-secondary @Active("Offline")" href="@Url.Action("FleetMap", "Dashboard", new { mode = "Offline" })">Devices Offline</a>
+        <a class="btn btn-secondary @Active("Critical")" href="@Url.Action("FleetMap", "Dashboard", new { mode = "Critical" })">Critical</a>
+        <a class="btn btn-secondary @Active("Warning")" href="@Url.Action("FleetMap", "Dashboard", new { mode = "Warning" })">Warning</a>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="section-header">
+        <h2>State Summary</h2>
+    </div>
+
+    @if (Model.States.Count == 0)
+    {
+        <div class="empty-state">No state data is available yet.</div>
+    }
+    else
+    {
+        <div class="fleet-state-grid">
+            @foreach (var state in Model.States)
+            {
+                <div class="fleet-state-card severity-@state.Severity.ToLowerInvariant()">
+                    <div class="fleet-state-code">@state.State</div>
+                    <div class="fleet-state-meta">@state.StoreCount store(s)</div>
+                    <div class="fleet-state-counts">
+                        <span>@state.TotalDevices total</span>
+                        <span>@state.OnlineDevices online</span>
+                        <span>@state.OfflineDevices offline</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<div class="card section-card">
+    <div class="section-header">
+        <h2>Store Map Data</h2>
+        <p class="section-subtitle">Store-level device health with cached map coordinates.</p>
+    </div>
+
+    @if (Model.Stores.Count == 0)
+    {
+        <div class="empty-state">No stores matched the selected mode.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Store</th>
+                        <th>Location</th>
+                        <th>Health</th>
+                        <th>Total</th>
+                        <th>Online</th>
+                        <th>Offline</th>
+                        <th>Coordinates</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var store in Model.Stores)
+                    {
+                        <tr>
+                            <td>
+                                <div class="cell-primary">@store.StoreNumber</div>
+                                <div class="cell-secondary">@store.StoreName</div>
+                            </td>
+                            <td>
+                                <div class="cell-primary">@store.StoreAddress</div>
+                                <div class="cell-secondary">
+                                    @store.StoreCity, @store.StoreState @store.StoreZipCode
+                                </div>
+                            </td>
+                            <td>
+                                <span class="status-pill fleet-severity-pill severity-@store.Severity.ToLowerInvariant()">
+                                    @store.Severity
+                                </span>
+                            </td>
+                            <td>@store.TotalDevices</td>
+                            <td class="online">@store.OnlineDevices</td>
+                            <td class="offline">@store.OfflineDevices</td>
+                            <td>
+                                @if (store.HasCoordinates && store.Latitude.HasValue && store.Longitude.HasValue)
+                                {
+                                    <span>@store.Latitude.Value.ToString("0.000000"), @store.Longitude.Value.ToString("0.000000")</span>
+                                }
+                                else
+                                {
+                                    <span class="cell-secondary">Missing</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

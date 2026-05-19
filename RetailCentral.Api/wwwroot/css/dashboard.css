@@ -2684,3 +2684,417 @@ html.light .attempt-pill,
     grid-column: 1 / -1;
     color: #b42318;
 }
+.fleet-map-toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+    .fleet-map-toggle-row .active-filter {
+        border-color: rgba(59, 130, 246, 0.85);
+        background: rgba(59, 130, 246, 0.22);
+        color: #bfdbfe;
+    }
+
+.fleet-state-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.85rem;
+}
+
+.fleet-state-card {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 14px;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.42);
+}
+
+    .fleet-state-card.severity-healthy {
+        border-color: rgba(34, 197, 94, 0.45);
+    }
+
+    .fleet-state-card.severity-warning {
+        border-color: rgba(245, 158, 11, 0.55);
+    }
+
+    .fleet-state-card.severity-critical {
+        border-color: rgba(239, 68, 68, 0.55);
+    }
+
+.fleet-state-code {
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+
+.fleet-state-meta {
+    margin-top: 0.15rem;
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.fleet-state-counts {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.75rem;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+}
+
+.fleet-severity-pill.severity-healthy {
+    background: rgba(34, 197, 94, 0.18);
+    border-color: rgba(34, 197, 94, 0.45);
+    color: #86efac;
+}
+
+.fleet-severity-pill.severity-warning {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #fbbf24;
+}
+
+.fleet-severity-pill.severity-critical {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.50);
+    color: #fca5a5;
+}
+
+body.light .fleet-map-toggle-row .active-filter,
+html.light .fleet-map-toggle-row .active-filter,
+[data-theme="light"] .fleet-map-toggle-row .active-filter {
+    background: #dbeafe;
+    border-color: #60a5fa;
+    color: #1e3a8a;
+}
+
+body.light .fleet-state-card,
+html.light .fleet-state-card,
+[data-theme="light"] .fleet-state-card {
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+
+body.light .fleet-state-meta,
+html.light .fleet-state-meta,
+[data-theme="light"] .fleet-state-meta {
+    color: #64748b;
+}
+
+body.light .fleet-state-counts,
+html.light .fleet-state-counts,
+[data-theme="light"] .fleet-state-counts {
+    color: #334155;
+}
+
+.fleet-map-canvas {
+    width: 100%;
+    height: 520px;
+    min-height: 520px;
+    display: block;
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: #0f172a;
+}
+
+    .fleet-map-canvas.leaflet-container {
+        width: 100%;
+        height: 520px;
+        min-height: 520px;
+        background: #0f172a;
+    }
+
+    .fleet-map-canvas .leaflet-tile-container img {
+        max-width: none !important;
+        max-height: none !important;
+    }
+
+    .fleet-map-canvas .leaflet-control-container {
+        color: #0f172a;
+    }
+
+/* Leaflet map hard reset - must stay at bottom of dashboard.css */
+#fleetMapCanvas {
+    width: 100%;
+    height: 520px;
+    min-height: 520px;
+    position: relative;
+    overflow: hidden;
+    background: #0f172a;
+}
+
+    #fleetMapCanvas.leaflet-container {
+        width: 100% !important;
+        height: 520px !important;
+        min-height: 520px !important;
+    }
+
+    #fleetMapCanvas .leaflet-pane,
+    #fleetMapCanvas .leaflet-map-pane,
+    #fleetMapCanvas .leaflet-tile-pane,
+    #fleetMapCanvas .leaflet-overlay-pane,
+    #fleetMapCanvas .leaflet-marker-pane,
+    #fleetMapCanvas .leaflet-shadow-pane,
+    #fleetMapCanvas .leaflet-tooltip-pane,
+    #fleetMapCanvas .leaflet-popup-pane {
+        position: absolute !important;
+    }
+
+    #fleetMapCanvas .leaflet-tile {
+        position: absolute !important;
+        width: 256px !important;
+        height: 256px !important;
+        max-width: none !important;
+        max-height: none !important;
+        min-width: 256px !important;
+        min-height: 256px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+    }
+
+    #fleetMapCanvas img.leaflet-tile {
+        max-width: none !important;
+        max-height: none !important;
+    }
+
+    #fleetMapCanvas .leaflet-control-container {
+        color: #0f172a;
+    }
+    /* Fleet Map circular device markers */
+    #fleetMapCanvas .fleet-map-marker {
+        background: transparent !important;
+        border: 0 !important;
+    }
+
+    #fleetMapCanvas .fleet-map-marker-dot {
+        width: 34px !important;
+        height: 34px !important;
+        min-width: 34px !important;
+        min-height: 34px !important;
+        max-width: 34px !important;
+        max-height: 34px !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #ffffff !important;
+        font-weight: 900 !important;
+        font-size: 0.82rem !important;
+        line-height: 1 !important;
+        text-align: center !important;
+        border: 2px solid rgba(255, 255, 255, 0.95) !important;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35) !important;
+    }
+
+/* Dashboard compact Fleet Map preview */
+.dashboard-map-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.dashboard-fleet-map-canvas {
+    width: 100%;
+    height: 440px;
+    min-height: 440px;
+    display: block;
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: #0f172a;
+}
+
+#dashboardFleetMapCanvas.leaflet-container {
+    width: 100% !important;
+    height: 440px !important;
+    min-height: 440px !important;
+}
+
+#dashboardFleetMapCanvas .leaflet-pane,
+#dashboardFleetMapCanvas .leaflet-map-pane,
+#dashboardFleetMapCanvas .leaflet-tile-pane,
+#dashboardFleetMapCanvas .leaflet-overlay-pane,
+#dashboardFleetMapCanvas .leaflet-marker-pane,
+#dashboardFleetMapCanvas .leaflet-shadow-pane,
+#dashboardFleetMapCanvas .leaflet-tooltip-pane,
+#dashboardFleetMapCanvas .leaflet-popup-pane {
+    position: absolute !important;
+}
+
+#dashboardFleetMapCanvas .leaflet-tile {
+    position: absolute !important;
+    width: 256px !important;
+    height: 256px !important;
+    max-width: none !important;
+    max-height: none !important;
+    min-width: 256px !important;
+    min-height: 256px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+}
+
+#dashboardFleetMapCanvas img.leaflet-tile {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+#dashboardFleetMapCanvas .leaflet-control-container {
+    color: #0f172a;
+}
+
+@media (max-width: 700px) {
+    .dashboard-map-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .dashboard-fleet-map-canvas {
+        height: 300px;
+        min-height: 300px;
+    }
+
+    #dashboardFleetMapCanvas.leaflet-container {
+        height: 300px !important;
+        min-height: 300px !important;
+    }
+}
+
+/* Fleet Map circular device markers - shared by full map and dashboard preview */
+#fleetMapCanvas .fleet-map-marker,
+#dashboardFleetMapCanvas .fleet-map-marker {
+    background: transparent !important;
+    border: 0 !important;
+}
+
+#fleetMapCanvas .fleet-map-marker-dot,
+#dashboardFleetMapCanvas .fleet-map-marker-dot {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    max-width: 34px !important;
+    max-height: 34px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    font-size: 0.82rem !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    border: 2px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Control Center dashboard Fleet Map preview height */
+#dashboardFleetMapCanvas,
+.dashboard-fleet-map-canvas,
+#dashboardFleetMapCanvas.leaflet-container {
+    height: 520px !important;
+    min-height: 520px !important;
+    width: 100% !important;
+}
+
+    /* Fleet Map popup styling */
+    #fleetMapCanvas .leaflet-popup-content-wrapper,
+    #dashboardFleetMapCanvas .leaflet-popup-content-wrapper {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border-radius: 14px !important;
+        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35) !important;
+        border: 1px solid rgba(15, 23, 42, 0.12) !important;
+    }
+
+    #fleetMapCanvas .leaflet-popup-tip,
+    #dashboardFleetMapCanvas .leaflet-popup-tip {
+        background: #ffffff !important;
+    }
+
+    #fleetMapCanvas .leaflet-popup-content,
+    #dashboardFleetMapCanvas .leaflet-popup-content {
+        margin: 12px 14px !important;
+        width: 230px !important;
+        max-width: 230px !important;
+        color: #0f172a !important;
+        font-size: 13px !important;
+        line-height: 1.35 !important;
+    }
+
+    #fleetMapCanvas .leaflet-popup-close-button,
+    #dashboardFleetMapCanvas .leaflet-popup-close-button {
+        color: #334155 !important;
+        font-size: 18px !important;
+        padding: 8px 8px 0 0 !important;
+    }
+
+        #fleetMapCanvas .leaflet-popup-close-button:hover,
+        #dashboardFleetMapCanvas .leaflet-popup-close-button:hover {
+            color: #0f172a !important;
+        }
+
+    #fleetMapCanvas .fleet-map-popup,
+    #dashboardFleetMapCanvas .fleet-map-popup {
+        color: #0f172a !important;
+    }
+
+    #fleetMapCanvas .fleet-map-popup-title,
+    #dashboardFleetMapCanvas .fleet-map-popup-title {
+        font-weight: 900;
+        font-size: 14px;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+
+    #fleetMapCanvas .fleet-map-popup-name,
+    #dashboardFleetMapCanvas .fleet-map-popup-name {
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 5px;
+    }
+
+    #fleetMapCanvas .fleet-map-popup-address,
+    #dashboardFleetMapCanvas .fleet-map-popup-address {
+        color: #475569;
+        margin-bottom: 8px;
+    }
+
+    #fleetMapCanvas .fleet-map-popup-divider,
+    #dashboardFleetMapCanvas .fleet-map-popup-divider {
+        height: 1px;
+        background: #e2e8f0;
+        margin: 8px 0;
+    }
+
+    #fleetMapCanvas .fleet-map-popup-grid,
+    #dashboardFleetMapCanvas .fleet-map-popup-grid {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4px 12px;
+        align-items: center;
+    }
+
+        #fleetMapCanvas .fleet-map-popup-grid span,
+        #dashboardFleetMapCanvas .fleet-map-popup-grid span {
+            color: #64748b;
+        }
+
+        #fleetMapCanvas .fleet-map-popup-grid strong,
+        #dashboardFleetMapCanvas .fleet-map-popup-grid strong {
+            color: #0f172a;
+            text-align: right;
+        }
+
+    #fleetMapCanvas .popup-online,
+    #dashboardFleetMapCanvas .popup-online {
+        color: #16a34a !important;
+    }
+
+    #fleetMapCanvas .popup-offline,
+    #dashboardFleetMapCanvas .popup-offline {
+        color: #dc2626 !important;
+    }

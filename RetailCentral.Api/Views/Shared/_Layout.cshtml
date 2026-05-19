@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <title>@(ViewData["Title"] as string ?? "RetailCommand - Device Control Center")</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIINfQdR5p0Tt0VF3AIwE1Qj5n4x4b0R0BM="
+          crossorigin="" />
+
     <link rel="stylesheet" href="/css/dashboard.css" />
 </head>
 <body>
@@ -17,6 +23,7 @@
             var svg = key switch
             {
                 "control-center" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z'/><path d='M7 20h10'/><path d='M9 16v4'/><path d='M15 16v4'/></svg>",
+                "fleet-map" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M9 18l-6 3v-15l6 -3l6 3l6 -3v15l-6 3z'/><path d='M9 3v15'/><path d='M15 6v15'/><path d='M12 10a2 2 0 1 0 0 -4a2 2 0 0 0 0 4z'/><path d='M12 10c-1.5 1.75 -2.25 3 -2.25 3h4.5s-.75 -1.25 -2.25 -3z'/></svg>",
                 "inventory" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 7l8 -4l8 4l-8 4z'/><path d='M4 12l8 4l8 -4'/><path d='M4 17l8 4l8 -4'/></svg>",
                 "devices" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z'/><path d='M7 21h10'/><path d='M9 17v4'/><path d='M15 17v4'/></svg>",
                 "groups" => "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 7a3 3 0 1 0 0 .01'/><path d='M16 7a3 3 0 1 0 0 .01'/><path d='M5 19a3 3 0 0 1 6 0'/><path d='M13 19a3 3 0 0 1 6 0'/></svg>",
@@ -79,6 +86,10 @@
                     <a href="/" class="@(currentPath == "/" ? "nav-active" : string.Empty)">
                         <span class="nav-icon">@SvgIcon("control-center")</span>
                         <span class="nav-label">Control Center</span>
+                    </a>
+                    <a href="/Dashboard/FleetMap" class="@NavClass("/Dashboard/FleetMap")">
+                        <span class="nav-icon">@SvgIcon("fleet-map")</span>
+                        <span class="nav-label">Fleet Map</span>
                     </a>
                     <a href="/Dashboard/RegisterInventory" class="@NavClass("/Dashboard/RegisterInventory")">
                         <span class="nav-icon">@SvgIcon("inventory")</span>
@@ -207,6 +218,7 @@
                                 }
                             </div>
                         }
+
                         <div class="auto-refresh toolbar-group utility-refresh-group">
                             <label for="autoRefreshSelect">Auto Refresh</label>
                             <select id="autoRefreshSelect" class="compact-select">
@@ -248,12 +260,55 @@
         let refreshIntervalHandle = null;
         let formDirty = false;
 
+        const refreshScrollKey = "dashboard-refresh-scroll";
+
         function getRefreshManager() {
             return window.dashboardRefreshManager || null;
         }
 
         function isMobileLayout() {
             return window.matchMedia("(max-width: 840px)").matches;
+        }
+
+        function pageHasLeafletMap() {
+            return Boolean(
+                document.getElementById("fleetMapCanvas") ||
+                document.getElementById("dashboardFleetMapCanvas")
+            );
+        }
+
+        function pageDisablesRefresh() {
+            const skipAuto = document.body.getAttribute("data-no-autorefresh");
+            if (skipAuto === "true") return true;
+            if (formDirty) return true;
+
+            const mgr = getRefreshManager();
+            if (mgr && typeof mgr.isBusy === "function" && mgr.isBusy()) {
+                return true;
+            }
+
+            return false;
+        }
+
+        function getRefreshDisabledReason(isAutoRefresh) {
+            if (document.body.getAttribute("data-no-autorefresh") === "true") {
+                return "Refresh is disabled on this page.";
+            }
+
+            if (formDirty) {
+                return "Refresh is disabled while editing a form.";
+            }
+
+            const mgr = getRefreshManager();
+            if (mgr && typeof mgr.isBusy === "function" && mgr.isBusy()) {
+                return "Refresh is disabled while the page is busy.";
+            }
+
+            if (isAutoRefresh && pageHasLeafletMap()) {
+                return "Auto refresh is paused on map pages to avoid redrawing the map.";
+            }
+
+            return "";
         }
 
         function applyTheme(theme) {
@@ -278,11 +333,16 @@
             }
         }
 
-        function updateRefreshStamp() {
+        function updateRefreshStamp(message) {
             const el = document.getElementById("refreshStamp");
-            if (el) {
-                el.textContent = "Last refreshed: " + new Date().toLocaleTimeString();
+            if (!el) return;
+
+            if (message) {
+                el.textContent = message;
+                return;
             }
+
+            el.textContent = "Last refreshed: " + new Date().toLocaleTimeString();
         }
 
         function clearAutoRefresh() {
@@ -291,21 +351,6 @@
                 refreshIntervalHandle = null;
             }
         }
-
-        function pageDisablesRefresh() {
-            const skipAuto = document.body.getAttribute("data-no-autorefresh");
-            if (skipAuto === "true") return true;
-            if (formDirty) return true;
-
-            const mgr = getRefreshManager();
-            if (mgr && typeof mgr.isBusy === "function" && mgr.isBusy()) {
-                return true;
-            }
-
-            return false;
-        }
-
-        const refreshScrollKey = "dashboard-refresh-scroll";
 
         function saveScrollPositionForReload() {
             try {
@@ -344,25 +389,27 @@
 
             saveScrollPositionForReload();
             formDirty = false;
+
             const nextUrl = window.location.pathname + window.location.search + window.location.hash;
             window.location.assign(nextUrl);
         }
 
         function updateRefreshUiState() {
-            const disabled = pageDisablesRefresh();
+            const manualDisabled = pageDisablesRefresh();
+            const autoRefreshPausedForMap = pageHasLeafletMap();
 
             if (autoRefreshSelect) {
-                autoRefreshSelect.disabled = disabled;
-                autoRefreshSelect.title = disabled
-                    ? "Auto refresh is disabled while editing a form."
-                    : "";
+                autoRefreshSelect.disabled = manualDisabled;
+                autoRefreshSelect.title = getRefreshDisabledReason(true);
             }
 
             if (refreshNowBtn) {
-                refreshNowBtn.disabled = disabled;
-                refreshNowBtn.title = disabled
-                    ? "Refresh is disabled while editing a form."
-                    : "";
+                refreshNowBtn.disabled = manualDisabled;
+                refreshNowBtn.title = getRefreshDisabledReason(false);
+            }
+
+            if (autoRefreshPausedForMap && !manualDisabled) {
+                updateRefreshStamp("Auto refresh paused on map page");
             }
         }
 
@@ -379,6 +426,10 @@
             if (parsed > 0) {
                 refreshIntervalHandle = setInterval(async () => {
                     updateRefreshUiState();
+
+                    if (pageHasLeafletMap()) {
+                        return;
+                    }
 
                     if (!pageDisablesRefresh()) {
                         await safeRefresh();
@@ -479,6 +530,8 @@
         });
 
         refreshNowBtn?.addEventListener("click", async function () {
+            updateRefreshUiState();
+
             if (pageDisablesRefresh()) {
                 return;
             }

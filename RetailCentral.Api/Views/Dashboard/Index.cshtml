@@ -109,27 +109,22 @@
 </div>
 
 <div class="dashboard-stack">
-    <div class="card">
-        <h3>Fleet Heatmap</h3>
-        <p class="card-subtle">Sample of recently seen devices by severity.</p>
-        <div class="heatmap">
-            @foreach (var tile in Model.DeviceHeatmap)
-            {
-                <a href="/Dashboard/Device/@tile.DeviceId" class="heatmap-link">
-                    <div class="heatmap-tile heat-@tile.Severity">
-                        <div><strong>@tile.Hostname</strong></div>
-                        <div class="subtle">Store @tile.StoreNumber</div>
-                        <div style="margin-top:8px;">
-                            <span class="badge @(tile.IsOnline ? "badge-online" : "badge-offline")">
-                                @(tile.IsOnline ? "Online" : "Offline")
-                            </span>
-                        </div>
-                        <div class="subtle" style="margin-top:8px;">
-                            Last seen: @tile.LastSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                        </div>
-                    </div>
-                </a>
-            }
+    <div class="card section-card">
+        <div class="section-header dashboard-map-header">
+            <div>
+                <h3>Fleet Map</h3>
+                <p class="card-subtle">Store device health by location.</p>
+            </div>
+
+            <a class="btn btn-secondary" href="@Url.Action("FleetMap", "Dashboard")">
+                View Full Fleet Map
+            </a>
+        </div>
+
+        <div id="dashboardFleetMapCanvas" class="dashboard-fleet-map-canvas"></div>
+
+        <div id="dashboardFleetMapEmpty" class="empty-state" style="display:none;">
+            No stores with coordinates are available yet.
         </div>
     </div>
     <div class="grid-2">
@@ -436,8 +431,209 @@
 
 
 @section Scripts {
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+                crossorigin="">
+        </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+                    const dashboardFleetMapStores = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+                            Model.FleetMapStores
+                                    .Where(s => s.HasCoordinates && s.Latitude.HasValue && s.Longitude.HasValue)
+                                    .Select(s => new
+                                    {
+                                            storeNumber = s.StoreNumber,
+                                            storeName = s.StoreName,
+                                            address = s.StoreAddress,
+                                            city = s.StoreCity,
+                                            state = s.StoreState,
+                                            zip = s.StoreZipCode,
+                                            latitude = s.Latitude,
+                                            longitude = s.Longitude,
+                                            totalDevices = s.TotalDevices,
+                                            onlineDevices = s.OnlineDevices,
+                                            offlineDevices = s.OfflineDevices,
+                                            severity = s.Severity
+                                    })
+                                    .ToList()
+                    ));
+
+        function dashboardMarkerColor(severity) {
+            if (severity === "Critical") return "#ef4444";
+            if (severity === "Warning") return "#f59e0b";
+            return "#22c55e";
+        }
+
+            function createDashboardMarkerIcon(store) {
+                const color = dashboardMarkerColor(store.severity);
+
+                return L.divIcon({
+                    className: "fleet-map-marker",
+                    html: `
+                        <div class="fleet-map-marker-dot" style="background:${color};">
+                            ${store.totalDevices}
+                        </div>
+                    `,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17],
+                    popupAnchor: [0, -18]
+                });
+            }
+
+            function getDashboardAdjustedCoordinate(store, allStores) {
+                const lat = Number(store.latitude);
+                const lng = Number(store.longitude);
+
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                    return null;
+                }
+
+                const duplicateGroup = allStores.filter(other =>
+                    Number(other.latitude) === lat &&
+                    Number(other.longitude) === lng
+                );
+
+                if (duplicateGroup.length <= 1) {
+                    return [lat, lng];
+                }
+
+                const duplicateIndex = duplicateGroup.findIndex(other =>
+                    other.storeNumber === store.storeNumber
+                );
+
+                const angle = (2 * Math.PI * duplicateIndex) / duplicateGroup.length;
+                const offset = 0.0015;
+
+                return [
+                    lat + Math.sin(angle) * offset,
+                    lng + Math.cos(angle) * offset
+                ];
+            }
+
+            function invalidateDashboardFleetMapSize(map) {
+                if (!map) return;
+
+                requestAnimationFrame(() => {
+                    map.invalidateSize(true);
+                    setTimeout(() => map.invalidateSize(true), 250);
+                    setTimeout(() => map.invalidateSize(true), 750);
+                });
+            }
+
+            function initDashboardFleetMap() {
+                const mapElement = document.getElementById("dashboardFleetMapCanvas");
+                const emptyElement = document.getElementById("dashboardFleetMapEmpty");
+
+                if (!mapElement) return;
+
+                if (!dashboardFleetMapStores.length) {
+                    mapElement.style.display = "none";
+                    if (emptyElement) emptyElement.style.display = "block";
+                    return;
+                }
+
+                mapElement.style.display = "block";
+                if (emptyElement) emptyElement.style.display = "none";
+
+                if (window.dashboardFleetMapInstance) {
+                    window.dashboardFleetMapInstance.remove();
+                    window.dashboardFleetMapInstance = null;
+                }
+
+                const map = L.map("dashboardFleetMapCanvas", {
+                    scrollWheelZoom: false,
+                    zoomControl: true,
+                    dragging: true
+                });
+
+                window.dashboardFleetMapInstance = map;
+
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    maxZoom: 18,
+                    attribution: "&copy; OpenStreetMap contributors"
+                }).addTo(map);
+
+                const bounds = [];
+
+                dashboardFleetMapStores.forEach(store => {
+                    const adjusted = getDashboardAdjustedCoordinate(store, dashboardFleetMapStores);
+                    if (!adjusted) return;
+
+                    const lat = adjusted[0];
+                    const lng = adjusted[1];
+
+                    const marker = L.marker([lat, lng], {
+                        icon: createDashboardMarkerIcon(store)
+                    }).addTo(map);
+
+                    marker.bindPopup(`
+                        <div class="fleet-map-popup">
+                            <strong>Store ${store.storeNumber}</strong><br />
+                            ${store.storeName || ""}<br />
+                            ${store.address || ""}<br />
+                            ${store.city || ""}, ${store.state || ""} ${store.zip || ""}<br />
+                            <hr />
+                            <div>Total devices: <strong>${store.totalDevices}</strong></div>
+                            <div>Online: <strong>${store.onlineDevices}</strong></div>
+                            <div>Offline: <strong>${store.offlineDevices}</strong></div>
+                            <div>Health: <strong>${store.severity}</strong></div>
+                        </div>
+                    `);
+
+                    bounds.push([lat, lng]);
+                });
+
+                if (!bounds.length) {
+                    mapElement.style.display = "none";
+                    if (emptyElement) emptyElement.style.display = "block";
+                    return;
+                }
+
+                if (bounds.length === 1) {
+                    map.setView(bounds[0], 8);
+                } else {
+                    const leafletBounds = L.latLngBounds(bounds);
+
+                    map.fitBounds(leafletBounds, {
+                        paddingTopLeft: [120, 70],
+                        paddingBottomRight: [120, 70],
+                        maxZoom: 5
+                    });
+
+                    setTimeout(() => {
+                        map.panTo(leafletBounds.getCenter(), { animate: false });
+                    }, 300);
+                }
+
+                invalidateDashboardFleetMapSize(map);
+            }
+
+            function waitForDashboardFleetMapSizeAndInit(attempt) {
+                const mapElement = document.getElementById("dashboardFleetMapCanvas");
+
+                if (!mapElement) return;
+
+                const rect = mapElement.getBoundingClientRect();
+
+                if ((rect.width < 100 || rect.height < 100) && attempt < 20) {
+                    setTimeout(() => waitForDashboardFleetMapSizeAndInit(attempt + 1), 100);
+                    return;
+                }
+
+                initDashboardFleetMap();
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                setTimeout(() => waitForDashboardFleetMapSizeAndInit(0), 250);
+            });
+
+            window.addEventListener("load", function () {
+                invalidateDashboardFleetMapSize(window.dashboardFleetMapInstance);
+            });
+
+            window.addEventListener("resize", function () {
+                invalidateDashboardFleetMapSize(window.dashboardFleetMapInstance);
+            });
         (function () {
             const deviceCanvas = document.getElementById("deviceChart");
             const versionCanvas = document.getElementById("versionChart");
