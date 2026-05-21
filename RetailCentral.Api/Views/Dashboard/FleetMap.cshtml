@@ -105,14 +105,13 @@
 
             if (!mapElement) return;
 
-            if (!fleetMapStores.length) {
-                mapElement.style.display = "none";
-                if (emptyElement) emptyElement.style.display = "block";
-                return;
-            }
+            const showEmptyOverlay = !fleetMapStores.length;
 
             mapElement.style.display = "block";
-            if (emptyElement) emptyElement.style.display = "none";
+
+            if (emptyElement) {
+                emptyElement.style.display = showEmptyOverlay ? "flex" : "none";
+            }
 
             if (window.fleetMapInstance) {
                 window.fleetMapInstance.remove();
@@ -187,8 +186,8 @@
             });
 
             if (bounds.length === 0) {
-                mapElement.style.display = "none";
-                if (emptyElement) emptyElement.style.display = "block";
+                map.setView([39.8283, -98.5795], 4);
+                invalidateFleetMapSize(map);
                 return;
             }
 
@@ -197,11 +196,11 @@
             } else {
                 const leafletBounds = L.latLngBounds(bounds);
 
-                map.fitBounds(leafletBounds, {
-                    paddingTopLeft: [80, 60],
-                    paddingBottomRight: [80, 60],
-                    maxZoom: 8
-                });
+            map.fitBounds(leafletBounds, {
+                paddingTopLeft: [220, 150],
+                paddingBottomRight: [220, 150],
+                maxZoom: 5
+            });
 
                 setTimeout(() => {
                     map.panTo(leafletBounds.getCenter(), {
@@ -277,10 +276,12 @@
         <p class="section-subtitle">Store device health by location.</p>
     </div>
 
-    <div id="fleetMapCanvas" class="fleet-map-canvas"></div>
+    <div class="fleet-map-shell">
+        <div id="fleetMapCanvas" class="fleet-map-canvas"></div>
 
-    <div id="fleetMapEmpty" class="empty-state" style="display:none;">
-        No stores with coordinates are available for the selected mode.
+        <div id="fleetMapEmpty" class="fleet-map-empty-overlay" style="display:none;">
+            No stores with coordinates are available for the selected mode.
+        </div>
     </div>
 </div>
 
