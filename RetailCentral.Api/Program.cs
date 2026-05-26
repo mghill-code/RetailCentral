@@ -91,6 +91,7 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     builder.WebHost.UseKestrel();
+    builder.Host.UseWindowsService();
     builder.Host.UseSerilog();
 
     // -------------------------------------------------------------------------
